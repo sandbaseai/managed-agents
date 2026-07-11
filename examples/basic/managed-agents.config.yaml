@@ -1,0 +1,17 @@
+# Example managed-agents configuration
+models:
+  - name: local-echo
+    provider: openai
+    model: gpt-4o
+    base_url: ${OPENAI_BASE_URL}
+    api_key: ${OPENAI_API_KEY}
+
+environments:
+  local:
+    sandbox_provider: local
+    timeout: 300
+
+# Optional API authentication. Omit for open (local-first) access.
+# Keys may reference env vars. Also settable via MANAGED_AGENTS_API_KEY.
+# api_keys:
+#   - ${MANAGED_AGENTS_API_KEY}

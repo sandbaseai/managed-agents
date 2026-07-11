@@ -1,0 +1,154 @@
+/**
+ * Database Migrations (embedded)
+ *
+ * Migrations are embedded as TypeScript string constants rather than loaded
+ * from .sql files at runtime. This ensures they survive bundling (tsup emits
+ * a single dist/index.js — external .sql files would not be found) and works
+ * identically in dev, tests, and the shipped binary.
+ *
+ * To add a migration: append a new entry with the next version number.
+ * Migrations run in ascending version order, each exactly once (tracked in
+ * the _migrations table).
+ */
+
+export interface Migration {
+  version: number;
+  name: string;
+  sql: string;
+}
+
+const M001_INITIAL = `
+-- Agent runtime state (cached from YAML)
+CREATE TABLE agents (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE,
+  definition TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'active',
+  error_message TEXT,
+  loaded_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Environment definitions
+CREATE TABLE environments (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE,
+  config TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Session state machine
+CREATE TABLE sessions (
+  id TEXT PRIMARY KEY,
+  agent_id TEXT NOT NULL,
+  agent_name TEXT NOT NULL,
+  environment_id TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'queued',
+  title TEXT,
+  context_id TEXT,
+  metadata TEXT,
+  sandbox_type TEXT,
+  sandbox_state TEXT,
+  usage_tokens_in INTEGER DEFAULT 0,
+  usage_tokens_out INTEGER DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  completed_at TEXT,
+  FOREIGN KEY (agent_id) REFERENCES agents(id),
+  FOREIGN KEY (environment_id) REFERENCES environments(id)
+);
+
+CREATE INDEX idx_sessions_agent ON sessions(agent_id);
+CREATE INDEX idx_sessions_status ON sessions(status);
+CREATE INDEX idx_sessions_context ON sessions(context_id);
+CREATE INDEX idx_sessions_created ON sessions(created_at DESC);
+
+-- Event Log (append-only)
+CREATE TABLE events (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL,
+  seq INTEGER NOT NULL,
+  type TEXT NOT NULL,
+  content TEXT,
+  model_used TEXT,
+  tokens_in INTEGER DEFAULT 0,
+  tokens_out INTEGER DEFAULT 0,
+  stop_reason TEXT,
+  duration_ms INTEGER,
+  parent_event_id TEXT,
+  delegation_depth INTEGER DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  processed_at TEXT,
+  FOREIGN KEY (session_id) REFERENCES sessions(id)
+);
+
+CREATE INDEX idx_events_session_seq ON events(session_id, seq);
+CREATE INDEX idx_events_session_time ON events(session_id, created_at);
+CREATE INDEX idx_events_type ON events(session_id, type);
+
+-- Context compaction boundaries
+CREATE TABLE compaction_boundaries (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL,
+  summary TEXT NOT NULL,
+  event_id_before TEXT NOT NULL,
+  tokens_before INTEGER NOT NULL,
+  tokens_after INTEGER NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY (session_id) REFERENCES sessions(id)
+);
+
+-- Model registry (cached from config)
+CREATE TABLE models (
+  name TEXT PRIMARY KEY,
+  provider TEXT NOT NULL,
+  model TEXT NOT NULL,
+  base_url TEXT,
+  config TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Workspace snapshots (optional feature)
+CREATE TABLE snapshots (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL,
+  path TEXT NOT NULL,
+  size_bytes INTEGER NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY (session_id) REFERENCES sessions(id)
+);
+`;
+
+const M002_MEMORY = `
+CREATE TABLE memories (
+  id TEXT PRIMARY KEY,
+  context_id TEXT NOT NULL,
+  content TEXT NOT NULL,
+  metadata TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX idx_memories_context ON memories(context_id);
+`;
+
+const M003_WORK_ITEMS = `
+CREATE TABLE work_items (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  payload TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending',
+  result TEXT,
+  claimed_by TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  claimed_at TEXT,
+  completed_at TEXT
+);
+CREATE INDEX idx_work_items_status ON work_items(status, created_at);
+CREATE INDEX idx_work_items_session ON work_items(session_id);
+`;
+
+export const MIGRATIONS: Migration[] = [
+  { version: 1, name: '001_initial', sql: M001_INITIAL },
+  { version: 2, name: '002_memory', sql: M002_MEMORY },
+  { version: 3, name: '003_work_items', sql: M003_WORK_ITEMS },
+];

@@ -1,0 +1,84 @@
+/**
+ * Unit tests for the Workspace Snapshot Manager (R9.11).
+ */
+
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { join } from 'node:path';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { Database } from '@/core/db/database.js';
+import { SnapshotManager } from '@/core/session/snapshot-manager.js';
+
+describe('SnapshotManager', () => {
+  let db: Database;
+  let root: string;
+  let mgr: SnapshotManager;
+
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), 'ma-snap-'));
+    db = new Database(join(root, 'test.db'));
+    db.runMigrations();
+    // snapshots table FK references sessions — seed one
+    db.exec(`INSERT INTO environments (id, name, config) VALUES ('env_default','local','{}')`);
+    db.exec(`INSERT INTO agents (id, name, definition) VALUES ('agent_a','a','{}')`);
+    db.exec(`INSERT INTO sessions (id, agent_id, agent_name, environment_id, status) VALUES ('sess_1','agent_a','a','env_default','running')`);
+    mgr = new SnapshotManager(db, join(root, 'snapshots'));
+  });
+
+  afterEach(() => {
+    db.close();
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it('creates a snapshot archive and records it', () => {
+    const workDir = join(root, 'work');
+    mkdirSync(workDir, { recursive: true });
+    writeFileSync(join(workDir, 'file.txt'), 'contents');
+
+    const snap = mgr.create('sess_1', workDir);
+    expect(snap.id).toMatch(/^snap_/);
+    expect(existsSync(snap.path)).toBe(true);
+    expect(snap.sizeBytes).toBeGreaterThan(0);
+
+    const list = mgr.list('sess_1');
+    expect(list).toHaveLength(1);
+    expect(list[0].id).toBe(snap.id);
+  });
+
+  it('restores the latest snapshot into a fresh directory', () => {
+    const workDir = join(root, 'work');
+    mkdirSync(join(workDir, 'sub'), { recursive: true });
+    writeFileSync(join(workDir, 'a.txt'), 'alpha');
+    writeFileSync(join(workDir, 'sub', 'b.txt'), 'beta');
+
+    mgr.create('sess_1', workDir);
+
+    const restoreDir = join(root, 'restored');
+    const ok = mgr.restoreLatest('sess_1', restoreDir);
+    expect(ok).toBe(true);
+    expect(readFileSync(join(restoreDir, 'a.txt'), 'utf-8')).toBe('alpha');
+    expect(readFileSync(join(restoreDir, 'sub', 'b.txt'), 'utf-8')).toBe('beta');
+  });
+
+  it('restoreLatest returns false when no snapshot exists', () => {
+    expect(mgr.restoreLatest('sess_1', join(root, 'x'))).toBe(false);
+  });
+
+  it('restores the most recent of multiple snapshots', () => {
+    const workDir = join(root, 'work');
+    mkdirSync(workDir, { recursive: true });
+    writeFileSync(join(workDir, 'v.txt'), 'v1');
+    mgr.create('sess_1', workDir);
+    writeFileSync(join(workDir, 'v.txt'), 'v2');
+    mgr.create('sess_1', workDir);
+
+    const restoreDir = join(root, 'restored');
+    mgr.restoreLatest('sess_1', restoreDir);
+    expect(readFileSync(join(restoreDir, 'v.txt'), 'utf-8')).toBe('v2');
+    expect(mgr.list('sess_1')).toHaveLength(2);
+  });
+
+  it('throws when snapshotting a nonexistent directory', () => {
+    expect(() => mgr.create('sess_1', join(root, 'nope'))).toThrow(/does not exist/);
+  });
+});
