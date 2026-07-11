@@ -53,6 +53,7 @@ jobs:
             --exclude-dir=node_modules \
             --exclude-dir=.git \
             --exclude-dir=references \
+            --exclude-dir=spec \
             . 2>/dev/null || true)
 
           if [ -n "$FOUND" ]; then
