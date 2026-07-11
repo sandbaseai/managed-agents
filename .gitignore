@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.agentbox/
+*.db
+.env
+.env.local
+.DS_Store
+.kiro/
