@@ -1,0 +1,66 @@
+{
+  "name": "managed-agents",
+  "version": "0.1.0",
+  "description": "Open-source CMA-compatible agent runtime. Run multi-agent systems locally with any model.",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "bin": {
+    "managed-agents": "./dist/index.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./sdk": {
+      "types": "./dist/sdk.d.ts",
+      "import": "./dist/sdk.js"
+    }
+  },
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "build": "tsup",
+    "start": "node dist/index.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:property": "vitest run tests/property",
+    "lint": "eslint src/ tests/",
+    "typecheck": "tsc --noEmit",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "keywords": [
+    "agent",
+    "claude",
+    "managed-agents",
+    "cma",
+    "mcp",
+    "ai",
+    "llm",
+    "local-first"
+  ],
+  "license": "Apache-2.0",
+  "dependencies": {
+    "@ai-sdk/anthropic": "^1.0.0",
+    "@ai-sdk/openai": "^1.0.0",
+    "@hono/node-server": "^1.13.0",
+    "ai": "^4.0.0",
+    "commander": "^12.0.0",
+    "hono": "^4.6.0",
+    "nanoid": "^5.0.0",
+    "yaml": "^2.5.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "fast-check": "^3.20.0",
+    "tsup": "^8.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  }
+}

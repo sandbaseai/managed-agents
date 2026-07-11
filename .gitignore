@@ -1,8 +1,12 @@
 node_modules/
 dist/
-.agentbox/
+.managed-agents/
+*.tsbuildinfo
 *.db
 .env
 .env.local
+coverage/
 .DS_Store
 .kiro/
+# Local reference material (cloned OSS projects) — not shipped
+references/
