@@ -42,14 +42,16 @@ describe('CMA-compatible API', () => {
     });
 
     app = createServer({
+      db,
       sessionManager,
       agents: [
         {
           name: 'echo-agent',
-          model: 'gpt-4o',
-          system_prompt: 'Echo back what the user says.',
+          model: { id: 'gpt-4o', speed: 'standard' },
+          system: 'Echo back what the user says.',
         },
       ],
+      consoleRoot: null,
       reloadAgents: () => ({ agents: [], errors: [] }),
     });
   });
@@ -69,13 +71,12 @@ describe('CMA-compatible API', () => {
   });
 
   describe('GET /ui', () => {
-    it('serves the HTML dashboard', async () => {
+    it('requires the built Console artifact', async () => {
       const res = await app.request('/ui');
-      expect(res.status).toBe(200);
+      expect(res.status).toBe(503);
       expect(res.headers.get('content-type')).toContain('text/html');
       const html = await res.text();
-      expect(html).toContain('managed-agents');
-      expect(html).toContain('<script>');
+      expect(html).toContain('Console not built');
     });
   });
 
@@ -84,13 +85,14 @@ describe('CMA-compatible API', () => {
       const res = await app.request('/v1/sessions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ agent: 'echo-agent' }),
+        body: JSON.stringify({ agent: 'agent_echo-agent' }),
       });
       expect(res.status).toBe(201);
       const body = await res.json();
       expect(body.id).toMatch(/^sess_/);
-      expect(body.status).toBe('queued');
-      expect(body.agent_name).toBe('echo-agent');
+      expect(body.status).toBe('idle');
+      expect(body.agent.id).toBe('agent_echo-agent');
+      expect(body.agent.name).toBe('echo-agent');
     });
 
     it('rejects without agent field', async () => {
@@ -107,7 +109,7 @@ describe('CMA-compatible API', () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          agent: 'echo-agent',
+          agent: 'agent_echo-agent',
           unknown_field: 'should be ignored',
           nested: { also: 'ignored' },
         }),
@@ -123,7 +125,7 @@ describe('CMA-compatible API', () => {
         await app.request('/v1/sessions', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ agent: 'echo-agent' }),
+          body: JSON.stringify({ agent: 'agent_echo-agent' }),
         });
       }
 
@@ -140,7 +142,7 @@ describe('CMA-compatible API', () => {
       const createRes = await app.request('/v1/sessions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ agent: 'echo-agent' }),
+        body: JSON.stringify({ agent: 'agent_echo-agent' }),
       });
       const { id } = await createRes.json();
 
@@ -161,7 +163,7 @@ describe('CMA-compatible API', () => {
       const createRes = await app.request('/v1/sessions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ agent: 'echo-agent' }),
+        body: JSON.stringify({ agent: 'agent_echo-agent' }),
       });
       const { id } = await createRes.json();
 
@@ -170,7 +172,7 @@ describe('CMA-compatible API', () => {
 
       const getRes = await app.request(`/v1/sessions/${id}`);
       const session = await getRes.json();
-      expect(session.status).toBe('completed');
+      expect(session.status).toBe('terminated');
     });
   });
 
@@ -179,7 +181,7 @@ describe('CMA-compatible API', () => {
       const res = await app.request('/v1/sessions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ agent: 'echo-agent' }),
+        body: JSON.stringify({ agent: 'agent_echo-agent' }),
       });
       return (await res.json()).id as string;
     }
@@ -201,7 +203,7 @@ describe('CMA-compatible API', () => {
       const res = await app.request(`/v1/sessions/${id}/events`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'agent.message', content: [] }),
+        body: JSON.stringify({ events: [{ type: 'agent.message', content: [] }] }),
       });
       expect(res.status).toBe(400);
     });
@@ -210,7 +212,7 @@ describe('CMA-compatible API', () => {
       const res = await app.request('/v1/sessions/sess_nope/events', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'user.message', content: [{ type: 'text', text: 'hi' }] }),
+        body: JSON.stringify({ events: [{ type: 'user.message', content: [{ type: 'text', text: 'hi' }] }] }),
       });
       expect(res.status).toBe(404);
     });
@@ -221,7 +223,7 @@ describe('CMA-compatible API', () => {
       const res = await app.request('/v1/sessions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ agent: 'echo-agent' }),
+        body: JSON.stringify({ agent: 'agent_echo-agent' }),
       });
       return (await res.json()).id as string;
     }
@@ -294,11 +296,11 @@ describe('CMA-compatible API', () => {
       expect(res.status).toBe(404);
     });
 
-    it('returns events with seq for a valid session', async () => {
+    it('returns events with id cursors for a valid session', async () => {
       const createRes = await app.request('/v1/sessions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ agent: 'echo-agent' }),
+        body: JSON.stringify({ agent: 'agent_echo-agent' }),
       });
       const { id } = await createRes.json();
 
@@ -307,6 +309,8 @@ describe('CMA-compatible API', () => {
       const body = await res.json();
       expect(Array.isArray(body.data)).toBe(true);
       expect(body.has_more).toBe(false);
+      expect(body.first_id).toBeDefined();
+      expect(body.last_id).toBeDefined();
     });
   });
 
@@ -321,11 +325,9 @@ describe('CMA-compatible API', () => {
   });
 
   describe('GET /v1/agents/:id', () => {
-    it('returns agent detail by bare name', async () => {
+    it('does not resolve agents by bare name', async () => {
       const res = await app.request('/v1/agents/echo-agent');
-      expect(res.status).toBe(200);
-      const body = await res.json();
-      expect(body.model).toBe('gpt-4o');
+      expect(res.status).toBe(404);
     });
 
     it('returns agent detail by prefixed id', async () => {
@@ -333,6 +335,7 @@ describe('CMA-compatible API', () => {
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.name).toBe('echo-agent');
+      expect(body.model.id).toBe('gpt-4o');
     });
 
     it('returns 404 for non-existent agent', async () => {
@@ -346,7 +349,7 @@ describe('CMA-compatible API', () => {
       const createRes = await app.request('/v1/sessions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ agent: 'echo-agent' }),
+        body: JSON.stringify({ agent: 'agent_echo-agent' }),
       });
       const { id } = await createRes.json();
 
@@ -369,20 +372,19 @@ describe('CMA-compatible API', () => {
     });
   });
 
-  describe('agent_id consistency', () => {
-    it('session.agent_id resolves via GET /v1/agents/:id', async () => {
+  describe('agent identity consistency', () => {
+    it('session.agent.id resolves via GET /v1/agents/:id', async () => {
       const createRes = await app.request('/v1/sessions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ agent: 'echo-agent' }),
+        body: JSON.stringify({ agent: 'agent_echo-agent' }),
       });
       const session = await createRes.json();
 
-      // The agent_id returned in the session must be resolvable
-      const agentRes = await app.request(`/v1/agents/${session.agent_id}`);
+      const agentRes = await app.request(`/v1/agents/${session.agent.id}`);
       expect(agentRes.status).toBe(200);
       const agent = await agentRes.json();
-      expect(agent.id).toBe(session.agent_id);
+      expect(agent.id).toBe(session.agent.id);
     });
   });
 

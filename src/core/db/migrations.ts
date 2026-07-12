@@ -147,8 +147,50 @@ CREATE INDEX idx_work_items_status ON work_items(status, created_at);
 CREATE INDEX idx_work_items_session ON work_items(session_id);
 `;
 
+const M004_CONSOLE_RESOURCES = `
+ALTER TABLE environments ADD COLUMN description TEXT NOT NULL DEFAULT '';
+ALTER TABLE environments ADD COLUMN metadata TEXT NOT NULL DEFAULT '{}';
+ALTER TABLE environments ADD COLUMN updated_at TEXT;
+ALTER TABLE environments ADD COLUMN archived_at TEXT;
+UPDATE environments SET updated_at = created_at WHERE updated_at IS NULL;
+
+ALTER TABLE sessions ADD COLUMN resources TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE sessions ADD COLUMN vault_ids TEXT NOT NULL DEFAULT '[]';
+
+CREATE TABLE credential_vaults (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE,
+  description TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'active',
+  metadata TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  archived_at TEXT
+);
+
+CREATE TABLE memory_stores (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE,
+  description TEXT NOT NULL DEFAULT '',
+  provider TEXT NOT NULL DEFAULT 'sqlite',
+  status TEXT NOT NULL DEFAULT 'active',
+  config TEXT NOT NULL DEFAULT '{}',
+  metadata TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  archived_at TEXT
+);
+`;
+
+const M005_AGENT_VERSIONING = `
+ALTER TABLE agents ADD COLUMN version INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE agents ADD COLUMN archived_at TEXT;
+`;
+
 export const MIGRATIONS: Migration[] = [
   { version: 1, name: '001_initial', sql: M001_INITIAL },
   { version: 2, name: '002_memory', sql: M002_MEMORY },
   { version: 3, name: '003_work_items', sql: M003_WORK_ITEMS },
+  { version: 4, name: '004_console_resources', sql: M004_CONSOLE_RESOURCES },
+  { version: 5, name: '005_agent_versioning', sql: M005_AGENT_VERSIONING },
 ];

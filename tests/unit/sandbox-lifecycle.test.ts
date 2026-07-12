@@ -43,8 +43,8 @@ describe('SandboxLifecycle', () => {
     } satisfies Session;
     const agent = {
       name: 'a',
-      model: 'm',
-      system_prompt: 'p',
+      model: { id: 'm', speed: 'standard' },
+      system: 'p',
     } satisfies AgentDefinition;
 
     await expect(lifecycle.getOrProvision(session, agent)).resolves.toBe(sandbox);

@@ -4,7 +4,7 @@
 
 `managed-agents` is a single-process TypeScript runtime for local-first agents.
 It combines an HTTP API, CLI, SDK, persistent session store, sandbox providers,
-model providers, tool loading, and a dependency-free dashboard.
+model providers, tool loading, and a React Console served by the same process.
 
 The runtime is intentionally small at the core. The control plane owns agents,
 sessions, events, and lifecycle state. Execution work is delegated to stable
@@ -18,7 +18,7 @@ agent strategies.
 - Explicit session lifecycle and append-only event history.
 - Pluggable model and sandbox backends.
 - Minimal public API surface with clear extension points.
-- Built-in dashboard for inspection and local operation.
+- Built-in Console for inspection and local operation.
 - Safe defaults for local file access and optional API authentication.
 
 ## Non-Goals
@@ -31,8 +31,10 @@ agent strategies.
 ## Runtime Structure
 
 ```text
+apps/
+  console/    React/Vite Console source served from dist/console
 src/
-  api/        HTTP server, auth, routes, and dashboard
+  api/        HTTP server, auth, routes, and resource APIs
   core/       agents, sessions, events, memory, MCP, skills, templates
   model/      model provider registry
   sandbox/    local, docker, and self-hosted sandbox providers
@@ -45,8 +47,8 @@ src/
 
 ### Agent
 
-An agent is a durable YAML or JSON definition. It declares the model, system
-prompt, tools, skills, MCP servers, delegations, strategy, and environment used
+An agent is a durable YAML or JSON definition. It declares the model, `system`
+instructions, standard toolsets, skills, MCP servers, delegations, strategy, and environment used
 by sessions.
 
 ### Environment
@@ -57,19 +59,37 @@ configuration template, not a running resource.
 ### Session
 
 A session is the control-plane resource for one conversation or task. It owns
-the event log, status, metadata, context id, and sandbox lifecycle.
+the event log, status, metadata, resources, vault references, and sandbox lifecycle.
 
 ### Sandbox
 
 A sandbox is an execution-plane resource. It runs commands and file operations
 for one session. A sandbox is never shared across sessions.
 
+### Workspace
+
+A workspace is the project boundary for local and enterprise usage. It owns the
+project root, agent files, skills, configuration, runtime data directory,
+credential vault metadata, memory store metadata, and local runtime status.
+
+The current Web Console exposes a single active local workspace. Desktop shells
+may add a workspace registry, folder picker, and runtime process manager, but
+workspace switching must remain a real runtime transition rather than a purely
+client-side UI state.
+
+Workspace-scoped resources must not leak across workspace boundaries. This
+applies to credentials, memory stores, session resources, sandbox file paths,
+and future shared team policy.
+
 ## Data Model
 
 The default store is SQLite. The logical tables are:
 
 - `agents` - loaded agent metadata and definition snapshots
-- `sessions` - session metadata, status, agent, context id, and timestamps
+- `sessions` - session metadata, status, agent, resources, vault ids, and timestamps
+- `environments` - local and configured sandbox environments
+- `credential_vaults` - local credential vault metadata
+- `memory_stores` - long-term memory store metadata
 - `events` - append-only event log ordered by session sequence
 - `models` - model registry entries
 - `snapshots` - optional workspace snapshot metadata
@@ -78,13 +98,17 @@ The default store is SQLite. The logical tables are:
 The event log is the source of truth for reconstructing model context and user
 visible history.
 
+Workspace metadata is supplied from the active runtime configuration in the Web
+Console. A future desktop shell may persist a local workspace registry outside
+the project directory so users can create, open, and switch workspaces without
+manually restarting the runtime.
+
 ## Event Model
 
 Events are structured objects with:
 
 - `id`
 - `session_id`
-- `seq`
 - `type`
 - `content`
 - metadata such as model usage, duration, parent event, and timestamps
@@ -92,7 +116,7 @@ Events are structured objects with:
 Persisted events include user messages, agent messages, tool calls, tool
 results, status changes, errors, and compaction boundaries.
 
-Transient stream chunks may be broadcast to SSE subscribers with `seq = 0`.
+Transient stream chunks may be broadcast to SSE subscribers without being persisted.
 They are useful for live rendering, but they do not become part of durable
 history.
 
@@ -166,8 +190,8 @@ interface AgentStrategy {
 The default local tool set includes:
 
 - `bash`
-- `read_file`
-- `write_file`
+- `read`
+- `write`
 - `edit`
 - `glob`
 - `grep`
@@ -177,7 +201,8 @@ Tool results are capped before they are persisted or returned to the model.
 ## Skills
 
 Skills are Markdown files with optional frontmatter. An agent opts into skills
-by name. Only selected skills are included in the system prompt for that agent.
+with `skills: [{ type: "custom", skill_id }]`. Only selected skills are included
+in the system instructions for that agent.
 
 ## MCP Connections
 
@@ -209,28 +234,38 @@ The API is grouped by resources:
 - `/v1/sessions/:id/events`
 - `/v1/sessions/:id/events/stream`
 - `/v1/sessions/:id/messages`
+- `/v1/environments`
+- `/v1/credential-vaults`
+- `/v1/memory-stores`
 - `/v1/x/health`
 - `/v1/x/metrics`
 - `/v1/x/mcp/status`
 - `/v1/x/reload`
+- `/v1/x/runtime`
+- `/v1/x/workspace`
+- `/v1/x/templates`
+- `/v1/x/skills`
 
 Optional bearer-token authentication protects non-public routes when configured.
 
-## Dashboard
+`/v1/x/workspace` is an extension endpoint for the active local workspace. In
+Web P0 it is read-only introspection. Workspace creation and switching should be
+implemented through a desktop shell bridge or a future workspace registry API
+that can safely restart or rebind the runtime.
 
-The v1 dashboard is embedded HTML, CSS, and JavaScript served from `/ui`. It
-provides:
+## Console
 
-- agent list
-- session list
-- chat view
-- trajectory view
-- runtime metrics
-- session inspector
-- agent inspector
-- system prompt preview
+The Console is a React/Vite application built into `dist/console` and served
+from `/ui`. It provides:
 
-The dashboard uses the same public API and SSE stream as SDK clients.
+- Quickstart templates
+- agent list and agent creation
+- session list and session creation
+- environment, credential vault, and memory store management
+- skill, workspace, runtime, API key, and observability views
+
+The Console uses the same public API and SSE stream as SDK clients. It does not
+read private database state or legacy field aliases.
 
 ## Packaging
 

@@ -6,6 +6,7 @@ import type { UserEvent } from '@/types/cma-protocol.js';
 import type { Session, SessionEvent } from '@/types/session.js';
 import { composeSystemPrompt, type Skill } from '@/core/skills/loader.js';
 import type { MemoryProvider } from '@/core/memory/memory-provider.js';
+import { getAgentSkillIds } from '@/core/agent/standard.js';
 
 export interface ContextBuilderDeps {
   eventLogger: EventLogger;
@@ -35,8 +36,8 @@ export class ContextBuilder {
     const messages = eventsToMessages(events);
 
     let systemPrompt = composeSystemPrompt(
-      agent.system_prompt,
-      agent.skills,
+      agent.system,
+      getAgentSkillIds(agent),
       this.deps.skills ?? [],
     );
     if (this.deps.memory && session.contextId) {
@@ -62,8 +63,8 @@ export class ContextBuilder {
 
   composeSystemPrompt(agent: AgentDefinition): string {
     return composeSystemPrompt(
-      agent.system_prompt,
-      agent.skills,
+      agent.system,
+      getAgentSkillIds(agent),
       this.deps.skills ?? [],
     );
   }

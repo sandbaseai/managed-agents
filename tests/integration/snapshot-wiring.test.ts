@@ -66,7 +66,7 @@ describe('Snapshot wiring', () => {
     sandboxProvider = new LocalSandboxProvider(tmpDir);
 
     const executor = new DefaultSessionExecutor({
-      agents: [{ name: 'f', model: 'm', system_prompt: 'p', environment: 'snapenv' }],
+      agents: [{ name: 'f', model: { id: 'm', speed: 'standard' }, system: 'p', environment: 'snapenv' }],
       modelRegistry,
       sandboxProvider,
       strategy,
@@ -84,7 +84,7 @@ describe('Snapshot wiring', () => {
 
   it('snapshots after a turn and restores the file on a fresh sandbox', async () => {
     // Turn 1: write a file → snapshot taken after the turn
-    const session = manager.create({ agent: 'f', environmentId: 'env_snap' });
+    const session = manager.create({ agent: 'agent_f', environmentId: 'env_snap' });
     strategy.mode = 'write';
     await manager.sendEvent(session.id, { type: 'user.message', content: [{ type: 'text', text: 'write' }] } as any);
     await new Promise((r) => setTimeout(r, 80));
@@ -108,7 +108,7 @@ describe('Snapshot wiring', () => {
     const modelRegistry = new ModelRegistry();
     (modelRegistry as any).createModel = () => fakeModel();
     const noSnapExec = new DefaultSessionExecutor({
-      agents: [{ name: 'f', model: 'm', system_prompt: 'p', environment: 'snapenv' }],
+      agents: [{ name: 'f', model: { id: 'm', speed: 'standard' }, system: 'p', environment: 'snapenv' }],
       modelRegistry,
       sandboxProvider: new LocalSandboxProvider(tmpDir),
       strategy: new FileStrategy(),
@@ -118,7 +118,7 @@ describe('Snapshot wiring', () => {
     });
     manager.setExecutor(noSnapExec);
 
-    const session = manager.create({ agent: 'f', environmentId: 'env_snap' });
+    const session = manager.create({ agent: 'agent_f', environmentId: 'env_snap' });
     await manager.sendEvent(session.id, { type: 'user.message', content: [{ type: 'text', text: 'x' }] } as any);
     await new Promise((r) => setTimeout(r, 80));
 

@@ -119,7 +119,7 @@ export function loadSkills(skillsDir: string): SkillLoadResult {
 
 /**
  * Build the full system prompt for an agent by appending its assigned skills'
- * instructions to the base system_prompt. Only the named subset is included
+ * instructions to the base system. Only the named subset is included
  * (R4.5). Unknown skill names are ignored by the caller (warned at load time).
  */
 export function composeSystemPrompt(

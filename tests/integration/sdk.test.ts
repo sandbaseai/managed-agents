@@ -6,7 +6,6 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { serve, type ServerType } from '@hono/node-server';
 import { join } from 'node:path';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -16,11 +15,9 @@ import { createServer } from '@/api/server.js';
 import { ManagedAgentsClient } from '@/sdk/client.js';
 
 describe('Client SDK', () => {
-  let server: ServerType;
   let db: Database;
   let tmpDir: string;
   let client: ManagedAgentsClient;
-  let port: number;
 
   beforeAll(async () => {
     tmpDir = mkdtempSync(join(tmpdir(), 'ma-sdk-'));
@@ -45,23 +42,22 @@ describe('Client SDK', () => {
     sessionManager.setExecutor(executor);
 
     const app = createServer({
+      db,
       sessionManager,
-      agents: [{ name: 'echo', model: 'm', system_prompt: 'p' }],
+      agents: [{ name: 'echo', model: { id: 'm', speed: 'standard' }, system: 'p' }],
       reloadAgents: () => ({ agents: [], errors: [] }),
     });
 
-    await new Promise<void>((resolve) => {
-      server = serve({ fetch: app.fetch, port: 0 }, (info) => {
-        port = info.port;
-        resolve();
-      });
+    client = new ManagedAgentsClient({
+      baseUrl: 'http://managed-agents.test',
+      fetch: (input, init) => {
+        const url = new URL(input.toString());
+        return app.request(`${url.pathname}${url.search}`, init);
+      },
     });
-
-    client = new ManagedAgentsClient({ baseUrl: `http://localhost:${port}` });
   });
 
   afterAll(() => {
-    server?.close();
     db.close();
     rmSync(tmpDir, { recursive: true, force: true });
   });
@@ -72,14 +68,14 @@ describe('Client SDK', () => {
   });
 
   it('creates and gets a session', async () => {
-    const s = await client.sessions.create({ agent: 'echo' });
+    const s = await client.sessions.create({ agent: 'agent_echo' });
     expect(s.id).toMatch(/^sess_/);
     const got = await client.sessions.get(s.id);
     expect(got.id).toBe(s.id);
   });
 
   it('sends a message and reads the persisted event log back', async () => {
-    const s = await client.sessions.create({ agent: 'echo' });
+    const s = await client.sessions.create({ agent: 'agent_echo' });
     const ack = await client.sessions.sendMessage(s.id, 'hi there');
     expect(ack.accepted).toBe(true);
 
@@ -92,7 +88,7 @@ describe('Client SDK', () => {
   });
 
   it('sends a message through the convenience endpoint without streaming', async () => {
-    const s = await client.sessions.create({ agent: 'echo' });
+    const s = await client.sessions.create({ agent: 'agent_echo' });
     const ack = await client.sessions.message(s.id, 'hi via messages', { stream: false });
     expect(ack.accepted).toBe(true);
 
@@ -102,7 +98,7 @@ describe('Client SDK', () => {
   });
 
   it('streams a message through the convenience endpoint', async () => {
-    const s = await client.sessions.create({ agent: 'echo' });
+    const s = await client.sessions.create({ agent: 'agent_echo' });
     const received: string[] = [];
 
     for await (const ev of client.sessions.message(s.id, 'go via messages')) {
@@ -116,7 +112,7 @@ describe('Client SDK', () => {
   });
 
   it('tails the live stream and receives the agent reply', async () => {
-    const s = await client.sessions.create({ agent: 'echo' });
+    const s = await client.sessions.create({ agent: 'agent_echo' });
 
     const received: string[] = [];
     const streamPromise = (async () => {
@@ -139,9 +135,9 @@ describe('Client SDK', () => {
   });
 
   it('stops a session', async () => {
-    const s = await client.sessions.create({ agent: 'echo' });
+    const s = await client.sessions.create({ agent: 'agent_echo' });
     const res = await client.sessions.stop(s.id);
-    expect(res.status).toBe('stopped');
+    expect(res.status).toBe('terminated');
   });
 
   it('throws ManagedAgentsApiError on 404', async () => {

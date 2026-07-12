@@ -67,7 +67,7 @@ describe('Compaction during execution', () => {
 
     strategy = new NoopStrategy();
     const executor = new DefaultSessionExecutor({
-      agents: [{ name: 'big', model: 'fake', system_prompt: 'p' }],
+      agents: [{ name: 'big', model: { id: 'm', speed: 'standard' }, system: 'p' }],
       modelRegistry,
       sandboxProvider: new LocalSandboxProvider(tmpDir),
       strategy,
@@ -84,7 +84,7 @@ describe('Compaction during execution', () => {
   });
 
   it('writes a compaction boundary event when history is large', async () => {
-    const session = manager.create({ agent: 'big' });
+    const session = manager.create({ agent: 'agent_big' });
     const logger = manager.getEventLogger();
 
     // Seed a large history directly
@@ -114,7 +114,7 @@ describe('Compaction during execution', () => {
   });
 
   it('projection after boundary includes the summary and drops old messages', async () => {
-    const session = manager.create({ agent: 'big' });
+    const session = manager.create({ agent: 'agent_big' });
     const logger = manager.getEventLogger();
 
     logger.append(session.id, { type: 'user.message', content: [{ type: 'text', text: 'ancient history' }] });

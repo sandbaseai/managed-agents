@@ -29,6 +29,7 @@ import { SandboxLifecycle } from './sandbox-lifecycle.js';
 import { ContextBuilder } from './context-builder.js';
 import { DelegationService } from './delegation-service.js';
 import { ToolResolver } from './tool-resolver.js';
+import { getToolsRequiringConfirmation } from '@/core/agent/standard.js';
 
 export interface ExecutorDeps {
   agents: AgentDefinition[];
@@ -92,7 +93,7 @@ export class DefaultSessionExecutor implements SessionExecutor {
     }
 
     // 2. Create model
-    const model = modelRegistry.createModel(agent.model);
+    const model = modelRegistry.createModel(agent.model.id);
 
     // 3. Provision sandbox (or reuse the one bound to this session)
     const sandbox = await this.sandboxLifecycle.getOrProvision(session, agent);
@@ -124,7 +125,7 @@ export class DefaultSessionExecutor implements SessionExecutor {
     // 5. Build tools: built-in sandbox tools, MCP tools, delegation tools, and
     // confirm-required stripping.
     const tools = await this.toolResolver.resolveTools(session, agent, sandbox);
-    const confirmTools = agent.confirm_tools ?? [];
+    const confirmTools = getToolsRequiringConfirmation(agent);
 
     // 6. Execute strategy
     const context: StrategyContext = {

@@ -26,7 +26,7 @@ describe('Templates', () => {
   function makeProject(dir: string) {
     mkdirSync(join(dir, 'agents'), { recursive: true });
     mkdirSync(join(dir, 'skills'), { recursive: true });
-    writeFileSync(join(dir, 'agents', 'a.yaml'), 'name: a\nmodel: m\nsystem_prompt: p\n');
+    writeFileSync(join(dir, 'agents', 'a.yaml'), 'name: a\nmodel:\n  id: m\n  speed: standard\nsystem: p\n');
     writeFileSync(join(dir, 'skills', 's.md'), '---\nname: s\ndescription: d\n---\nbody');
   }
 

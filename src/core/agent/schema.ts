@@ -12,28 +12,61 @@ import type { AgentDefinition } from '@/types/agent.js';
 // MCP Server Config Schema
 // ============================================================
 
-const mcpServerConfigSchema = z.object({
-  name: z.string().min(1, 'MCP server name is required'),
-  transport: z.enum(['stdio', 'http']),
-  command: z.string().optional(),
-  args: z.array(z.string()).optional(),
-  url: z.string().url().optional(),
-  env: z.record(z.string()).optional(),
-  timeout: z.number().positive().optional(),
-}).refine(
-  (data) => {
-    if (data.transport === 'stdio' && !data.command) {
-      return false;
-    }
-    if (data.transport === 'http' && !data.url) {
-      return false;
-    }
-    return true;
-  },
-  {
-    message: 'stdio transport requires "command"; http transport requires "url"',
-  },
+const mcpServerConfigSchema = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('url'),
+    name: z.string().min(1, 'MCP server name is required'),
+    url: z.string().url(),
+    timeout: z.number().positive().optional(),
+  }),
+  z.object({
+    type: z.literal('stdio'),
+    name: z.string().min(1, 'MCP server name is required'),
+    command: z.string().min(1, 'stdio MCP server command is required'),
+    args: z.array(z.string()).optional(),
+    env: z.record(z.string()).optional(),
+    timeout: z.number().positive().optional(),
+  }),
+]);
+
+const permissionPolicySchema = z.object({
+  type: z.enum(['always_allow', 'always_ask', 'never_allow']),
+});
+
+const agentToolConfigSchema = z.object({
+  enabled: z.boolean().optional(),
+  permission_policy: permissionPolicySchema.optional(),
+});
+
+const toolConfigsSchema = z.preprocess(
+  (value) => Array.isArray(value) ? {} : value,
+  z.record(agentToolConfigSchema).default({}),
 );
+
+const agentToolsetSchema = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('agent_toolset_20260401'),
+    configs: toolConfigsSchema,
+    default_config: agentToolConfigSchema.optional(),
+  }),
+  z.object({
+    type: z.literal('mcp_toolset'),
+    mcp_server_name: z.string().min(1, 'MCP toolset server name is required'),
+    configs: toolConfigsSchema,
+    default_config: agentToolConfigSchema.optional(),
+  }),
+]);
+
+const skillRefSchema = z.object({
+  type: z.literal('custom'),
+  skill_id: z.string().min(1, 'Skill id is required'),
+  version: z.string().optional(),
+});
+
+const agentModelSchema = z.object({
+  id: z.string().min(1, 'Model id is required'),
+  speed: z.enum(['fast', 'standard', 'extended']).default('standard'),
+});
 
 // ============================================================
 // Agent Definition Schema
@@ -43,14 +76,14 @@ export const agentDefinitionSchema = z.object({
   name: z
     .string()
     .min(1, 'Agent name is required')
-    .regex(/^[a-zA-Z0-9_-]+$/, 'Agent name must be alphanumeric with hyphens/underscores'),
-  model: z.string().min(1, 'Model reference is required'),
-  system_prompt: z.string().min(1, 'System prompt is required'),
+    .regex(/^[a-zA-Z0-9][a-zA-Z0-9 _-]*$/, 'Agent name must be alphanumeric with spaces, hyphens, or underscores'),
+  model: agentModelSchema,
+  system: z.string().min(1, 'System instructions are required'),
   description: z.string().optional(),
-  skills: z.array(z.string()).optional(),
+  skills: z.array(skillRefSchema).optional(),
   mcp_servers: z.array(mcpServerConfigSchema).optional(),
-  tools: z.array(z.string()).optional(),
-  confirm_tools: z.array(z.string()).optional(),
+  tools: z.array(agentToolsetSchema).optional(),
+  metadata: z.record(z.unknown()).optional(),
   max_turns: z.number().int().positive().max(1000).optional(),
   temperature: z.number().min(0).max(2).optional(),
   delegations: z.array(z.string()).optional(),

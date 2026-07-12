@@ -23,40 +23,46 @@ This document tracks public implementation status for `managed-agents`.
 - [x] Local sandbox provider with path isolation.
 - [x] Docker sandbox provider.
 - [x] Self-hosted sandbox work queue.
-- [x] Built-in tools: `bash`, `read_file`, `write_file`, `edit`, `glob`,
+- [x] Built-in tools: `bash`, `read`, `write`, `edit`, `glob`,
       and `grep`.
 - [x] Tool result size cap.
 - [x] Skills loader and system prompt injection.
-- [x] MCP server integration for stdio and HTTP transports.
+- [x] MCP server integration for `stdio` and `url` transports.
 - [x] Multi-agent delegation tools.
 - [x] Optional bearer-token API authentication.
 - [x] Structured logging and runtime metrics.
 - [x] TypeScript SDK for agents, sessions, events, messages, and SSE tailing.
 - [x] CLI commands for init, start, list, reload, chat, and templates.
-- [x] Dependency-free built-in dashboard at `/ui`.
+- [x] React/Vite Console at `/ui`.
+- [x] Standard agent fields: `system`, `agent_toolset_20260401`, and
+      `permission_policy`.
+- [x] Standard event pagination with `after_id`.
+- [x] Environment, credential vault, and memory store resource APIs.
+- [x] Active workspace introspection for the Console.
 - [x] Example project under `examples/basic`.
 - [x] CI workflow for typecheck, tests, build, smoke, and package checks.
 - [x] Public documentation in English.
 
 ## In Progress
 
-- [ ] Expand API compatibility tests.
-- [ ] Improve dashboard coverage for edge states and errors.
+- [ ] Expand standard API conformance tests.
+- [ ] Improve Console coverage for edge states and errors.
 - [ ] Add more SDK convenience helpers.
 - [ ] Improve template authoring and validation.
 - [ ] Expand runtime metrics.
 
 ## Planned
 
-- [ ] Tool confirmation flow.
+- [x] Tool confirmation flow.
 - [ ] Client-side custom tools.
 - [ ] Session subcommands for create, message, tail, logs, and inspect.
 - [ ] Model and environment management commands.
-- [ ] Optional workspace snapshots.
-- [ ] Optional long-term memory provider.
+- [x] Optional workspace snapshots.
+- [ ] Workspace registry for desktop create, open, and switch workflows.
+- [x] Optional long-term memory provider.
 - [ ] Additional sandbox provider packages.
 - [ ] Production deployment examples.
-- [ ] Versioned compatibility matrix.
+- [ ] Versioned standard API matrix.
 
 ## Release Checklist
 

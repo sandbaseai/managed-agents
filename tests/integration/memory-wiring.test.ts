@@ -56,7 +56,7 @@ describe('Memory wiring', () => {
     (modelRegistry as any).createModel = () => fakeModel();
     strategy = new CapturingStrategy();
     const executor = new DefaultSessionExecutor({
-      agents: [{ name: 'm', model: 'x', system_prompt: 'base prompt' }],
+      agents: [{ name: 'm', model: { id: 'm', speed: 'standard' }, system: 'base prompt' }],
       modelRegistry,
       sandboxProvider: new LocalSandboxProvider(tmpDir),
       strategy,
@@ -73,12 +73,12 @@ describe('Memory wiring', () => {
 
   it('extracts the user message into memory and injects it into a later session', async () => {
     // Session 1 with context_id — records a preference
-    const s1 = manager.create({ agent: 'm', contextId: 'user_42' });
+    const s1 = manager.create({ agent: 'agent_m', contextId: 'user_42' });
     await manager.sendEvent(s1.id, { type: 'user.message', content: [{ type: 'text', text: 'I strongly prefer Rust for systems code' }] } as any);
     await new Promise((r) => setTimeout(r, 60));
 
     // Session 2, same context_id — memory should be injected into the prompt
-    const s2 = manager.create({ agent: 'm', contextId: 'user_42' });
+    const s2 = manager.create({ agent: 'agent_m', contextId: 'user_42' });
     await manager.sendEvent(s2.id, { type: 'user.message', content: [{ type: 'text', text: 'What language should I use for Rust systems work' }] } as any);
     await new Promise((r) => setTimeout(r, 60));
 
@@ -87,7 +87,7 @@ describe('Memory wiring', () => {
   });
 
   it('does not inject memory when the session has no context_id', async () => {
-    const s = manager.create({ agent: 'm' }); // no contextId
+    const s = manager.create({ agent: 'agent_m' }); // no contextId
     await manager.sendEvent(s.id, { type: 'user.message', content: [{ type: 'text', text: 'hello' }] } as any);
     await new Promise((r) => setTimeout(r, 60));
     expect(strategy.lastSystemPrompt).not.toContain('Relevant Memory');

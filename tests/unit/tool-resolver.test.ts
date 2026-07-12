@@ -37,7 +37,7 @@ describe('ToolResolver', () => {
       modelRegistry: new ModelRegistry(),
       strategy,
       sandboxProvider: provider,
-      composeSystemPrompt: (agent) => agent.system_prompt,
+      composeSystemPrompt: (agent) => agent.system,
       buildSandboxTools: () => ({}),
     });
     const resolver = new ToolResolver({ delegationService });
@@ -52,17 +52,29 @@ describe('ToolResolver', () => {
     } satisfies Session;
     const agent = {
       name: 'a',
-      model: 'm',
-      system_prompt: 'p',
-      tools: ['bash', 'read_file'],
-      confirm_tools: ['bash'],
+      model: { id: 'm', speed: 'standard' },
+      system: 'p',
+      tools: [{
+        type: 'agent_toolset_20260401',
+        default_config: {
+          enabled: true,
+          permission_policy: { type: 'always_allow' },
+        },
+        configs: {
+          bash: {
+            enabled: true,
+            permission_policy: { type: 'always_ask' },
+          },
+          read: { enabled: true },
+        },
+      }],
     } satisfies AgentDefinition;
 
     const tools = await resolver.resolveTools(session, agent, sandbox);
 
     expect(tools.bash).toBeDefined();
     expect(tools.bash.execute).toBeUndefined();
-    expect(tools.read_file.execute).toBeTypeOf('function');
-    await expect(tools.read_file.execute({ path: 'x' })).resolves.toBe('content');
+    expect(tools.read.execute).toBeTypeOf('function');
+    await expect(tools.read.execute({ path: 'x' })).resolves.toBe('content');
   });
 });

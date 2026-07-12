@@ -19,18 +19,42 @@ export interface ClientOptions {
 
 export interface SessionSummary {
   id: string;
-  agent_id: string;
-  agent_name: string;
-  status: string;
+  type: 'session';
+  agent: AgentSummary;
+  environment_id: string;
+  status: 'idle' | 'running' | 'terminated' | 'failed';
   title?: string | null;
-  context_id?: string | null;
+  resources: Array<Record<string, unknown>>;
+  vault_ids: string[];
+  usage: {
+    input_tokens: number;
+    output_tokens: number;
+  };
+  metadata: Record<string, string>;
   created_at: string;
   updated_at: string;
+  archived_at: string | null;
+}
+
+export interface AgentSummary {
+  id: string;
+  type: 'agent';
+  name: string;
+  description: string;
+  system: string;
+  model: { id: string; speed: string };
+  tools: Array<Record<string, unknown>>;
+  mcp_servers: Array<Record<string, unknown>>;
+  skills: Array<Record<string, unknown>>;
+  status: string;
+  version: number;
+  created_at: string | null;
+  updated_at: string | null;
+  archived_at: string | null;
 }
 
 export interface StreamedEvent {
   id?: string;
-  seq?: number;
   type: string;
   content?: ContentBlock[] | null;
   delta?: string;
@@ -132,11 +156,11 @@ export class ManagedAgentsClient {
 class AgentsResource {
   constructor(private readonly client: ManagedAgentsClient) {}
 
-  list(): Promise<{ data: Array<{ id: string; name: string; model: string; status: string }> }> {
+  list(): Promise<{ data: AgentSummary[]; has_more: boolean; first_id: string | null; last_id: string | null }> {
     return this.client.request('GET', '/v1/agents');
   }
 
-  get(id: string): Promise<Record<string, unknown>> {
+  get(id: string): Promise<AgentSummary> {
     return this.client.request('GET', `/v1/agents/${encodeURIComponent(id)}`);
   }
 }
@@ -144,7 +168,14 @@ class AgentsResource {
 class SessionsResource {
   constructor(private readonly client: ManagedAgentsClient) {}
 
-  create(input: { agent: string; environment_id?: string; context_id?: string; title?: string }): Promise<SessionSummary> {
+  create(input: {
+    agent: string;
+    environment_id?: string;
+    title?: string;
+    resources?: Array<Record<string, unknown>>;
+    vault_ids?: string[];
+    metadata?: Record<string, string>;
+  }): Promise<SessionSummary> {
     return this.client.request('POST', '/v1/sessions', input);
   }
 
@@ -152,7 +183,7 @@ class SessionsResource {
     return this.client.request('GET', `/v1/sessions/${encodeURIComponent(id)}`);
   }
 
-  list(opts?: { page?: number; limit?: number; status?: string }): Promise<{ data: SessionSummary[]; has_more: boolean; total: number }> {
+  list(opts?: { page?: number; limit?: number; status?: string }): Promise<{ data: SessionSummary[]; has_more: boolean; first_id: string | null; last_id: string | null }> {
     const q = new URLSearchParams();
     if (opts?.page) q.set('page', String(opts.page));
     if (opts?.limit) q.set('limit', String(opts.limit));
@@ -195,18 +226,18 @@ class SessionsResource {
   }
 
   sendEvent(id: string, event: { type: string; content?: ContentBlock[] }): Promise<{ accepted: boolean }> {
-    return this.client.request('POST', `/v1/sessions/${encodeURIComponent(id)}/events`, event);
+    return this.client.request('POST', `/v1/sessions/${encodeURIComponent(id)}/events`, { events: [event] });
   }
 
-  events(id: string, opts?: { limit?: number; afterSeq?: number }): Promise<{ data: StreamedEvent[]; has_more: boolean }> {
+  events(id: string, opts?: { limit?: number; afterId?: string }): Promise<{ data: StreamedEvent[]; has_more: boolean; first_id: string | null; last_id: string | null }> {
     const q = new URLSearchParams();
     if (opts?.limit) q.set('limit', String(opts.limit));
-    if (opts?.afterSeq) q.set('after_seq', String(opts.afterSeq));
+    if (opts?.afterId) q.set('after_id', opts.afterId);
     const qs = q.toString();
     return this.client.request('GET', `/v1/sessions/${encodeURIComponent(id)}/events${qs ? `?${qs}` : ''}`);
   }
 
-  stop(id: string): Promise<{ status: string }> {
+  stop(id: string): Promise<{ id: string; status: 'terminated' }> {
     return this.client.request('POST', `/v1/sessions/${encodeURIComponent(id)}/stop`);
   }
 

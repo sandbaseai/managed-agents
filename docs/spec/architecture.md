@@ -10,14 +10,14 @@ graph TB
     subgraph Entry["Entry Points"]
         CLI[CLI]
         API[HTTP API]
-        Dashboard[Built-in Dashboard]
+        Console[React Console]
     end
 
     User --> CLI
-    User --> Dashboard
+    User --> Console
     SDK --> API
     CLI --> API
-    Dashboard --> API
+    Console --> API
 
     subgraph Core["Core Runtime"]
         Agents[Agent Loader]
@@ -175,6 +175,35 @@ graph LR
 
 Project configuration is separate from runtime data. Runtime data belongs under
 `.managed-agents/` by default and should not be committed.
+
+## Workspace Boundary
+
+```mermaid
+graph TB
+    Workspace["Workspace<br/>project boundary"]
+    Config["Config<br/>managed-agents.config.yaml"]
+    Agents["Agents<br/>agents/*.yaml"]
+    Skills["Skills<br/>skills/*.md"]
+    RuntimeData["Runtime Data<br/>.managed-agents/"]
+    Vaults["Credential Vaults"]
+    Memory["Memory Stores"]
+    Sessions["Sessions"]
+    Sandboxes["Session Sandboxes"]
+
+    Workspace --> Config
+    Workspace --> Agents
+    Workspace --> Skills
+    Workspace --> RuntimeData
+    RuntimeData --> Vaults
+    RuntimeData --> Memory
+    RuntimeData --> Sessions
+    Sessions --> Sandboxes
+```
+
+The Web Console currently exposes the active local workspace as a read-only
+runtime boundary. Desktop shells may add create, open, and switch workflows, but
+switching workspaces must restart or rebind runtime state so credentials,
+memory, session data, and sandbox paths remain scoped to the selected workspace.
 
 ## Provider Selection
 

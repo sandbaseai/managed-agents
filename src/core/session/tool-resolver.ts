@@ -6,6 +6,7 @@ import { McpManager, type McpServerStatus } from '@/core/mcp/mcp-manager.js';
 import { rootDelegationContext, DEFAULT_MAX_DELEGATION_DEPTH } from '@/core/orchestrator/agent-orchestrator.js';
 import type { EventLogger } from './event-logger.js';
 import type { DelegationService } from './delegation-service.js';
+import { getEnabledToolNames, getToolsRequiringConfirmation } from '@/core/agent/standard.js';
 
 export interface ToolResolverDeps {
   delegationService: DelegationService;
@@ -27,7 +28,7 @@ export class ToolResolver {
     Object.assign(tools, await this.getOrConnectMcp(session.id, agent));
     Object.assign(tools, this.deps.delegationService.buildDelegationTools(agent, delegationCtx));
 
-    for (const name of agent.confirm_tools ?? []) {
+    for (const name of getToolsRequiringConfirmation(agent)) {
       if (tools[name]) {
         tools[name] = { ...tools[name], execute: undefined };
       }
@@ -120,8 +121,9 @@ export class ToolResolver {
 
   buildSandboxTools(agent: AgentDefinition, sandbox: SandboxInstance): Record<string, any> {
     const tools: Record<string, any> = {};
+    const enabledTools = new Set(getEnabledToolNames(agent));
 
-    if (agent.tools?.includes('bash')) {
+    if (enabledTools.has('bash')) {
       tools['bash'] = {
         description: 'Execute a shell command in the sandbox',
         parameters: {
@@ -140,8 +142,8 @@ export class ToolResolver {
       };
     }
 
-    if (agent.tools?.includes('read_file')) {
-      tools['read_file'] = {
+    if (enabledTools.has('read')) {
+      tools['read'] = {
         description: 'Read a file from the workspace',
         parameters: {
           type: 'object',
@@ -160,8 +162,8 @@ export class ToolResolver {
       };
     }
 
-    if (agent.tools?.includes('write_file')) {
-      tools['write_file'] = {
+    if (enabledTools.has('write')) {
+      tools['write'] = {
         description: 'Write content to a file in the workspace',
         parameters: {
           type: 'object',
@@ -178,7 +180,7 @@ export class ToolResolver {
       };
     }
 
-    if (agent.tools?.includes('edit')) {
+    if (enabledTools.has('edit')) {
       tools['edit'] = {
         description: 'Replace an exact string in a file with new content',
         parameters: {
@@ -205,7 +207,7 @@ export class ToolResolver {
       };
     }
 
-    if (agent.tools?.includes('glob')) {
+    if (enabledTools.has('glob')) {
       tools['glob'] = {
         description: 'List files in the workspace matching a substring or extension',
         parameters: {
@@ -223,7 +225,7 @@ export class ToolResolver {
       };
     }
 
-    if (agent.tools?.includes('grep')) {
+    if (enabledTools.has('grep')) {
       tools['grep'] = {
         description: 'Search file contents in the workspace for a substring',
         parameters: {

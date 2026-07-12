@@ -31,7 +31,7 @@ describe('MCP integration', () => {
   it('discovers and namespaces tools from a stdio MCP server', async () => {
     manager = new McpManager();
     const servers: McpServerConfig[] = [
-      { name: 'mock', transport: 'stdio', command: 'node', args: [MOCK_SERVER] },
+      { name: 'mock', type: 'stdio', command: 'node', args: [MOCK_SERVER] },
     ];
     const tools = await manager.connectAll(servers);
 
@@ -47,7 +47,7 @@ describe('MCP integration', () => {
   it('degrades gracefully when a server fails to connect (R5.5)', async () => {
     manager = new McpManager();
     const servers: McpServerConfig[] = [
-      { name: 'broken', transport: 'stdio', command: 'this-command-does-not-exist-xyz', args: [], timeout: 3 },
+      { name: 'broken', type: 'stdio', command: 'this-command-does-not-exist-xyz', args: [], timeout: 3 },
     ];
     // Must NOT throw
     const tools = await manager.connectAll(servers);
@@ -61,8 +61,8 @@ describe('MCP integration', () => {
   it('keeps working servers when one fails (partial degradation)', async () => {
     manager = new McpManager();
     const servers: McpServerConfig[] = [
-      { name: 'broken', transport: 'stdio', command: 'nonexistent-xyz', args: [], timeout: 3 },
-      { name: 'mock', transport: 'stdio', command: 'node', args: [MOCK_SERVER] },
+      { name: 'broken', type: 'stdio', command: 'nonexistent-xyz', args: [], timeout: 3 },
+      { name: 'mock', type: 'stdio', command: 'node', args: [MOCK_SERVER] },
     ];
     const tools = await manager.connectAll(servers);
 
@@ -77,8 +77,8 @@ describe('MCP integration', () => {
   it('rejects stdio config missing command / http config missing url', async () => {
     manager = new McpManager();
     const tools = await manager.connectAll([
-      { name: 'bad-stdio', transport: 'stdio' } as McpServerConfig,
-      { name: 'bad-http', transport: 'http' } as McpServerConfig,
+      { name: 'bad-stdio', type: 'stdio' } as McpServerConfig,
+      { name: 'bad-http', type: 'url' } as McpServerConfig,
     ]);
     expect(Object.keys(tools)).toHaveLength(0);
     const statuses = manager.getStatuses();
@@ -99,7 +99,7 @@ describe('MCP integration', () => {
       manager = new McpManager();
       // First connect the mock server
       await manager.connectAll([
-        { name: 'mock', transport: 'stdio', command: 'node', args: [MOCK_SERVER] },
+        { name: 'mock', type: 'stdio', command: 'node', args: [MOCK_SERVER] },
       ]);
 
       // Simulate a reconnect (no real drop; verifies the reconnect path works)
@@ -119,7 +119,7 @@ describe('MCP integration', () => {
       manager = new McpManager();
       manager.setSleepFn(async () => {}); // no real backoff sleeps in test
       const tools = await manager.connectAll([
-        { name: 'mock', transport: 'stdio', command: 'node', args: [MOCK_SERVER] },
+        { name: 'mock', type: 'stdio', command: 'node', args: [MOCK_SERVER] },
       ]);
 
       const echo = tools['mcp_mock_echo'] as { execute: (a: any) => Promise<any> };
@@ -144,7 +144,7 @@ describe('MCP integration', () => {
     it('retries with backoff then gives up on a permanently-broken server', async () => {
       manager = new McpManager();
       await manager.connectAll([
-        { name: 'broken', transport: 'stdio', command: 'nonexistent-xyz', args: [], timeout: 1 },
+        { name: 'broken', type: 'stdio', command: 'nonexistent-xyz', args: [], timeout: 1 },
       ]);
       const delays: number[] = [];
       const tools = await manager.reconnect('broken', async (ms) => { delays.push(ms); });

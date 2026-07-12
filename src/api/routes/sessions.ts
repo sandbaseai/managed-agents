@@ -15,6 +15,8 @@ import { streamSSE } from 'hono/streaming';
 import type { ServerDeps } from '../server.js';
 import type { SessionEvent } from '@/types/session.js';
 import type { ContentBlock } from '@/types/cma-protocol.js';
+import type { AgentDefinition } from '@/types/agent.js';
+import { agentId, pageOf, toApiEvent, toApiSession } from '../standard.js';
 
 export function sessionsRoutes(deps: ServerDeps) {
   const app = new Hono();
@@ -23,22 +25,32 @@ export function sessionsRoutes(deps: ServerDeps) {
   // POST / — Create session
   app.post('/', async (c) => {
     const body = await c.req.json();
-    const { agent, environment_id, context_id, title, metadata } = body;
+    const { agent, environment_id, title, metadata } = body;
+    const resources = normalizeResources(body.resources);
+    const vaultIds = normalizeStringArray(body.vault_ids);
 
     if (!agent) {
       return c.json({ error: { type: 'invalid_request', message: 'agent field is required' } }, 400);
+    }
+    if (typeof agent !== 'string' || !agent.startsWith('agent_')) {
+      return c.json({ error: { type: 'invalid_request', message: 'agent must be a standard agent id' } }, 400);
     }
 
     try {
       const session = sessionManager.create({
         agent,
         environmentId: environment_id,
-        contextId: context_id,
         title,
+        resources,
+        vaultIds,
+        contextId: memoryScopeFromResources(resources),
         metadata,
       });
-      return c.json({ type: 'session', ...sessionToResponse(session) }, 201);
+      return c.json(toApiSession(session, findAgentById(deps, session.agentId)), 201);
     } catch (err) {
+      if (err instanceof Error && err.message.includes('Agent not found')) {
+        return c.json({ error: { type: 'not_found', message: err.message } }, 404);
+      }
       return c.json({ error: { type: 'internal_error', message: String(err) } }, 500);
     }
   });
@@ -48,14 +60,17 @@ export function sessionsRoutes(deps: ServerDeps) {
     const page = Math.max(1, parseInt(c.req.query('page') ?? '1', 10) || 1);
     const rawLimit = parseInt(c.req.query('limit') ?? '20', 10) || 20;
     const pageSize = Math.min(1000, Math.max(1, rawLimit)); // cap at 1000
-    const status = c.req.query('status') as any;
+    const status = c.req.query('status');
+    const agentIdFilter = c.req.query('agent_id');
 
-    const result = sessionManager.list({ page, pageSize, status });
-    return c.json({
-      data: result.data.map(sessionToResponse),
-      has_more: result.hasMore,
-      total: result.total,
+    const result = sessionManager.list({
+      page,
+      pageSize,
+      ...(agentIdFilter ? { agentId: agentIdFilter } : {}),
+      ...internalStatusFilter(status),
     });
+    const sessions = result.data.map((session) => toApiSession(session, findAgentById(deps, session.agentId)));
+    return c.json(pageOf(sessions, result.hasMore));
   });
 
   // GET /:id — Get session detail
@@ -64,7 +79,7 @@ export function sessionsRoutes(deps: ServerDeps) {
     if (!session) {
       return c.json({ error: { type: 'not_found', message: 'Session not found' } }, 404);
     }
-    return c.json({ type: 'session', ...sessionToResponse(session) });
+    return c.json(toApiSession(session, findAgentById(deps, session.agentId)));
   });
 
   // POST /:id/events — Send events
@@ -78,7 +93,10 @@ export function sessionsRoutes(deps: ServerDeps) {
       return c.json({ error: { type: 'invalid_request', message: 'Request body must be valid JSON' } }, 400);
     }
 
-    const events = Array.isArray(body.events) ? body.events : [body];
+    const events = Array.isArray(body.events) ? body.events : null;
+    if (!events) {
+      return c.json({ error: { type: 'invalid_request', message: 'events must be an array' } }, 400);
+    }
 
     // Validate every event carries a string `type` before touching the log
     for (const event of events) {
@@ -216,18 +234,9 @@ export function sessionsRoutes(deps: ServerDeps) {
       const writeEvent = async (sessionEvent: SessionEvent) => {
         const transient = sessionEvent.seq === 0;
         await stream.writeSSE({
-          ...(transient ? {} : { id: String(sessionEvent.seq) }),
+          ...(transient ? {} : { id: sessionEvent.id }),
           event: sessionEvent.type,
-          data: JSON.stringify({
-            id: sessionEvent.id,
-            seq: sessionEvent.seq,
-            type: sessionEvent.type,
-            content: sessionEvent.content ?? null,
-            ...(('delta' in sessionEvent) ? { delta: (sessionEvent as any).delta } : {}),
-            ...(('message_id' in sessionEvent) ? { message_id: (sessionEvent as any).message_id } : {}),
-            processed_at: sessionEvent.processedAt?.toISOString() ?? null,
-            parent_event_id: sessionEvent.parentEventId ?? null,
-          }),
+          data: JSON.stringify(toApiEvent(sessionEvent)),
         });
       };
 
@@ -269,25 +278,15 @@ export function sessionsRoutes(deps: ServerDeps) {
 
     const rawLimit = parseInt(c.req.query('limit') ?? '1000', 10) || 1000;
     const limit = Math.min(1000, Math.max(1, rawLimit));
-    const afterSeq = c.req.query('after_seq')
-      ? parseInt(c.req.query('after_seq')!, 10)
-      : undefined;
+    const afterId = c.req.query('after_id');
 
     const eventLogger = sessionManager.getEventLogger();
-    const events = eventLogger.getEvents(sessionId, afterSeq);
+    const allEvents = eventLogger.getEvents(sessionId);
+    const start = afterId ? allEvents.findIndex((event) => event.id === afterId) + 1 : 0;
+    const events = start > 0 ? allEvents.slice(start) : allEvents;
     const limited = events.slice(0, limit);
 
-    return c.json({
-      data: limited.map((e) => ({
-        id: e.id,
-        seq: e.seq,
-        type: e.type,
-        content: e.content ?? null,
-        processed_at: e.processedAt?.toISOString() ?? null,
-        parent_event_id: e.parentEventId ?? null,
-      })),
-      has_more: events.length > limited.length,
-    });
+    return c.json(pageOf(limited.map(toApiEvent), events.length > limited.length));
   });
 
   // POST /:id/stop — Stop session
@@ -295,7 +294,7 @@ export function sessionsRoutes(deps: ServerDeps) {
     const sessionId = c.req.param('id');
     try {
       await sessionManager.stop(sessionId);
-      return c.json({ status: 'stopped' });
+      return c.json({ id: sessionId, status: 'terminated' });
     } catch (err: any) {
       if (err.message?.includes('not found')) {
         return c.json({ error: { type: 'not_found', message: err.message } }, 404);
@@ -317,21 +316,6 @@ export function sessionsRoutes(deps: ServerDeps) {
   return app;
 }
 
-function sessionToResponse(session: any) {
-  return {
-    id: session.id,
-    agent_id: session.agentId,
-    agent_name: session.agentName,
-    environment_id: session.environmentId,
-    status: session.status,
-    title: session.title ?? null,
-    context_id: session.contextId ?? null,
-    metadata: session.metadata ?? null,
-    created_at: session.createdAt instanceof Date ? session.createdAt.toISOString() : session.createdAt,
-    updated_at: session.updatedAt instanceof Date ? session.updatedAt.toISOString() : session.updatedAt,
-  };
-}
-
 function normalizeMessageContent(content: unknown): ContentBlock[] | null {
   if (typeof content === 'string') {
     return [{ type: 'text', text: content }];
@@ -348,4 +332,46 @@ function isMessageStreamTerminalEvent(event: SessionEvent): boolean {
     event.type === 'session.status_terminated' ||
     event.type === 'session.error'
   );
+}
+
+function internalStatusFilter(status: string | undefined) {
+  switch (status) {
+    case undefined:
+    case '':
+    case 'all':
+      return {};
+    case 'running':
+      return { status: 'running' as const };
+    case 'failed':
+      return { status: 'failed' as const };
+    case 'terminated':
+      return { status: 'completed' as const };
+    case 'idle':
+      return { status: 'queued' as const };
+    default:
+      return {};
+  }
+}
+
+function findAgentById(deps: ServerDeps, id: string): AgentDefinition | undefined {
+  return deps.agents.find((agent) => agentId(agent.name) === id);
+}
+
+function normalizeResources(value: unknown): Array<Record<string, unknown>> {
+  if (!Array.isArray(value)) return [];
+  return value.filter((resource): resource is Record<string, unknown> => {
+    if (!resource || typeof resource !== 'object' || Array.isArray(resource)) return false;
+    if (typeof (resource as { type?: unknown }).type !== 'string') return false;
+    return true;
+  });
+}
+
+function normalizeStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === 'string' && item.length > 0);
+}
+
+function memoryScopeFromResources(resources: Array<Record<string, unknown>>): string | undefined {
+  const memoryStore = resources.find((resource) => resource.type === 'memory_store');
+  return typeof memoryStore?.memory_store_id === 'string' ? memoryStore.memory_store_id : undefined;
 }

@@ -5,7 +5,7 @@
 `managed-agents` is a local-first runtime for stateful agents. It loads agent
 definitions from project files, runs sessions against configurable model and
 sandbox backends, persists event history locally, and exposes a small HTTP API,
-SDK, CLI, and built-in dashboard.
+SDK, CLI, and built-in Console.
 
 The project is an agent runtime, not a visual workflow engine. It supports
 declarative multi-agent collaboration, but it does not define graph nodes,
@@ -26,7 +26,7 @@ branches, loops, or a canvas-based workflow DSL.
    directories.
 3. The runtime shall start from a project configuration file and load agents,
    skills, model settings, sandbox settings, and optional API keys.
-4. Startup output shall report the API URL, dashboard URL, loaded agents,
+4. Startup output shall report the API URL, Console URL, loaded agents,
    loaded skills, sandbox providers, memory status, target profile, and auth
    status.
 
@@ -34,7 +34,7 @@ branches, loops, or a canvas-based workflow DSL.
 
 1. Agents shall be declared as YAML or JSON files.
 2. An agent definition shall include a stable `name`, `model`, and
-   `system_prompt`.
+   `system`.
 3. An agent definition may include `description`, `tools`, `skills`,
    `mcp_servers`, `delegations`, `strategy`, `environment`,
    `enable_general_subagent`, `max_turns`, and generation settings.
@@ -45,9 +45,9 @@ branches, loops, or a canvas-based workflow DSL.
 
 1. The runtime shall create sessions for a selected agent.
 2. A session shall own its event log, status, metadata, and sandbox lifecycle.
-3. A session shall move through explicit statuses such as `queued`, `running`,
-   `idle`, `paused`, `requires_action`, `completed`, `failed`, and
-   `terminated`.
+3. The public API shall expose session statuses as `idle`, `running`,
+   `terminated`, and `failed`; the runtime may keep additional internal
+   lifecycle states.
 4. A session shall persist history in an append-only event log.
 5. A session shall be recoverable from persisted events after process restart.
 6. Session listing shall support pagination and stable ordering.
@@ -125,7 +125,8 @@ branches, loops, or a canvas-based workflow DSL.
    configured.
 4. The TypeScript SDK shall wrap the HTTP API and SSE stream in ergonomic
    methods.
-5. API additions shall preserve backward-compatible behavior whenever possible.
+5. Public API additions shall follow the standard project field names; legacy
+   aliases shall not be added for pre-release fields.
 
 ### R11. CLI
 
@@ -136,18 +137,33 @@ branches, loops, or a canvas-based workflow DSL.
 4. Future CLI session commands should support create, list, message, tail, and
    inspect workflows.
 
-### R12. Dashboard
+### R12. Console
 
-1. The dashboard shall be served by the same process at `/ui`.
-2. The dashboard shall require no separate frontend build pipeline in the v1
-   runtime.
-3. The dashboard shall show agents, sessions, chat, trajectory, runtime metrics,
-   selected session details, selected agent details, and system prompt.
-4. The dashboard shall support creating sessions and sending messages.
-5. The dashboard shall update live through SSE.
-6. The dashboard shall remain usable on desktop and mobile viewports.
+1. The Console shall be served by the same process at `/ui`.
+2. The Console shall be implemented as a dedicated React/Vite application under
+   `apps/console` and built into `dist/console`.
+3. The Console shall show Quickstart templates, agents, sessions,
+   environments, credential vaults, memory stores, skills, workspace, local
+   runtime, API keys, and observability.
+4. The Console shall support creating agents, sessions, environments,
+   credential vaults, and memory stores through the public API.
+5. The Console shall use the same public API and SSE stream as SDK clients.
+6. The Console shall remain usable on desktop and mobile viewports.
 
-### R13. Templates
+### R13. Workspaces
+
+1. A workspace shall be the resource boundary for agents, sessions, skills,
+   environments, credential vaults, memory stores, runtime data, and sandbox
+   file access.
+2. The Web Console shall expose the active local workspace through read-only
+   introspection.
+3. Workspace switching shall not be represented as client-only UI state.
+4. A future desktop shell may provide workspace create, open, and switch
+   workflows backed by a local workspace registry and runtime process manager.
+5. Credential vaults, memory stores, and session resources shall remain scoped
+   to the active workspace.
+
+### R14. Templates
 
 1. Templates shall package reusable agents, skills, and optional MCP settings.
 2. The CLI shall support listing and installing templates.
@@ -156,7 +172,7 @@ branches, loops, or a canvas-based workflow DSL.
 4. Template authoring commands may export a local project layout into a reusable
    template.
 
-### R14. Open Source Readiness
+### R15. Open Source Readiness
 
 1. Public documentation shall be written in English.
 2. Public documentation shall describe this project only.
