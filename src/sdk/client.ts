@@ -80,12 +80,20 @@ export class ManagedAgentsClient {
   }
 
   /** @internal — opens an SSE stream and yields parsed events. */
-  async *stream(path: string, opts?: { lastEventId?: string }): AsyncIterable<StreamedEvent> {
+  async *stream(
+    path: string,
+    opts?: { lastEventId?: string; method?: string; body?: unknown },
+  ): AsyncIterable<StreamedEvent> {
     const headers: Record<string, string> = { Accept: 'text/event-stream' };
     if (this.apiKey) headers['Authorization'] = `Bearer ${this.apiKey}`;
     if (opts?.lastEventId) headers['Last-Event-ID'] = opts.lastEventId;
+    if (opts?.body !== undefined) headers['Content-Type'] = 'application/json';
 
-    const res = await this.fetchImpl(`${this.baseUrl}${path}`, { headers });
+    const res = await this.fetchImpl(`${this.baseUrl}${path}`, {
+      method: opts?.method ?? 'GET',
+      headers,
+      body: opts?.body !== undefined ? JSON.stringify(opts.body) : undefined,
+    });
     if (!res.ok || !res.body) {
       throw new ManagedAgentsApiError(res.status, `stream failed: ${res.statusText}`);
     }
@@ -158,6 +166,34 @@ class SessionsResource {
     return this.sendEvent(id, { type: 'user.message', content: [{ type: 'text', text }] });
   }
 
+  /**
+   * Send a user message through the CMA-style convenience endpoint.
+   *
+   * Defaults to streaming the turn. Pass `{ stream: false }` for an immediate
+   * `{ accepted: true }` acknowledgment.
+   */
+  message(
+    id: string,
+    content: string | ContentBlock[],
+    opts: { stream: false },
+  ): Promise<{ accepted: boolean }>;
+  message(
+    id: string,
+    content: string | ContentBlock[],
+    opts?: { stream?: true },
+  ): AsyncIterable<StreamedEvent>;
+  message(
+    id: string,
+    content: string | ContentBlock[],
+    opts?: { stream?: boolean },
+  ): Promise<{ accepted: boolean }> | AsyncIterable<StreamedEvent> {
+    const path = `/v1/sessions/${encodeURIComponent(id)}/messages`;
+    if (opts?.stream === false) {
+      return this.client.request('POST', path, { content, stream: false });
+    }
+    return this.client.stream(path, { method: 'POST', body: { content, stream: true } });
+  }
+
   sendEvent(id: string, event: { type: string; content?: ContentBlock[] }): Promise<{ accepted: boolean }> {
     return this.client.request('POST', `/v1/sessions/${encodeURIComponent(id)}/events`, event);
   }
@@ -192,9 +228,7 @@ class SessionsResource {
    * idle. Opens the stream BEFORE sending to avoid missing early events.
    */
   async *chat(id: string, text: string): AsyncIterable<StreamedEvent> {
-    const stream = this.tail(id);
-    // Send after the stream is established
-    await this.sendMessage(id, text);
+    const stream = this.message(id, text);
     for await (const event of stream) {
       yield event;
       if (event.type === 'session.status_idle' || event.type === 'session.status_terminated') {

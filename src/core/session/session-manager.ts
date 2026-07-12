@@ -2,7 +2,7 @@
  * Session Manager
  *
  * Core control-plane component managing the full Session lifecycle:
- * create → sendEvent → subscribe → resume → stop
+ * create → sendEvent → subscribe → stop
  *
  * Separation of concerns:
  * - SessionManager owns the control plane (status, Event_Log, routing)
@@ -206,28 +206,6 @@ export class SessionManager {
   }
 
   /**
-   * Resume a paused/idle session (optionally with a different sandbox provider).
-   * Rebuilds model context from Event_Log. Does NOT dispatch an event.
-   */
-  resume(sessionId: string): Session {
-    const session = this.get(sessionId);
-    if (!session) {
-      throw new Error(`Session not found: ${sessionId}`);
-    }
-    if (isTerminal(session.status)) {
-      throw new Error(`Cannot resume terminal session: ${session.status}`);
-    }
-    // Mark as ready for next event (paused → will go to running on next sendEvent)
-    if (session.status === 'running') {
-      // Already running, nothing to do
-      return session;
-    }
-    // No status change here — resume just re-establishes readiness
-    // The actual transition to 'running' happens on next sendEvent()
-    return session;
-  }
-
-  /**
    * Get a session by ID.
    */
   get(sessionId: string): Session | null {
@@ -339,7 +317,7 @@ export class SessionManager {
    * was interrupted mid-turn. For each, inject a placeholder tool_result for
    * every orphaned tool_use (so the next eventsToMessages projection has a
    * valid, paired message sequence), then reset the session to idle (paused)
-   * so it can be resumed. Sandbox state is NOT restored (Event_Log ≠ file
+   * so it can continue on the next user event. Sandbox state is NOT restored (Event_Log ≠ file
    * bytes) — the next turn re-provisions a fresh sandbox.
    *
    * Returns the number of sessions reconciled.
@@ -380,7 +358,7 @@ export class SessionManager {
         });
       }
 
-      // Reset to idle so the session is resumable
+      // Reset to idle so the session can continue on the next user event
       this.updateStatus(sessionId, 'paused');
     }
 

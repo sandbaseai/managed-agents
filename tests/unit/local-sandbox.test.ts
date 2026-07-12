@@ -5,7 +5,7 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { join } from 'node:path';
-import { mkdtempSync, rmSync, existsSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { LocalSandboxProvider } from '@/sandbox/local-provider.js';
 
@@ -63,6 +63,17 @@ describe('Local Sandbox Provider', () => {
       const result = await sandbox.execute('sleep 10', { timeout: 100 });
       expect(result.timedOut).toBe(true);
     });
+
+    it('rejects cwd paths that escape the sandbox workspace', async () => {
+      const sandbox = await provider.provision('sess_exec_escape', {
+        name: 'local',
+        sandbox_provider: 'local',
+      });
+
+      await expect(sandbox.execute('pwd', { cwd: '..' })).rejects.toThrow(
+        'Path escapes sandbox workspace',
+      );
+    });
   });
 
   describe('writeFile / readFile', () => {
@@ -84,6 +95,47 @@ describe('Local Sandbox Provider', () => {
       await sandbox.writeFile('a/b/c.txt', 'deep');
       const content = await sandbox.readFile('a/b/c.txt');
       expect(content).toBe('deep');
+    });
+
+    it('rejects writes that escape the sandbox workspace', async () => {
+      const sandbox = await provider.provision('sess_write_escape', {
+        name: 'local',
+        sandbox_provider: 'local',
+      });
+      const outsidePath = join(tmpDir, 'escape.txt');
+
+      await expect(sandbox.writeFile('../escape.txt', 'oops')).rejects.toThrow(
+        'Path escapes sandbox workspace',
+      );
+      expect(existsSync(outsidePath)).toBe(false);
+    });
+
+    it('rejects reads that escape the sandbox workspace', async () => {
+      const sandbox = await provider.provision('sess_read_escape', {
+        name: 'local',
+        sandbox_provider: 'local',
+      });
+      writeFileSync(join(tmpDir, 'secret.txt'), 'secret');
+
+      await expect(sandbox.readFile('../secret.txt')).rejects.toThrow(
+        'Path escapes sandbox workspace',
+      );
+    });
+
+    it('rejects writes through symlinks that point outside the sandbox workspace', async () => {
+      const sandbox = await provider.provision('sess_symlink_escape', {
+        name: 'local',
+        sandbox_provider: 'local',
+      });
+      const workDir = join(tmpDir, 'sandbox', 'sess_symlink_escape');
+      const outsidePath = join(tmpDir, 'outside.txt');
+      writeFileSync(outsidePath, 'outside');
+      symlinkSync(outsidePath, join(workDir, 'link.txt'));
+
+      await expect(sandbox.writeFile('link.txt', 'oops')).rejects.toThrow(
+        'Path escapes sandbox workspace',
+      );
+      expect(readFileSync(outsidePath, 'utf-8')).toBe('outside');
     });
   });
 
@@ -108,6 +160,17 @@ describe('Local Sandbox Provider', () => {
       });
       const files = await sandbox.listFiles('nonexistent');
       expect(files).toEqual([]);
+    });
+
+    it('rejects list paths that escape the sandbox workspace', async () => {
+      const sandbox = await provider.provision('sess_list_escape', {
+        name: 'local',
+        sandbox_provider: 'local',
+      });
+
+      await expect(sandbox.listFiles('..')).rejects.toThrow(
+        'Path escapes sandbox workspace',
+      );
     });
   });
 

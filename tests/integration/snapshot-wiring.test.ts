@@ -1,5 +1,5 @@
 /**
- * Integration test: workspace snapshot create-after-turn + restore-on-resume
+ * Integration test: workspace snapshot create-after-turn + restore-on-continuation
  * wired through the executor (R9.11).
  */
 
@@ -89,14 +89,14 @@ describe('Snapshot wiring', () => {
     await manager.sendEvent(session.id, { type: 'user.message', content: [{ type: 'text', text: 'write' }] } as any);
     await new Promise((r) => setTimeout(r, 80));
 
-    // Destroy the sandbox (simulate session end / resume with a fresh sandbox)
+    // Destroy the sandbox (simulate continuation with a fresh sandbox)
     await manager.stop(session.id);
 
     // A snapshot must have been recorded
     const snaps = db.prepare('SELECT COUNT(*) as c FROM snapshots WHERE session_id = ?').get(session.id) as { c: number };
     expect(snaps.c).toBeGreaterThanOrEqual(1);
 
-    // Turn 2: a NEW session id would get a fresh dir, but resuming the SAME
+    // Turn 2: a NEW session id would get a fresh dir, but continuing the SAME
     // session re-provisions and restores its snapshot. Simulate by reading.
     // (The executor restores latest snapshot for this session id on provision.)
     const session2 = manager.get(session.id);

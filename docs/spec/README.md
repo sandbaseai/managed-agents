@@ -1,13 +1,10 @@
-# Specification Documents
+# Project Documentation
 
-This directory contains the design specification for the managed-agents platform:
+This directory contains public documentation for `managed-agents`. The files
+are written in English and describe the runtime, architecture, requirements,
+and implementation status of this project.
 
-- `requirements.md` — functional and non-functional requirements (R1–R14)
-- `design.md` — architecture and component design
-- `tasks.md` — implementation task breakdown
-- `architecture.md` — high-level architecture overview
-
-> Note: These specification documents are authored in Chinese as internal design
-> artifacts and are intentionally excluded from the repository's English-only
-> source policy (see the `no-chinese` CI check). All code, comments, and
-> configuration remain English-only.
+- `requirements.md` - product and runtime requirements
+- `design.md` - technical design and public extension contracts
+- `architecture.md` - architecture diagrams and data flow
+- `tasks.md` - implementation status and roadmap

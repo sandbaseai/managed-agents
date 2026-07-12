@@ -63,7 +63,7 @@ describe('Tool confirmation — requires_action transition', () => {
     expect(manager.get(session.id)!.status).toBe('requires_action');
   });
 
-  it('accepts a follow-up event after requires_action (resumable)', async () => {
+  it('accepts a follow-up event after requires_action', async () => {
     let turns = 0;
     const strat: SessionExecutor = {
       // eslint-disable-next-line require-yield
