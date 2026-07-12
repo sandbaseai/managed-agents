@@ -29,6 +29,7 @@ import { SqliteMemoryProvider } from './core/memory/sqlite-memory-provider.js';
 import type { MemoryProvider } from './core/memory/memory-provider.js';
 import { SnapshotManager } from './core/session/snapshot-manager.js';
 import { createServer } from './api/server.js';
+import { agentId as standardAgentId } from './api/standard.js';
 import { resolveEnvVars } from './core/config/env-resolver.js';
 import { resolveApiKeys } from './api/auth.js';
 import { createLogger } from './core/observability/logger.js';
@@ -53,6 +54,7 @@ program
   .command('start', { isDefault: true })
   .description('Start the managed-agents server')
   .option('-p, --port <port>', 'Server port', '3000')
+  .option('--host <host>', 'Server host', '127.0.0.1')
   .option('-d, --data-dir <dir>', 'Data directory', '.managed-agents')
   .option('--agents-dir <dir>', 'Agents directory', 'agents')
   .option('--skills-dir <dir>', 'Skills directory', 'skills')
@@ -174,8 +176,9 @@ program.parse();
 // Start Server
 // ============================================================
 
-async function startServer(opts: { port: string; dataDir: string; agentsDir: string; skillsDir: string; config: string; target?: string }) {
+async function startServer(opts: { port: string; host: string; dataDir: string; agentsDir: string; skillsDir: string; config: string; target?: string }) {
   const port = parseInt(opts.port, 10);
+  const host = opts.host;
   const dataDir = resolve(opts.dataDir);
   const agentsDir = resolve(opts.agentsDir);
   const skillsDir = resolve(opts.skillsDir);
@@ -263,7 +266,7 @@ async function startServer(opts: { port: string; dataDir: string; agentsDir: str
   // Insert loaded agents into DB
   const agents: AgentDefinition[] = loadResult.agents;
   for (const agent of agents) {
-    const agentId = `agent_${agent.name}`;
+    const agentId = standardAgentId(agent.name);
     const existing = db.prepare('SELECT id FROM agents WHERE name = ?').get(agent.name);
     if (!existing) {
       db.prepare('INSERT INTO agents (id, name, definition) VALUES (?, ?, ?)').run(
@@ -287,8 +290,8 @@ async function startServer(opts: { port: string; dataDir: string; agentsDir: str
   const skillNames = new Set(skillResult.skills.map((s) => s.name));
   for (const agent of agents) {
     for (const ref of agent.skills ?? []) {
-      if (!skillNames.has(ref)) {
-        console.error(`[SKILL_REF] agent "${agent.name}" references unknown skill "${ref}" (ignored)`);
+      if (!skillNames.has(ref.skill_id)) {
+        console.error(`[SKILL_REF] agent "${agent.name}" references unknown skill "${ref.skill_id}" (ignored)`);
       }
     }
   }
@@ -369,12 +372,28 @@ async function startServer(opts: { port: string; dataDir: string; agentsDir: str
 
   // Create HTTP server
   const app = createServer({
+    db,
     sessionManager,
     agents,
     apiKeys,
     logger,
     metrics,
     workQueue,
+    workspace: {
+      root: process.cwd(),
+      dataDir,
+      agentsDir,
+      skillsDir,
+      configPath,
+      target,
+    },
+    runtime: {
+      models: modelRegistry.listNames(),
+      sandboxProviders: sandboxRegistry.listTypes(),
+      memory: memory ? memory.name : 'disabled',
+      authEnabled: apiKeys.length > 0,
+    },
+    skills: skillResult.skills,
     getMcpStatus: (sessionId) => executor.getMcpStatus(sessionId),
     reloadAgents: () => {
       const result = loadAgents(agentsDir);
@@ -389,11 +408,12 @@ async function startServer(opts: { port: string; dataDir: string; agentsDir: str
   const server = serve({
     fetch: app.fetch,
     port,
+    hostname: host,
   }, (info) => {
     console.log(`\n  managed-agents v${VERSION}\n`);
-    console.log(`  API:       http://localhost:${info.port}/v1`);
-    console.log(`  Dashboard: http://localhost:${info.port}/ui`);
-    console.log(`  Health:    http://localhost:${info.port}/v1/x/health`);
+    console.log(`  API:       http://${host}:${info.port}/v1`);
+    console.log(`  Console:   http://${host}:${info.port}/ui`);
+    console.log(`  Health:    http://${host}:${info.port}/v1/x/health`);
     console.log(`  Agents:    ${agents.length} loaded`);
     console.log(`  Skills:    ${skillResult.skills.length} loaded`);
     console.log(`  Sandbox:   ${sandboxRegistry.listTypes().join(', ')}`);
@@ -456,13 +476,31 @@ function initProject() {
 
   // Create example agent
   writeFileSync(
-    join(cwd, 'agents', 'assistant.yaml'),
-    `name: assistant
-model: gpt-4o
-system_prompt: |
+	    join(cwd, 'agents', 'assistant.yaml'),
+	    `name: assistant
+	model:
+	  id: gpt-4o
+	  speed: standard
+	system: |
   You are a helpful assistant. Answer questions clearly and concisely.
 skills:
-  - example-skill
+  - type: custom
+    skill_id: example-skill
+tools:
+  - type: agent_toolset_20260401
+    default_config:
+      enabled: true
+      permission_policy:
+        type: always_allow
+    configs:
+      read:
+        enabled: true
+      write:
+        enabled: true
+      bash:
+        enabled: true
+        permission_policy:
+          type: always_ask
 max_turns: 25
 temperature: 0.7
 `,
@@ -479,7 +517,7 @@ description: An example skill showing the SKILL.md format
 # Example Skill
 
 Replace this with real instructions. Skills are injected into the agent's
-system prompt so the model knows the capability up-front.
+system instructions so the model knows the capability up-front.
 `,
   );
 
@@ -530,7 +568,7 @@ async function chatCommand(
         console.error('Error: [CHAT] No agents loaded on the server.');
         process.exit(1);
       }
-      agent = data[0].name;
+      agent = data[0].id;
     }
   } catch {
     console.error(`Error: [CHAT] Cannot connect to server on port ${opts.port}`);
@@ -594,7 +632,7 @@ async function listAgents(opts: { port: string }) {
     }
     console.log('Loaded agents:\n');
     for (const agent of body.data) {
-      console.log(`  ${agent.name}  (model: ${agent.model}, status: ${agent.status})`);
+      console.log(`  ${agent.id}  ${agent.name}  (model: ${agent.model?.id ?? agent.model}, status: ${agent.status})`);
     }
   } catch (err: any) {
     console.error(`Error: [LIST] Cannot connect to server on port ${opts.port}`);

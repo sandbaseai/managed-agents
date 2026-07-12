@@ -22,8 +22,9 @@ function makeApp(apiKeys?: string[]) {
   db.exec(`INSERT INTO environments (id, name, config) VALUES ('env_default', 'local', '{}')`);
   db.exec(`INSERT INTO agents (id, name, definition) VALUES ('agent_a', 'a', '{}')`);
   const app = createServer({
+    db,
     sessionManager: new SessionManager(db),
-    agents: [{ name: 'a', model: 'm', system_prompt: 'p' }],
+    agents: [{ name: 'a', model: { id: 'm', speed: 'standard' }, system: 'p' }],
     apiKeys,
     reloadAgents: () => ({ agents: [], errors: [] }),
   });

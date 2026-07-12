@@ -9,8 +9,8 @@ import { validateAgentDefinition } from '@/core/agent/schema.js';
 describe('Agent Definition Schema Validation', () => {
   const validMinimal = {
     name: 'test-agent',
-    model: 'gpt-4o',
-    system_prompt: 'You are a helpful assistant.',
+    model: { id: 'gpt-4o', speed: 'standard' },
+    system: 'You are a helpful assistant.',
   };
 
   describe('valid definitions', () => {
@@ -24,12 +24,27 @@ describe('Agent Definition Schema Validation', () => {
       const full = {
         ...validMinimal,
         description: 'A test agent',
-        skills: ['code-review', 'web-search'],
-        mcp_servers: [
-          { name: 'filesystem', transport: 'stdio', command: 'npx', args: ['-y', 'server'] },
-          { name: 'github', transport: 'http', url: 'http://localhost:3001/mcp' },
+        skills: [
+          { type: 'custom', skill_id: 'code-review' },
+          { type: 'custom', skill_id: 'web-search', version: '1.0.0' },
         ],
-        tools: ['bash', 'read_file'],
+        mcp_servers: [
+          { type: 'stdio', name: 'filesystem', command: 'npx', args: ['-y', 'server'] },
+          { type: 'url', name: 'github', url: 'http://localhost:3001/mcp' },
+        ],
+        tools: [
+          {
+            type: 'agent_toolset_20260401',
+            default_config: {
+              enabled: true,
+              permission_policy: { type: 'always_allow' },
+            },
+            configs: {
+              bash: { enabled: true },
+              read: { enabled: true },
+            },
+          },
+        ],
         max_turns: 50,
         temperature: 0.7,
         delegations: ['research-analyst'],
@@ -49,21 +64,21 @@ describe('Agent Definition Schema Validation', () => {
 
   describe('invalid definitions', () => {
     it('rejects missing name', () => {
-      const result = validateAgentDefinition({ model: 'gpt-4o', system_prompt: 'hi' });
+      const result = validateAgentDefinition({ model: { id: 'gpt-4o', speed: 'standard' }, system: 'hi' });
       expect(result.valid).toBe(false);
       expect(result.errors).toContainEqual(expect.objectContaining({ path: 'name' }));
     });
 
     it('rejects missing model', () => {
-      const result = validateAgentDefinition({ name: 'test', system_prompt: 'hi' });
+      const result = validateAgentDefinition({ name: 'test', system: 'hi' });
       expect(result.valid).toBe(false);
       expect(result.errors).toContainEqual(expect.objectContaining({ path: 'model' }));
     });
 
-    it('rejects missing system_prompt', () => {
-      const result = validateAgentDefinition({ name: 'test', model: 'gpt-4o' });
+    it('rejects missing system', () => {
+      const result = validateAgentDefinition({ name: 'test', model: { id: 'gpt-4o', speed: 'standard' } });
       expect(result.valid).toBe(false);
-      expect(result.errors).toContainEqual(expect.objectContaining({ path: 'system_prompt' }));
+      expect(result.errors).toContainEqual(expect.objectContaining({ path: 'system' }));
     });
 
     it('rejects empty name', () => {
@@ -90,15 +105,15 @@ describe('Agent Definition Schema Validation', () => {
     it('rejects stdio mcp_server without command', () => {
       const result = validateAgentDefinition({
         ...validMinimal,
-        mcp_servers: [{ name: 'test', transport: 'stdio' }],
+        mcp_servers: [{ type: 'stdio', name: 'test' }],
       });
       expect(result.valid).toBe(false);
     });
 
-    it('rejects http mcp_server without url', () => {
+    it('rejects url mcp_server without url', () => {
       const result = validateAgentDefinition({
         ...validMinimal,
-        mcp_servers: [{ name: 'test', transport: 'http' }],
+        mcp_servers: [{ type: 'url', name: 'test' }],
       });
       expect(result.valid).toBe(false);
     });
@@ -117,7 +132,7 @@ describe('Agent Definition Schema Validation', () => {
 
   describe('error structure', () => {
     it('provides field path in errors', () => {
-      const result = validateAgentDefinition({ name: 123, model: 'x', system_prompt: 'y' });
+      const result = validateAgentDefinition({ name: 123, model: { id: 'gpt-4o', speed: 'standard' }, system: 'y' });
       expect(result.valid).toBe(false);
       expect(result.errors![0].path).toBe('name');
       expect(result.errors![0].message).toBeTruthy();

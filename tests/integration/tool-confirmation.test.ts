@@ -56,7 +56,7 @@ describe('Tool confirmation — requires_action transition', () => {
     };
     manager.setExecutor(strat);
 
-    const session = manager.create({ agent: 'x' });
+    const session = manager.create({ agent: 'agent_x' });
     await manager.sendEvent(session.id, { type: 'user.message', content: [{ type: 'text', text: 'go' }] } as any);
     await new Promise((r) => setTimeout(r, 60));
 
@@ -75,7 +75,7 @@ describe('Tool confirmation — requires_action transition', () => {
     };
     manager.setExecutor(strat);
 
-    const session = manager.create({ agent: 'x' });
+    const session = manager.create({ agent: 'agent_x' });
     await manager.sendEvent(session.id, { type: 'user.message', content: [{ type: 'text', text: 'go' }] } as any);
     await new Promise((r) => setTimeout(r, 40));
     expect(manager.get(session.id)!.status).toBe('requires_action');
@@ -111,7 +111,24 @@ describe('Tool confirmation — execute/deny pending tool', () => {
     const modelRegistry = new ModelRegistry();
     (modelRegistry as any).createModel = () => fakeModel();
     const executor = new DefaultSessionExecutor({
-      agents: [{ name: 'bash-agent', model: 'm', system_prompt: 'p', tools: ['bash'], confirm_tools: ['bash'] }],
+      agents: [{
+        name: 'bash-agent',
+        model: { id: 'm', speed: 'standard' },
+        system: 'p',
+        tools: [{
+          type: 'agent_toolset_20260401',
+          default_config: {
+            enabled: true,
+            permission_policy: { type: 'always_allow' },
+          },
+          configs: {
+            bash: {
+              enabled: true,
+              permission_policy: { type: 'always_ask' },
+            },
+          },
+        }],
+      }],
       modelRegistry,
       sandboxProvider: new LocalSandboxProvider(tmpDir),
       strategy: new NoopStrategy(),
@@ -133,7 +150,7 @@ describe('Tool confirmation — execute/deny pending tool', () => {
   }
 
   it('executes the pending tool on allow and appends the result', async () => {
-    const session = manager.create({ agent: 'bash-agent' });
+    const session = manager.create({ agent: 'agent_bash' });
     // Simulate the prior turn left it awaiting confirmation
     db.prepare(`UPDATE sessions SET status='requires_action' WHERE id=?`).run(session.id);
     seedPendingToolUse(session.id);
@@ -149,7 +166,7 @@ describe('Tool confirmation — execute/deny pending tool', () => {
   });
 
   it('appends an error result on deny', async () => {
-    const session = manager.create({ agent: 'bash-agent' });
+    const session = manager.create({ agent: 'agent_bash' });
     db.prepare(`UPDATE sessions SET status='requires_action' WHERE id=?`).run(session.id);
     seedPendingToolUse(session.id);
 

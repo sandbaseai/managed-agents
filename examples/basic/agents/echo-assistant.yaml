@@ -1,16 +1,33 @@
 name: echo-assistant
-model: local-echo
-system_prompt: |
+model:
+  id: local-echo
+  speed: standard
+system: |
   You are a helpful coding assistant. Use the available tools to
   read, write, edit, and search files in the workspace.
 skills:
-  - code-review
+  - type: custom
+    skill_id: code-review
 tools:
-  - bash
-  - read_file
-  - write_file
-  - edit
-  - glob
-  - grep
+  - type: agent_toolset_20260401
+    default_config:
+      enabled: true
+      permission_policy:
+        type: always_allow
+    configs:
+      bash:
+        enabled: true
+        permission_policy:
+          type: always_ask
+      read:
+        enabled: true
+      write:
+        enabled: true
+      edit:
+        enabled: true
+      glob:
+        enabled: true
+      grep:
+        enabled: true
 max_turns: 10
 temperature: 0.7

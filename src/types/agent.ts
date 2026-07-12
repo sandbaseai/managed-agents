@@ -11,20 +11,20 @@
 export interface AgentDefinition {
   /** Unique identifier (required) */
   name: string;
-  /** Model registry reference (required) */
-  model: string;
-  /** System prompt (required) */
-  system_prompt: string;
+  /** Model registry reference and runtime speed policy (required) */
+  model: AgentModelConfig;
+  /** System instructions (required). Public/config field follows Claude's `system`. */
+  system: string;
   /** Human-readable description */
   description?: string;
-  /** Skill references (filenames in skills/ directory) */
-  skills?: string[];
-  /** MCP server configurations */
+  /** Skill references attached to this agent. */
+  skills?: AgentSkillRef[];
+  /** MCP server configurations. */
   mcp_servers?: McpServerConfig[];
-  /** Built-in tool names to enable */
-  tools?: string[];
-  /** Tool names that require explicit user confirmation before executing (CMA always_ask) */
-  confirm_tools?: string[];
+  /** Built-in toolsets enabled for this agent. */
+  tools?: AgentToolset[];
+  /** Free-form metadata for templates, provenance, UI hints, etc. */
+  metadata?: Record<string, unknown>;
   /** Maximum conversation turns before forced stop */
   max_turns?: number;
   /** Model temperature */
@@ -39,15 +39,22 @@ export interface AgentDefinition {
   environment?: string;
 }
 
+export type AgentModelSpeed = 'fast' | 'standard' | 'extended';
+
+export interface AgentModelConfig {
+  id: string;
+  speed: AgentModelSpeed;
+}
+
 // ============================================================
 // MCP Server Configuration
 // ============================================================
 
 export interface McpServerConfig {
+  /** MCP server transport type. `url` mirrors Claude's managed-agent MCP shape; `stdio` is local-first. */
+  type: 'url' | 'stdio';
   /** Identifier for this MCP server */
   name: string;
-  /** Transport type */
-  transport: 'stdio' | 'http';
   /** Command to run (stdio transport) */
   command?: string;
   /** Command arguments (stdio transport) */
@@ -58,6 +65,36 @@ export interface McpServerConfig {
   env?: Record<string, string>;
   /** Connection timeout in seconds (default: 30) */
   timeout?: number;
+}
+
+export interface AgentSkillRef {
+  type: 'custom';
+  skill_id: string;
+  version?: string;
+}
+
+export type PermissionPolicyType = 'always_allow' | 'always_ask' | 'never_allow';
+
+export interface AgentToolConfig {
+  enabled?: boolean;
+  permission_policy?: {
+    type: PermissionPolicyType;
+  };
+}
+
+export type AgentToolset = BuiltinAgentToolset | McpToolset;
+
+export interface BuiltinAgentToolset {
+  type: 'agent_toolset_20260401';
+  configs?: Record<string, AgentToolConfig>;
+  default_config?: AgentToolConfig;
+}
+
+export interface McpToolset {
+  type: 'mcp_toolset';
+  mcp_server_name: string;
+  configs?: Record<string, AgentToolConfig>;
+  default_config?: AgentToolConfig;
 }
 
 // ============================================================

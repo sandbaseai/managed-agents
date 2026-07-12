@@ -39,7 +39,7 @@ describe('Crash recovery', () => {
 
   /** Directly create a session stuck in 'running' with an orphaned tool_use. */
   function createOrphanedSession(): string {
-    const session = manager.create({ agent: 'echo' });
+    const session = manager.create({ agent: 'agent_echo' });
     // Simulate a mid-turn crash: running status + tool_use with no result
     db.prepare(`UPDATE sessions SET status = 'running' WHERE id = ?`).run(session.id);
     logger.append(session.id, {
@@ -90,7 +90,7 @@ describe('Crash recovery', () => {
   });
 
   it('does not double-inject if a tool_result already exists', () => {
-    const session = manager.create({ agent: 'echo' });
+    const session = manager.create({ agent: 'agent_echo' });
     db.prepare(`UPDATE sessions SET status = 'running' WHERE id = ?`).run(session.id);
     logger.append(session.id, {
       type: 'agent.tool_use',
@@ -110,7 +110,7 @@ describe('Crash recovery', () => {
   });
 
   it('ignores sessions not in running state', () => {
-    const session = manager.create({ agent: 'echo' }); // status = queued
+    const session = manager.create({ agent: 'agent_echo' }); // status = queued
     const count = manager.reconcileOrphans();
     expect(count).toBe(0);
     expect(manager.get(session.id)!.status).toBe('queued');

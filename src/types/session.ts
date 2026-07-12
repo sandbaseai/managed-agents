@@ -47,6 +47,8 @@ export interface Session {
   status: SessionStatus;
   title?: string;
   contextId?: string;
+  resources?: Array<Record<string, unknown>>;
+  vaultIds?: string[];
   metadata?: Record<string, unknown>;
   sandboxType?: string;
   sandboxState?: Record<string, unknown>;
@@ -87,7 +89,10 @@ export interface SessionEvent {
 export interface CreateSessionParams {
   agent: string; // agent name or ID
   environmentId?: string;
+  /** Internal memory scope used by the current runtime; not exposed as a public API field. */
   contextId?: string;
+  resources?: Array<Record<string, unknown>>;
+  vaultIds?: string[];
   title?: string;
   metadata?: Record<string, unknown>;
 }

@@ -96,38 +96,40 @@ export class SessionManager {
     const id = `sess_${nanoid(16)}`;
     const now = new Date();
 
-    // Look up agent_id from agents table by name
-    const agentRow = this.db.prepare('SELECT id, name FROM agents WHERE name = ? OR id = ?').get(
-      params.agent,
+    const agentRow = this.db.prepare('SELECT id, name FROM agents WHERE id = ?').get(
       params.agent,
     ) as { id: string; name: string } | undefined;
-
-    const agentId = agentRow?.id ?? params.agent;
-    const agentName = agentRow?.name ?? params.agent;
+    if (!agentRow) {
+      throw new Error(`Agent not found: ${params.agent}`);
+    }
 
     const stmt = this.db.prepare(`
-      INSERT INTO sessions (id, agent_id, agent_name, environment_id, status, title, context_id, metadata)
-      VALUES (?, ?, ?, ?, 'queued', ?, ?, ?)
+      INSERT INTO sessions (id, agent_id, agent_name, environment_id, status, title, context_id, resources, vault_ids, metadata)
+      VALUES (?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?)
     `);
 
     stmt.run(
       id,
-      agentId,
-      agentName,
+      agentRow.id,
+      agentRow.name,
       params.environmentId ?? 'env_default',
       params.title ?? null,
       params.contextId ?? null,
+      JSON.stringify(params.resources ?? []),
+      JSON.stringify(params.vaultIds ?? []),
       params.metadata ? JSON.stringify(params.metadata) : null,
     );
 
     return {
       id,
-      agentId,
-      agentName,
+      agentId: agentRow.id,
+      agentName: agentRow.name,
       environmentId: params.environmentId ?? 'env_default',
       status: 'queued',
       title: params.title,
       contextId: params.contextId,
+      resources: params.resources,
+      vaultIds: params.vaultIds,
       metadata: params.metadata,
       createdAt: now,
       updatedAt: now,
@@ -520,6 +522,8 @@ interface SessionRow {
   status: string;
   title: string | null;
   context_id: string | null;
+  resources: string;
+  vault_ids: string;
   metadata: string | null;
   sandbox_type: string | null;
   sandbox_state: string | null;
@@ -539,6 +543,8 @@ function rowToSession(row: SessionRow): Session {
     status: row.status as SessionStatus,
     title: row.title ?? undefined,
     contextId: row.context_id ?? undefined,
+    resources: JSON.parse(row.resources ?? '[]'),
+    vaultIds: JSON.parse(row.vault_ids ?? '[]'),
     metadata: row.metadata ? JSON.parse(row.metadata) : undefined,
     sandboxType: row.sandbox_type ?? undefined,
     sandboxState: row.sandbox_state ? JSON.parse(row.sandbox_state) : undefined,

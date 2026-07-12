@@ -8,7 +8,7 @@
  *
  * Transports:
  * - stdio: spawns a subprocess and speaks MCP over stdin/stdout
- * - http:  connects to an HTTP/SSE MCP endpoint
+ * - url:    connects to an HTTP/SSE MCP endpoint
  *
  * Degradation (R5.5): a server that fails to connect within the timeout is
  * logged, marked unavailable, and skipped — the agent keeps running with
@@ -35,7 +35,7 @@ export function reconnectDelay(attempt: number): number {
 
 export interface McpServerStatus {
   name: string;
-  transport: 'stdio' | 'http';
+  type: 'stdio' | 'url';
   connected: boolean;
   toolCount: number;
   error?: string;
@@ -189,7 +189,7 @@ export class McpManager {
 
   private setStatus(server: McpServerConfig, connected: boolean, toolCount: number, error?: string): void {
     const existing = this.statuses.findIndex((s) => s.name === server.name);
-    const status: McpServerStatus = { name: server.name, transport: server.transport, connected, toolCount, error };
+    const status: McpServerStatus = { name: server.name, type: server.type, connected, toolCount, error };
     if (existing >= 0) this.statuses[existing] = status;
     else this.statuses.push(status);
   }
@@ -212,7 +212,7 @@ export class McpManager {
   // ============================================================
 
   private async createClient(server: McpServerConfig): Promise<McpClient> {
-    if (server.transport === 'stdio') {
+    if (server.type === 'stdio') {
       if (!server.command) {
         throw new Error(`MCP server "${server.name}": stdio transport requires "command"`);
       }
@@ -225,9 +225,9 @@ export class McpManager {
       return experimental_createMCPClient({ transport }) as unknown as Promise<McpClient>;
     }
 
-    // http transport
+    // url transport
     if (!server.url) {
-      throw new Error(`MCP server "${server.name}": http transport requires "url"`);
+      throw new Error(`MCP server "${server.name}": url transport requires "url"`);
     }
     const url = resolveEnvVarsDeep(server.url, false);
     return experimental_createMCPClient({

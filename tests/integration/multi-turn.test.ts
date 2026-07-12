@@ -71,7 +71,7 @@ describe('Multi-turn + sandbox lifecycle', () => {
   }
 
   it('session goes idle (paused) after a turn, not terminal', async () => {
-    const session = manager.create({ agent: 'echo' });
+    const session = manager.create({ agent: 'agent_echo' });
     await manager.sendEvent(session.id, userMsg('hello'));
 
     // Wait for the async turn to complete
@@ -82,7 +82,7 @@ describe('Multi-turn + sandbox lifecycle', () => {
   });
 
   it('accepts a second message after the first turn (multi-turn works)', async () => {
-    const session = manager.create({ agent: 'echo' });
+    const session = manager.create({ agent: 'agent_echo' });
 
     await manager.sendEvent(session.id, userMsg('msg1'));
     await new Promise((r) => setTimeout(r, 60));
@@ -96,7 +96,7 @@ describe('Multi-turn + sandbox lifecycle', () => {
   });
 
   it('serializes concurrent turns (no overlap)', async () => {
-    const session = manager.create({ agent: 'echo' });
+    const session = manager.create({ agent: 'agent_echo' });
 
     // Fire three messages back-to-back without awaiting
     await manager.sendEvent(session.id, userMsg('a'));
@@ -111,7 +111,7 @@ describe('Multi-turn + sandbox lifecycle', () => {
   });
 
   it('releases the sandbox on stop (terminal)', async () => {
-    const session = manager.create({ agent: 'echo' });
+    const session = manager.create({ agent: 'agent_echo' });
     await manager.sendEvent(session.id, userMsg('hi'));
     await new Promise((r) => setTimeout(r, 60));
 
@@ -142,7 +142,7 @@ describe('Multi-turn + sandbox lifecycle', () => {
     };
     manager.setExecutor(slow);
 
-    const session = manager.create({ agent: 'echo' });
+    const session = manager.create({ agent: 'agent_echo' });
     await manager.sendEvent(session.id, userMsg('go'));
     await new Promise((r) => setTimeout(r, 30)); // let the turn start
 
@@ -154,7 +154,7 @@ describe('Multi-turn + sandbox lifecycle', () => {
   });
 
   it('releases the sandbox on delete', async () => {
-    const session = manager.create({ agent: 'echo' });
+    const session = manager.create({ agent: 'agent_echo' });
     await manager.sendEvent(session.id, userMsg('hi'));
     await new Promise((r) => setTimeout(r, 60));
 
@@ -182,7 +182,7 @@ describe('Multi-turn + sandbox lifecycle', () => {
     };
     manager.setExecutor(broadcastingExecutor);
 
-    const session = manager.create({ agent: 'echo' });
+    const session = manager.create({ agent: 'agent_echo' });
     const received: string[] = [];
     manager.subscribe(session.id, (e) => received.push(e.type));
 
@@ -236,7 +236,7 @@ describe('Interrupt handling', () => {
     };
     manager.setExecutor(slowExecutor);
 
-    const session = manager.create({ agent: 'echo' });
+    const session = manager.create({ agent: 'agent_echo' });
     await manager.sendEvent(session.id, {
       type: 'user.message',
       content: [{ type: 'text', text: 'long task' }],

@@ -46,7 +46,7 @@ describe('Model error → failed turn', () => {
     const modelRegistry = new ModelRegistry();
     (modelRegistry as any).createModel = () => throwingModel();
     const executor = new DefaultSessionExecutor({
-      agents: [{ name: 'b', model: 'm', system_prompt: 'p' }],
+      agents: [{ name: 'b', model: { id: 'm', speed: 'standard' }, system: 'p' }],
       modelRegistry,
       sandboxProvider: new LocalSandboxProvider(tmpDir),
       strategy: new DefaultStrategy(),
@@ -61,7 +61,7 @@ describe('Model error → failed turn', () => {
   });
 
   it('transitions to failed and records a session.error (not silent idle)', async () => {
-    const session = manager.create({ agent: 'b' });
+    const session = manager.create({ agent: 'agent_b' });
     await manager.sendEvent(session.id, {
       type: 'user.message',
       content: [{ type: 'text', text: 'hi' }],
