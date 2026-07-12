@@ -264,6 +264,23 @@ CREATE UNIQUE INDEX idx_memory_records_active_path
   WHERE archived_at IS NULL;
 `;
 
+const M010_FILE_RESOURCES = `
+CREATE TABLE files (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  media_type TEXT NOT NULL DEFAULT 'application/octet-stream',
+  size_bytes INTEGER NOT NULL DEFAULT 0,
+  storage_path TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'active',
+  metadata TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  archived_at TEXT
+);
+
+CREATE INDEX idx_files_status_created ON files(status, created_at DESC);
+`;
+
 export const MIGRATIONS: Migration[] = [
   { version: 1, name: '001_initial', sql: M001_INITIAL },
   { version: 2, name: '002_memory', sql: M002_MEMORY },
@@ -274,4 +291,5 @@ export const MIGRATIONS: Migration[] = [
   { version: 7, name: '007_memory_records', sql: M007_MEMORY_RECORDS },
   { version: 8, name: '008_credential_secret_storage', sql: M008_CREDENTIAL_SECRET_STORAGE },
   { version: 9, name: '009_memory_active_path_index', sql: M009_MEMORY_ACTIVE_PATH_INDEX },
+  { version: 10, name: '010_file_resources', sql: M010_FILE_RESOURCES },
 ];

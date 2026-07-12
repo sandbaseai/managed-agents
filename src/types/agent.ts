@@ -68,7 +68,7 @@ export interface McpServerConfig {
 }
 
 export interface AgentSkillRef {
-  type: 'custom';
+  type: 'custom' | 'anthropic';
   skill_id: string;
   version?: string;
 }

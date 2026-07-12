@@ -1,19 +1,20 @@
 /**
  * Extension Routes (/v1/x/*)
  *
- * Platform-specific endpoints (non-CMA protocol):
- * POST /v1/x/reload  — hot-reload agent definitions
- * GET  /v1/x/health  — basic health check
+ * Runtime extension endpoints:
+ * POST /v1/x/reload  - hot-reload agent definitions
+ * GET  /v1/x/health  - basic health check
  */
 
 import { Hono } from 'hono';
+import { dirname } from 'node:path';
 import type { ServerDeps } from '../server.js';
 import { getAgentSkillIds, getEnabledToolNames } from '@/core/agent/standard.js';
 
 export function extendedRoutes(deps: ServerDeps) {
   const app = new Hono();
 
-  // POST /reload — Hot-reload agents
+  // POST /reload - Hot-reload agents
   app.post('/reload', (c) => {
     try {
       const result = deps.reloadAgents();
@@ -30,7 +31,7 @@ export function extendedRoutes(deps: ServerDeps) {
     }
   });
 
-  // GET /health — Health check
+  // GET /health - Health check
   app.get('/health', (c) => {
     return c.json({
       status: 'healthy',
@@ -39,7 +40,7 @@ export function extendedRoutes(deps: ServerDeps) {
     });
   });
 
-  // GET /metrics — Prometheus-format metrics
+  // GET /metrics - Prometheus-format metrics
   app.get('/metrics', (c) => {
     if (!deps.metrics) {
       return c.text('# metrics disabled\n', 200, { 'Content-Type': 'text/plain' });
@@ -47,7 +48,7 @@ export function extendedRoutes(deps: ServerDeps) {
     return c.text(deps.metrics.render(), 200, { 'Content-Type': 'text/plain; version=0.0.4' });
   });
 
-  // GET /mcp/status?session_id=X — MCP server connection status for a session
+  // GET /mcp/status?session_id=X - MCP server connection status for a session
   app.get('/mcp/status', (c) => {
     const sessionId = c.req.query('session_id');
     if (!sessionId) {
@@ -61,10 +62,22 @@ export function extendedRoutes(deps: ServerDeps) {
   });
 
   app.get('/workspace', (c) => {
+    const workspace = deps.workspace;
+    const configDir = workspace?.configPath ? dirname(workspace.configPath) : workspace?.root;
     return c.json({
       type: 'workspace',
-      name: deps.workspace?.root.split('/').filter(Boolean).at(-1) ?? 'local workspace',
-      ...deps.workspace,
+      name: workspace?.root.split('/').filter(Boolean).at(-1) ?? 'local workspace',
+      ...workspace,
+      configDir,
+      directories: workspace
+        ? {
+          root: workspace.root,
+          agents: workspace.agentsDir,
+          skills: workspace.skillsDir,
+          data: workspace.dataDir,
+          config: workspace.configPath,
+        }
+        : {},
     });
   });
 
@@ -78,21 +91,6 @@ export function extendedRoutes(deps: ServerDeps) {
       sandbox_providers: deps.runtime?.sandboxProviders ?? [],
       memory: deps.runtime?.memory ?? 'disabled',
       auth_enabled: deps.runtime?.authEnabled ?? false,
-    });
-  });
-
-  app.get('/skills', (c) => {
-    return c.json({
-      data: (deps.skills ?? []).map((skill) => ({
-        id: `skill_${skill.name}`,
-        type: 'skill',
-        name: skill.name,
-        description: skill.description,
-        file: skill.file,
-      })),
-      has_more: false,
-      first_id: deps.skills?.[0] ? `skill_${deps.skills[0].name}` : null,
-      last_id: deps.skills?.at(-1) ? `skill_${deps.skills.at(-1)!.name}` : null,
     });
   });
 
@@ -278,7 +276,7 @@ Be decisive. If you're >70% confident it's a specific deploy, say so and recomme
     },
   ].map((template) => ({
     ...template,
-    summary: `${template.agent.name} · ${getEnabledToolNames(template.agent as any).join(', ') || 'no tools'}`,
+    summary: `${template.agent.name} - ${getEnabledToolNames(template.agent as any).join(', ') || 'no tools'}`,
     skill_ids: getAgentSkillIds(template.agent as any),
   }));
 }

@@ -7,7 +7,7 @@ system: |
   read, write, edit, and search files in the workspace.
 skills:
   - type: custom
-    skill_id: code-review
+    skill_id: skill_code-review
 tools:
   - type: agent_toolset_20260401
     default_config:

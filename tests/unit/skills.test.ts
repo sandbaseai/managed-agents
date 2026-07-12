@@ -11,6 +11,7 @@ import {
   serializeSkill,
   loadSkills,
   composeSystemPrompt,
+  SKILL_METADATA_FILE,
   type Skill,
 } from '@/core/skills/loader.js';
 
@@ -29,22 +30,21 @@ When reviewing code:
 describe('Skills', () => {
   describe('parseSkill', () => {
     it('parses frontmatter and body', () => {
-      const skill = parseSkill(SKILL_MD, 'fallback')!;
+      const skill = parseSkill(SKILL_MD, 'package-name')!;
       expect(skill.name).toBe('code-review');
       expect(skill.description).toBe('Reviews code for bugs and style');
       expect(skill.instructions).toContain('# Code Review Skill');
       expect(skill.instructions).toContain('Check for bugs');
     });
 
-    it('falls back to filename when name missing', () => {
-      const skill = parseSkill('# Just a body, no frontmatter', 'my-skill')!;
-      expect(skill.name).toBe('my-skill');
-      expect(skill.instructions).toContain('Just a body');
+    it('rejects content without YAML frontmatter', () => {
+      const skill = parseSkill('# Just a body, no frontmatter', 'my-skill');
+      expect(skill).toBeNull();
     });
 
-    it('handles empty description', () => {
-      const skill = parseSkill('---\nname: x\n---\nbody', 'f')!;
-      expect(skill.description).toBe('');
+    it('rejects missing description', () => {
+      const skill = parseSkill('---\nname: x\n---\nbody', 'f');
+      expect(skill).toBeNull();
     });
   });
 
@@ -69,19 +69,44 @@ describe('Skills', () => {
       rmSync(dir, { recursive: true, force: true });
     });
 
-    it('loads .md files from a directory', () => {
-      writeFileSync(join(dir, 'code-review.md'), SKILL_MD);
-      writeFileSync(join(dir, 'web-search.md'), '---\nname: web-search\ndescription: Search the web\n---\nInstructions here');
+    it('loads skill directories with SKILL.md', () => {
+      mkdirSync(join(dir, 'code-review'));
+      mkdirSync(join(dir, 'web-search'));
+      writeFileSync(join(dir, 'code-review', 'SKILL.md'), SKILL_MD);
+      writeFileSync(join(dir, 'web-search', 'SKILL.md'), '---\nname: web-search\ndescription: Search the web\n---\nInstructions here');
       const result = loadSkills(dir);
       expect(result.skills).toHaveLength(2);
       expect(result.skills.map((s) => s.name).sort()).toEqual(['code-review', 'web-search']);
+      expect(result.skills.map((s) => s.id).sort()).toEqual(['skill_code-review', 'skill_web-search']);
     });
 
-    it('ignores non-md files', () => {
-      writeFileSync(join(dir, 'skill.md'), SKILL_MD);
+    it('uses persisted opaque IDs when metadata is present', () => {
+      mkdirSync(join(dir, 'code-review'));
+      writeFileSync(join(dir, 'code-review', 'SKILL.md'), SKILL_MD);
+      writeFileSync(join(dir, 'code-review', SKILL_METADATA_FILE), JSON.stringify({
+        id: 'skill_randomUploadId',
+        display_title: 'Code Review Assistant',
+        created_at: '2026-07-12T00:00:00.000Z',
+        updated_at: '2026-07-12T00:00:00.000Z',
+        latest_version: '1783852456290',
+        versions: [{ id: '1783852456290', created_at: '2026-07-12T00:00:00.000Z', latest: true }],
+      }));
+
+      const result = loadSkills(dir);
+      expect(result.skills).toHaveLength(1);
+      expect(result.skills[0].id).toBe('skill_randomUploadId');
+      expect(result.skills[0].display_title).toBe('Code Review Assistant');
+      expect(result.skills[0].latest_version).toBe('1783852456290');
+    });
+
+    it('reports directories without SKILL.md', () => {
+      mkdirSync(join(dir, 'skill'));
+      mkdirSync(join(dir, 'broken'));
+      writeFileSync(join(dir, 'skill', 'SKILL.md'), SKILL_MD);
       writeFileSync(join(dir, 'readme.txt'), 'not a skill');
       const result = loadSkills(dir);
       expect(result.skills).toHaveLength(1);
+      expect(result.errors).toEqual([{ file: 'broken/SKILL.md', reason: 'Missing SKILL.md' }]);
     });
 
     it('returns empty for a missing directory', () => {
@@ -93,8 +118,8 @@ describe('Skills', () => {
 
   describe('composeSystemPrompt', () => {
     const skills: Skill[] = [
-      { name: 'a', description: 'skill A', instructions: 'do A', frontmatter: {}, file: 'a.md' },
-      { name: 'b', description: 'skill B', instructions: 'do B', frontmatter: {}, file: 'b.md' },
+      testSkill('a', 'skill A', 'do A'),
+      testSkill('b', 'skill B', 'do B'),
     ];
 
     it('returns base prompt unchanged when no skills assigned', () => {
@@ -103,7 +128,7 @@ describe('Skills', () => {
     });
 
     it('injects only the assigned skill subset (R4.5)', () => {
-      const result = composeSystemPrompt('base', ['a'], skills);
+      const result = composeSystemPrompt('base', ['skill_a'], skills);
       expect(result).toContain('base');
       expect(result).toContain('Skill: a');
       expect(result).toContain('do A');
@@ -116,3 +141,21 @@ describe('Skills', () => {
     });
   });
 });
+
+function testSkill(name: string, description: string, instructions: string): Skill {
+  return {
+    id: `skill_${name}`,
+    type: 'skill',
+    name,
+    display_title: name,
+    description,
+    instructions,
+    frontmatter: {},
+    file: `${name}/SKILL.md`,
+    source: 'custom',
+    latest_version: '1',
+    versions: [{ id: '1', created_at: null, latest: true }],
+    created_at: null,
+    updated_at: null,
+  };
+}

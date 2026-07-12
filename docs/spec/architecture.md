@@ -183,7 +183,7 @@ graph TB
     Workspace["Workspace<br/>project boundary"]
     Config["Config<br/>managed-agents.config.yaml"]
     Agents["Agents<br/>agents/*.yaml"]
-    Skills["Skills<br/>skills/*.md"]
+    Skills["Skills<br/>skills/*/SKILL.md"]
     RuntimeData["Runtime Data<br/>.managed-agents/"]
     Vaults["Credential Vaults"]
     Memory["Memory Stores"]

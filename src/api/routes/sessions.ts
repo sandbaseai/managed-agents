@@ -1,13 +1,13 @@
 /**
- * CMA-compatible Session Routes
+ * Session Routes
  *
- * POST /v1/sessions          — create session
- * GET  /v1/sessions          — list sessions (paginated)
- * GET  /v1/sessions/:id      — get session detail
- * POST /v1/sessions/:id/events — send events
- * GET  /v1/sessions/:id/events — list events (paginated)
- * POST /v1/sessions/:id/stop — stop session
- * DELETE /v1/sessions/:id    — delete session
+ * POST /v1/sessions          - create session
+ * GET  /v1/sessions          - list sessions (paginated)
+ * GET  /v1/sessions/:id      - get session detail
+ * POST /v1/sessions/:id/events - send events
+ * GET  /v1/sessions/:id/events - list events (paginated)
+ * POST /v1/sessions/:id/stop - stop session
+ * DELETE /v1/sessions/:id    - delete session
  */
 
 import { Hono } from 'hono';
@@ -22,28 +22,41 @@ export function sessionsRoutes(deps: ServerDeps) {
   const app = new Hono();
   const { sessionManager } = deps;
 
-  // POST / — Create session
+  // POST / - Create session
   app.post('/', async (c) => {
-    const body = await c.req.json();
+    let body: any;
+    try {
+      body = await c.req.json();
+    } catch {
+      return invalid(c, 'Request body must be valid JSON');
+    }
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      return invalid(c, 'Request body must be an object');
+    }
     const { agent, environment_id, title, metadata } = body;
-    const resources = normalizeResources(body.resources);
-    const vaultIds = normalizeStringArray(body.vault_ids);
+    const agentIdValue = normalizeAgentRef(agent);
+    const environment = normalizeEnvironmentId(deps, environment_id);
+    const resources = normalizeResources(deps, body.resources);
+    const vaultIds = normalizeVaultIds(deps, body.vault_ids);
 
-    if (!agent) {
-      return c.json({ error: { type: 'invalid_request', message: 'agent field is required' } }, 400);
+    if (!agentIdValue) {
+      return invalid(c, 'agent field is required');
     }
-    if (typeof agent !== 'string' || !agent.startsWith('agent_')) {
-      return c.json({ error: { type: 'invalid_request', message: 'agent must be a standard agent id' } }, 400);
+    if (!agentIdValue.startsWith('agent_')) {
+      return invalid(c, 'agent must be a standard agent id');
     }
+    if (!environment.ok) return invalid(c, environment.message);
+    if (!resources.ok) return invalid(c, resources.message);
+    if (!vaultIds.ok) return invalid(c, vaultIds.message);
 
     try {
       const session = sessionManager.create({
-        agent,
-        environmentId: environment_id,
+        agent: agentIdValue,
+        environmentId: environment.value,
         title,
-        resources,
-        vaultIds,
-        contextId: memoryScopeFromResources(resources),
+        resources: resources.value,
+        vaultIds: vaultIds.value,
+        contextId: memoryScopeFromResources(resources.value),
         metadata,
       });
       return c.json(toApiSession(session, findAgentById(deps, session.agentId)), 201);
@@ -55,7 +68,7 @@ export function sessionsRoutes(deps: ServerDeps) {
     }
   });
 
-  // GET / — List sessions
+  // GET / - List sessions
   app.get('/', (c) => {
     const page = Math.max(1, parseInt(c.req.query('page') ?? '1', 10) || 1);
     const rawLimit = parseInt(c.req.query('limit') ?? '20', 10) || 20;
@@ -73,7 +86,7 @@ export function sessionsRoutes(deps: ServerDeps) {
     return c.json(pageOf(sessions, result.hasMore));
   });
 
-  // GET /:id — Get session detail
+  // GET /:id - Get session detail
   app.get('/:id', (c) => {
     const session = sessionManager.get(c.req.param('id'));
     if (!session) {
@@ -82,7 +95,7 @@ export function sessionsRoutes(deps: ServerDeps) {
     return c.json(toApiSession(session, findAgentById(deps, session.agentId)));
   });
 
-  // POST /:id/events — Send events
+  // POST /:id/events - Send events
   app.post('/:id/events', async (c) => {
     const sessionId = c.req.param('id');
 
@@ -150,7 +163,7 @@ export function sessionsRoutes(deps: ServerDeps) {
     }
   });
 
-  // POST /:id/messages — Send a user.message and optionally stream the turn.
+  // POST /:id/messages - Send a user.message and optionally stream the turn.
   app.post('/:id/messages', async (c) => {
     const sessionId = c.req.param('id');
 
@@ -267,11 +280,11 @@ export function sessionsRoutes(deps: ServerDeps) {
     });
   });
 
-  // GET /:id/events — List events (paginated)
+  // GET /:id/events - List events (paginated)
   app.get('/:id/events', (c) => {
     const sessionId = c.req.param('id');
 
-    // 404 if session does not exist (CMA clients expect this)
+    // 404 if session does not exist.
     if (!sessionManager.get(sessionId)) {
       return c.json({ error: { type: 'not_found', message: 'Session not found' } }, 404);
     }
@@ -289,7 +302,7 @@ export function sessionsRoutes(deps: ServerDeps) {
     return c.json(pageOf(limited.map(toApiEvent), events.length > limited.length));
   });
 
-  // POST /:id/stop — Stop session
+  // POST /:id/stop - Stop session
   app.post('/:id/stop', async (c) => {
     const sessionId = c.req.param('id');
     try {
@@ -303,7 +316,7 @@ export function sessionsRoutes(deps: ServerDeps) {
     }
   });
 
-  // DELETE /:id — Delete session (logical delete; Event_Log retained per R9.8)
+  // DELETE /:id - Delete session (logical delete; Event_Log retained per R9.8)
   app.delete('/:id', async (c) => {
     const sessionId = c.req.param('id');
     if (!sessionManager.get(sessionId)) {
@@ -357,21 +370,137 @@ function findAgentById(deps: ServerDeps, id: string): AgentDefinition | undefine
   return deps.agents.find((agent) => agentId(agent.name) === id);
 }
 
-function normalizeResources(value: unknown): Array<Record<string, unknown>> {
-  if (!Array.isArray(value)) return [];
-  return value.filter((resource): resource is Record<string, unknown> => {
-    if (!resource || typeof resource !== 'object' || Array.isArray(resource)) return false;
-    if (typeof (resource as { type?: unknown }).type !== 'string') return false;
-    return true;
-  });
+function normalizeAgentRef(value: unknown): string | null {
+  if (typeof value === 'string' && value.length > 0) return value;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  if (record.type !== undefined && record.type !== 'agent') return null;
+  return typeof record.id === 'string' && record.id.length > 0 ? record.id : null;
 }
 
-function normalizeStringArray(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-  return value.filter((item): item is string => typeof item === 'string' && item.length > 0);
+type ValidationResult<T> = { ok: true; value: T } | { ok: false; message: string };
+
+function normalizeEnvironmentId(deps: ServerDeps, value: unknown): ValidationResult<string> {
+  const id = typeof value === 'string' && value.trim() ? value.trim() : 'env_default';
+  const row = deps.db.prepare('SELECT id FROM environments WHERE id = ? AND archived_at IS NULL').get(id);
+  if (!row) return { ok: false, message: `Environment not found: ${id}` };
+  return { ok: true, value: id };
+}
+
+function normalizeVaultIds(deps: ServerDeps, value: unknown): ValidationResult<string[]> {
+  if (value === undefined) return { ok: true, value: [] };
+  if (!Array.isArray(value)) return { ok: false, message: 'vault_ids must be an array' };
+  const ids: string[] = [];
+  for (const [index, item] of value.entries()) {
+    const id = readString(item);
+    if (!id) return { ok: false, message: `vault_ids[${index}] must be a credential vault id` };
+    if (!ids.includes(id)) ids.push(id);
+  }
+  for (const id of ids) {
+    const row = deps.db.prepare('SELECT id FROM credential_vaults WHERE id = ? AND archived_at IS NULL').get(id);
+    if (!row) return { ok: false, message: `Credential vault not found: ${id}` };
+  }
+  return { ok: true, value: ids };
+}
+
+function normalizeResources(deps: ServerDeps, value: unknown): ValidationResult<Array<Record<string, unknown>>> {
+  if (value === undefined) return { ok: true, value: [] };
+  if (!Array.isArray(value)) return { ok: false, message: 'resources must be an array' };
+
+  const resources: Array<Record<string, unknown>> = [];
+  for (const [index, resource] of value.entries()) {
+    if (!resource || typeof resource !== 'object' || Array.isArray(resource)) {
+      return { ok: false, message: `resources[${index}] must be an object` };
+    }
+    const normalized = normalizeSessionResource(deps, resource as Record<string, unknown>, index);
+    if (!normalized.ok) return normalized;
+    resources.push(normalized.value);
+  }
+  return { ok: true, value: resources };
+}
+
+function normalizeSessionResource(deps: ServerDeps, resource: Record<string, unknown>, index: number): ValidationResult<Record<string, unknown>> {
+  switch (resource.type) {
+    case 'file':
+      return normalizeFileResource(deps, resource, index);
+    case 'github_repository':
+      return normalizeGithubRepositoryResource(resource, index);
+    case 'memory_store':
+      return normalizeMemoryStoreResource(deps, resource, index);
+    default:
+      return { ok: false, message: `resources[${index}].type must be file, github_repository, or memory_store` };
+  }
+}
+
+function normalizeFileResource(deps: ServerDeps, resource: Record<string, unknown>, index: number): ValidationResult<Record<string, unknown>> {
+  const fileId = readString(resource.file_id);
+  const mountPath = readString(resource.mount_path);
+  if (!fileId?.startsWith('file_')) return { ok: false, message: `resources[${index}].file_id is required` };
+  if (!mountPath?.startsWith('/uploads/')) return { ok: false, message: `resources[${index}].mount_path must start with /uploads/` };
+  const row = deps.db.prepare('SELECT id FROM files WHERE id = ? AND archived_at IS NULL').get(fileId);
+  if (!row) return { ok: false, message: `File not found: ${fileId}` };
+  return { ok: true, value: { type: 'file', file_id: fileId, mount_path: mountPath } };
+}
+
+function normalizeGithubRepositoryResource(resource: Record<string, unknown>, index: number): ValidationResult<Record<string, unknown>> {
+  const url = readString(resource.url);
+  const authorizationToken = readString(resource.authorization_token);
+  const mountPath = readString(resource.mount_path);
+  if (!url) return { ok: false, message: `resources[${index}].url is required` };
+  if (!authorizationToken) return { ok: false, message: `resources[${index}].authorization_token is required` };
+  if (mountPath && !mountPath.startsWith('/')) return { ok: false, message: `resources[${index}].mount_path must start with /` };
+  const normalized: Record<string, unknown> = {
+    type: 'github_repository',
+    url,
+    authorization_token: authorizationToken,
+  };
+  if (resource.checkout !== undefined) {
+    if (
+      typeof resource.checkout !== 'string'
+      && (!resource.checkout || typeof resource.checkout !== 'object' || Array.isArray(resource.checkout))
+    ) {
+      return { ok: false, message: `resources[${index}].checkout must be a string or object` };
+    }
+    normalized.checkout = resource.checkout;
+  }
+  if (mountPath) normalized.mount_path = mountPath;
+  return { ok: true, value: normalized };
+}
+
+function normalizeMemoryStoreResource(deps: ServerDeps, resource: Record<string, unknown>, index: number): ValidationResult<Record<string, unknown>> {
+  const memoryStoreId = readString(resource.memory_store_id);
+  if (!memoryStoreId?.startsWith('memstore_')) return { ok: false, message: `resources[${index}].memory_store_id is required` };
+  const row = deps.db.prepare('SELECT id FROM memory_stores WHERE id = ? AND archived_at IS NULL').get(memoryStoreId);
+  if (!row) return { ok: false, message: `Memory store not found: ${memoryStoreId}` };
+
+  const access = readString(resource.access);
+  if (access && access !== 'read_write' && access !== 'read_only') {
+    return { ok: false, message: `resources[${index}].access must be read_write or read_only` };
+  }
+  const mountPath = readString(resource.mount_path);
+  if (mountPath && !mountPath.startsWith('/')) return { ok: false, message: `resources[${index}].mount_path must start with /` };
+  const instructions = readString(resource.instructions);
+  return {
+    ok: true,
+    value: {
+      type: 'memory_store',
+      memory_store_id: memoryStoreId,
+      ...(access ? { access } : {}),
+      ...(mountPath ? { mount_path: mountPath } : {}),
+      ...(instructions ? { instructions } : {}),
+    },
+  };
+}
+
+function readString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
 }
 
 function memoryScopeFromResources(resources: Array<Record<string, unknown>>): string | undefined {
   const memoryStore = resources.find((resource) => resource.type === 'memory_store');
   return typeof memoryStore?.memory_store_id === 'string' ? memoryStore.memory_store_id : undefined;
+}
+
+function invalid(c: any, message: string): Response {
+  return c.json({ error: { type: 'invalid_request', message } }, 400);
 }

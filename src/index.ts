@@ -1,7 +1,7 @@
 /**
- * managed-agents — Entry Point
+ * managed-agents - Entry Point
  *
- * CMA-compatible agent runtime.
+ * Managed Agents runtime.
  * CLI commands: start (default), init, list, reload
  */
 
@@ -13,7 +13,6 @@ import { parse as parseYaml } from 'yaml';
 
 import { Database } from './core/db/database.js';
 import { SessionManager } from './core/session/session-manager.js';
-import { EventLogger } from './core/session/event-logger.js';
 import { DefaultSessionExecutor } from './core/session/executor.js';
 import { loadAgents } from './core/agent/loader.js';
 import { loadSkills } from './core/skills/loader.js';
@@ -46,7 +45,7 @@ const VERSION = '0.1.0';
 const program = new Command();
 program
   .name('managed-agents')
-  .description('CMA-compatible agent runtime — run multi-agent systems locally with any model')
+  .description('Managed Agents runtime - run multi-agent systems locally with any model')
   .version(VERSION);
 
 // Default command: start
@@ -102,7 +101,7 @@ program
   .description('Show cloud deployment guidance (v1 placeholder)')
   .action(() => {
     console.log('managed-agents deploy\n');
-    console.log('Agent definitions are portable — the same agents/ and skills/');
+    console.log('Agent definitions are portable - the same agents/ and skills/');
     console.log('run locally and in the cloud with no changes (Requirement 13).\n');
     console.log('v1 does not push to a hosted service yet. To deploy today:');
     console.log('  1. Build:   npm run build');
@@ -125,7 +124,7 @@ template
       return;
     }
     for (const t of items) {
-      console.log(`  ${t.name}  — ${t.description ?? ''}`);
+      console.log(`  ${t.name}  - ${t.description ?? ''}`);
     }
   });
 
@@ -188,7 +187,7 @@ async function startServer(opts: { port: string; host: string; dataDir: string; 
   // Initialize data directory
   mkdirSync(dataDir, { recursive: true });
 
-  // Initialize database (migrations are embedded — bundle-safe)
+  // Initialize database (migrations are embedded and bundle-safe)
   const dbPath = join(dataDir, 'data.db');
   const db = new Database(dbPath);
   db.runMigrations();
@@ -259,7 +258,7 @@ async function startServer(opts: { port: string; host: string; dataDir: string; 
   const loadResult = loadAgents(agentsDir);
   if (loadResult.errors.length > 0) {
     for (const err of loadResult.errors) {
-      console.error(`[AGENT_LOAD] ${err.file} — ${err.reason}${err.field ? ` (field: ${err.field})` : ''}`);
+      console.error(`[AGENT_LOAD] ${err.file} - ${err.reason}${err.field ? ` (field: ${err.field})` : ''}`);
     }
   }
 
@@ -282,10 +281,10 @@ async function startServer(opts: { port: string; host: string; dataDir: string; 
     }
   }
 
-  // Load skills (SKILL.md files); warn on agents referencing unknown skills
+  // Load skill directories (skills/*/SKILL.md); warn on agents referencing unknown skills
   const skillResult = loadSkills(skillsDir);
   for (const err of skillResult.errors) {
-    console.error(`[SKILL_LOAD] ${err.file} — ${err.reason}`);
+    console.error(`[SKILL_LOAD] ${err.file} - ${err.reason}`);
   }
   const skillNames = new Set(skillResult.skills.map((s) => s.name));
   for (const agent of agents) {
@@ -302,7 +301,7 @@ async function startServer(opts: { port: string; host: string; dataDir: string; 
   const sandboxProvider = new LocalSandboxProvider(dataDir);
   const strategy = new DefaultStrategy();
 
-  // Sandbox provider registry — local always; docker if the CLI is present
+  // Sandbox provider registry: local always; docker if the CLI is present
   const sandboxRegistry = new SandboxProviderRegistry();
   sandboxRegistry.register(sandboxProvider);
   const dockerAvailable = isDockerAvailable();
@@ -313,7 +312,7 @@ async function startServer(opts: { port: string; host: string; dataDir: string; 
   const workQueue = new WorkQueue(db);
   sandboxRegistry.register(new SelfHostedSandboxProvider(workQueue));
 
-  // Resolve an environment name → its configured sandbox_provider type
+  // Resolve an environment name to its configured sandbox_provider type
   const resolveEnvProviderType = (envName: string) => {
     const row = db.prepare('SELECT config FROM environments WHERE name = ?').get(envName) as
       | { config: string } | undefined;
@@ -326,7 +325,7 @@ async function startServer(opts: { port: string; host: string; dataDir: string; 
     }
   };
 
-  // Resolve an environment name → whether workspace snapshots are enabled
+  // Resolve an environment name to whether workspace snapshots are enabled
   const resolveEnvSnapshot = (envName: string) => {
     const row = db.prepare('SELECT config FROM environments WHERE name = ?').get(envName) as
       | { config: string } | undefined;
@@ -419,7 +418,7 @@ async function startServer(opts: { port: string; host: string; dataDir: string; 
     console.log(`  Sandbox:   ${sandboxRegistry.listTypes().join(', ')}`);
     console.log(`  Memory:    ${memory ? memory.name : 'disabled'}`);
     console.log(`  Target:    ${target}`);
-    console.log(`  Auth:      ${apiKeys.length > 0 ? 'enabled (Bearer token required)' : 'DISABLED (open — localhost only)'}`);
+    console.log(`  Auth:      ${apiKeys.length > 0 ? 'enabled (Bearer token required)' : 'DISABLED (open - localhost only)'}`);
     if (loadResult.errors.length > 0) {
       console.log(`  Warnings:  ${loadResult.errors.length} agent load errors`);
     }
@@ -431,7 +430,7 @@ async function startServer(opts: { port: string; host: string; dataDir: string; 
   server.on('error', (err: NodeJS.ErrnoException) => {
     if (err.code === 'EADDRINUSE') {
       console.error(`Error: [PORT_IN_USE] Port ${port} is already in use.`);
-      console.error(`  \u2192 Stop the process using it, or start with --port <other>`);
+      console.error(`  -> Stop the process using it, or start with --port <other>`);
     } else {
       console.error(`Error: [SERVER] ${err.message}`);
     }
@@ -476,16 +475,16 @@ function initProject() {
 
   // Create example agent
   writeFileSync(
-	    join(cwd, 'agents', 'assistant.yaml'),
-	    `name: assistant
-	model:
-	  id: gpt-4o
-	  speed: standard
-	system: |
+    join(cwd, 'agents', 'assistant.yaml'),
+    `name: assistant
+model:
+  id: gpt-4o
+  speed: standard
+system: |
   You are a helpful assistant. Answer questions clearly and concisely.
 skills:
   - type: custom
-    skill_id: example-skill
+    skill_id: skill_example-skill
 tools:
   - type: agent_toolset_20260401
     default_config:
@@ -507,8 +506,9 @@ temperature: 0.7
   );
 
   // Create example skill
+  mkdirSync(join(cwd, 'skills', 'example-skill'), { recursive: true });
   writeFileSync(
-    join(cwd, 'skills', 'example-skill.md'),
+    join(cwd, 'skills', 'example-skill', 'SKILL.md'),
     `---
 name: example-skill
 description: An example skill showing the SKILL.md format
@@ -572,7 +572,7 @@ async function chatCommand(
     }
   } catch {
     console.error(`Error: [CHAT] Cannot connect to server on port ${opts.port}`);
-    console.error(`  \u2192 Start it with: managed-agents start --port ${opts.port}`);
+    console.error(`  -> Start it with: managed-agents start --port ${opts.port}`);
     process.exit(1);
   }
 
@@ -584,7 +584,7 @@ async function chatCommand(
       if (ev.type === 'agent.message_chunk') process.stdout.write(ev.delta ?? '');
       else if (ev.type === 'agent.tool_use' || ev.type === 'agent.mcp_tool_use') {
         const b = (ev.content ?? [])[0] as any;
-        process.stdout.write(`\n  \u2192 tool: ${b?.name ?? '?'}\n`);
+        process.stdout.write(`\n  -> tool: ${b?.name ?? '?'}\n`);
       }
     }
     process.stdout.write('\n');
@@ -636,7 +636,7 @@ async function listAgents(opts: { port: string }) {
     }
   } catch (err: any) {
     console.error(`Error: [LIST] Cannot connect to server on port ${opts.port}`);
-    console.error(`  → Is the server running? Start with: managed-agents start --port ${opts.port}`);
+    console.error(`  -> Is the server running? Start with: managed-agents start --port ${opts.port}`);
     process.exit(1);
   }
 }
@@ -662,7 +662,7 @@ async function reloadAgents(opts: { port: string }) {
     }
   } catch (err: any) {
     console.error(`Error: [RELOAD] Cannot connect to server on port ${opts.port}`);
-    console.error(`  → Is the server running? Start with: managed-agents start --port ${opts.port}`);
+    console.error(`  -> Is the server running? Start with: managed-agents start --port ${opts.port}`);
     process.exit(1);
   }
 }

@@ -42,257 +42,40 @@ import {
 } from 'lucide-react';
 import { Dispatch, FormEvent, ReactNode, SetStateAction, useEffect, useMemo, useState } from 'react';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
-
-type Page<T> = {
-  data: T[];
-  has_more: boolean;
-  first_id: string | null;
-  last_id: string | null;
-};
-
-type Agent = {
-  id: string;
-  type: 'agent';
-  name: string;
-  description: string;
-  system: string;
-  model: { id: string; speed: string };
-  tools: AgentToolset[];
-  skills: SkillRef[];
-  mcp_servers: Array<Record<string, unknown>>;
-  metadata: Record<string, unknown>;
-  status: string;
-  version: number;
-  created_at: string | null;
-  updated_at: string | null;
-  archived_at: string | null;
-};
-
-type AgentToolset = BuiltinToolset | McpToolset;
-
-type BuiltinToolset = {
-  type: 'agent_toolset_20260401';
-  configs?: Record<string, ToolConfig>;
-  default_config?: ToolConfig;
-};
-
-type McpToolset = {
-  type: 'mcp_toolset';
-  mcp_server_name: string;
-  configs?: Record<string, ToolConfig>;
-  default_config?: ToolConfig;
-};
-
-type ToolConfig = {
-  enabled?: boolean;
-  permission_policy?: { type: 'always_allow' | 'always_ask' | 'never_allow' };
-};
-
-type SkillRef = { type: 'custom'; skill_id: string; version?: string };
-
-type Session = {
-  id: string;
-  type: 'session';
-  title: string | null;
-  agent: Agent | { id: string; type: 'agent'; name: string };
-  environment_id: string;
-  status: 'idle' | 'running' | 'terminated' | 'failed';
-  resources: Array<Record<string, unknown>>;
-  vault_ids: string[];
-  usage: { input_tokens: number; output_tokens: number };
-  metadata: Record<string, string>;
-  created_at: string;
-  updated_at: string;
-  archived_at: string | null;
-};
-
-type SessionEvent = {
-  id: string;
-  type: string;
-  content: unknown[] | null;
-  delta?: string;
-  message_id?: string;
-  created_at: string | null;
-  processed_at: string | null;
-  parent_event_id: string | null;
-};
-
-type SessionResourceDraft =
-  | { type: 'file'; file_id: string; mount_path: string }
-  | { type: 'github_repository'; url: string; authorization_token: string; checkout: string; mount_path: string }
-  | { type: 'memory_store'; memory_store_id: string; access: 'read_write' | 'read_only'; instructions: string };
-
-type EnvironmentHostingType = 'cloud' | 'self_hosted';
-type EnvironmentNetworkType = 'limited' | 'unrestricted';
-type EnvironmentPackageDraft = { id: string; manager: string; package: string };
-type MetadataDraft = { id: string; key: string; value: string };
-type EnvironmentDraft = {
-  name: string;
-  description: string;
-  hostingType: EnvironmentHostingType;
-  networkType: EnvironmentNetworkType;
-  allowMcpServerNetworkAccess: boolean;
-  allowPackageManagerNetworkAccess: boolean;
-  allowedHosts: string;
-  packages: EnvironmentPackageDraft[];
-  metadata: MetadataDraft[];
-  preservedMetadata: Record<string, unknown>;
-};
-
-type Environment = {
-  id: string;
-  type: 'environment';
-  name: string;
-  description: string;
-  status: string;
-  config: Record<string, unknown>;
-  metadata: Record<string, unknown>;
-  created_at: string;
-  updated_at: string;
-  archived_at: string | null;
-};
-
-type Vault = {
-  id: string;
-  type: 'credential_vault';
-  name: string;
-  description: string;
-  status: string;
-  credential_count: number;
-  credentials: VaultCredential[];
-  created_at: string;
-  updated_at: string;
-  archived_at: string | null;
-};
-
-type CredentialAuthType = 'mcp_oauth' | 'bearer_token' | 'environment_variable';
-
-type VaultCredential = {
-  id: string;
-  type: 'credential';
-  vault_id: string;
-  name: string;
-  auth_type: CredentialAuthType;
-  mcp_server_url: string;
-  variable_name: string;
-  value_hint: string;
-  network: Record<string, unknown>;
-  injection_locations: string[];
-  status: string;
-  metadata: Record<string, unknown>;
-  created_at: string;
-  updated_at: string;
-  last_used_at: string | null;
-  archived_at: string | null;
-};
-
-type MemoryStore = {
-  id: string;
-  type: 'memory_store';
-  name: string;
-  description: string;
-  provider: string;
-  status: string;
-  memory_count: number;
-  memories: MemoryRecord[];
-  created_at: string;
-  updated_at: string;
-  archived_at: string | null;
-};
-
-type MemoryRecord = {
-  id: string;
-  type: 'memory';
-  store_id: string;
-  path: string;
-  content: string;
-  metadata: Record<string, unknown>;
-  created_at: string;
-  updated_at: string;
-  archived_at: string | null;
-};
-
-type Skill = {
-  id: string;
-  type: 'skill';
-  name: string;
-  description: string;
-  file: string;
-};
-
-type Template = {
-  id: string;
-  name: string;
-  description: string;
-  tags: string[];
-  summary: string;
-  skill_ids: string[];
-  agent: {
-    name: string;
-    model: { id: string; speed: string };
-    description?: string;
-    system: string;
-    mcp_servers?: Array<Record<string, unknown>>;
-    tools: AgentToolset[];
-    skills: SkillRef[];
-    metadata?: Record<string, unknown>;
-  };
-};
-
-type Runtime = {
-  status: string;
-  agents_loaded: number;
-  skills_loaded: number;
-  models: string[];
-  sandbox_providers: string[];
-  memory: string;
-  auth_enabled: boolean;
-};
-
-type Workspace = {
-  type: 'workspace';
-  name: string;
-  root?: string;
-  dataDir?: string;
-  agentsDir?: string;
-  skillsDir?: string;
-  configPath?: string;
-  target?: string;
-};
-
-type ConsoleData = {
-  agents: Agent[];
-  sessions: Session[];
-  environments: Environment[];
-  vaults: Vault[];
-  memoryStores: MemoryStore[];
-  skills: Skill[];
-  templates: Template[];
-  runtime: Runtime | null;
-  workspace: Workspace | null;
-};
-
-type ViewId =
-  | 'quickstart'
-  | 'agents'
-  | 'sessions'
-  | 'environments'
-  | 'environment-detail'
-  | 'credential-vaults'
-  | 'credential-vault-detail'
-  | 'memory-stores'
-  | 'memory-store-detail'
-  | 'skills'
-  | 'files'
-  | 'workspace'
-  | 'runtime'
-  | 'api-keys'
-  | 'observability'
-  | 'agent-detail'
-  | 'session-detail'
-  | 'settings';
-
-type AgentTab = 'agent' | 'sessions' | 'deployments' | 'observability';
+import { deleteJson, getJson, getPage, postJson, putJson } from './api';
+import { EmptyState, KeyValuePanel, LoadingState, RequiredMark, ResourceBadge, StatusPill, SummaryStrip, Toolbar } from './components/Common';
+import { Modal } from './components/Modal';
+import { Files, Skills } from './components/pages/BuildPages';
+import { useHashRoute } from './hooks/useHashRoute';
+import { copyText, downloadJson, formatDate, formatDateShort, formatDuration, formatUsage, pathName, relativeDate, relativeWorkspacePath, shortId, titleCase, truncateMiddle, workspaceConfigDir } from './lib/format';
+import type {
+  Agent,
+  AgentTab,
+  AgentToolset,
+  ConsoleData,
+  CredentialAuthType,
+  Environment,
+  EnvironmentDraft,
+  EnvironmentHostingType,
+  EnvironmentNetworkType,
+  EnvironmentPackageDraft,
+  MemoryRecord,
+  MemoryStore,
+  MetadataDraft,
+  McpToolset,
+  Runtime,
+  Session,
+  SessionEvent,
+  SessionResourceDraft,
+  Skill,
+  SkillRef,
+  Template,
+  Vault,
+  VaultCredential,
+  ViewId,
+  Workspace,
+  WorkspaceFile,
+} from './types';
 
 const NAV_GROUPS: Array<{ label: string; items: Array<{ id: ViewId; label: string; icon: typeof LayoutDashboard }> }> = [
   {
@@ -325,7 +108,8 @@ const NAV_GROUPS: Array<{ label: string; items: Array<{ id: ViewId; label: strin
   },
 ];
 
-const TOOL_NAMES = ['read', 'write', 'edit', 'glob', 'grep', 'bash', 'web_search', 'web_fetch'];
+const SESSION_EVENT_KINDS = ['user', 'agent', 'tool', 'error', 'system'] as const;
+type SessionEventKind = (typeof SESSION_EVENT_KINDS)[number];
 
 function emptyData(): ConsoleData {
   return {
@@ -334,6 +118,7 @@ function emptyData(): ConsoleData {
     environments: [],
     vaults: [],
     memoryStores: [],
+    files: [],
     skills: [],
     templates: [],
     runtime: null,
@@ -370,6 +155,7 @@ export function App() {
         environments,
         vaults,
         memoryStores,
+        files,
         skills,
         templates,
         runtime,
@@ -380,7 +166,8 @@ export function App() {
         getPage<Environment>('/v1/environments'),
         getPage<Vault>('/v1/credential-vaults'),
         getPage<MemoryStore>('/v1/memory-stores'),
-        getPage<Skill>('/v1/x/skills'),
+        getPage<WorkspaceFile>('/v1/files'),
+        getPage<Skill>('/v1/skills'),
         getPage<Template>('/v1/x/templates'),
         getJson<Runtime>('/v1/x/runtime'),
         getJson<Workspace>('/v1/x/workspace'),
@@ -391,6 +178,7 @@ export function App() {
         environments: environments.data,
         vaults: vaults.data,
         memoryStores: memoryStores.data,
+        files: files.data,
         skills: skills.data,
         templates: templates.data,
         runtime,
@@ -704,9 +492,9 @@ function View(props: {
       ) : <EmptyState icon={<Database size={22} />} title="No memory store selected" />;
     }
     case 'skills':
-      return <Skills data={props.data} />;
+      return <Skills data={props.data} onRefresh={props.onRefresh} />;
     case 'files':
-      return <Files data={props.data} />;
+      return <Files data={props.data} onRefresh={props.onRefresh} />;
     case 'workspace':
       return <WorkspaceView data={props.data} />;
     case 'runtime':
@@ -743,6 +531,7 @@ function Quickstart({ data, onNewAgent }: { data: ConsoleData; onNewAgent: (temp
   return (
     <section className="quickstart">
       <div className="quickPrompt">
+        <h1 className="quickstartTitle">Quickstart</h1>
         <div className="stepper">
           {[1, 2, 3, 4].map((step) => <span key={step} className={step === 1 ? 'current' : ''}>{step}</span>)}
         </div>
@@ -1203,7 +992,7 @@ function SessionDetail({
   const [detailMode, setDetailMode] = useState<'rendered' | 'raw'>('rendered');
   const [filterOpen, setFilterOpen] = useState(false);
   const [actionsOpen, setActionsOpen] = useState(false);
-  const [selectedKinds, setSelectedKinds] = useState<Set<string>>(new Set(['user', 'agent', 'tool', 'error', 'system']));
+  const [selectedKinds, setSelectedKinds] = useState<Set<SessionEventKind>>(new Set(SESSION_EVENT_KINDS));
   const [query, setQuery] = useState('');
 
   const agent = data.agents.find((item) => item.id === session.agent.id);
@@ -1303,7 +1092,7 @@ function SessionDetail({
           <button className="filterButton" type="button" onClick={() => setFilterOpen((open) => !open)}>All events <ChevronDown size={15} /></button>
           {filterOpen ? (
             <div className="eventFilterMenu">
-              {(['user', 'agent', 'tool', 'error', 'system'] as const).map((kind) => (
+              {SESSION_EVENT_KINDS.map((kind) => (
                 <label key={kind}>
                   <input
                     type="checkbox"
@@ -1313,7 +1102,7 @@ function SessionDetail({
                   <span>{kind[0].toUpperCase() + kind.slice(1)}</span>
                 </label>
               ))}
-              <button type="button" onClick={() => setSelectedKinds(new Set(['user', 'agent', 'tool', 'error', 'system']))}>Select all</button>
+              <button type="button" onClick={() => setSelectedKinds(new Set(SESSION_EVENT_KINDS))}>Select all</button>
             </div>
           ) : null}
         </div>
@@ -1797,39 +1586,6 @@ function SetupStep({ index, title, body, code }: { index: number; title: string;
   );
 }
 
-function ResourceList({ title, icon, rows, onNew }: { title: string; icon: ReactNode; rows: Array<Environment | Vault | MemoryStore>; onNew: () => void }) {
-  const [query, setQuery] = useState('');
-  const filtered = rows.filter((row) => {
-    const q = query.toLowerCase();
-    return row.name.toLowerCase().includes(q) || row.description.toLowerCase().includes(q) || row.id.toLowerCase().includes(q);
-  });
-  return (
-    <section className="stack">
-      <Toolbar
-        query={query}
-        onQuery={setQuery}
-        placeholder={`Search ${title.toLowerCase()}`}
-        actions={<button className="primaryButton" type="button" onClick={onNew}><Plus size={16} />New</button>}
-      />
-      <div className="resourceGrid">
-        {filtered.map((row) => (
-          <article className="resourceCard" key={row.id}>
-            <div className="resourceIcon">{icon}</div>
-            <div>
-              <strong>{row.name}</strong>
-              <span>{row.description || row.id}</span>
-            </div>
-            <StatusPill status={row.status} />
-            {'provider' in row ? <small>{row.provider}</small> : null}
-            {'credential_count' in row ? <small>{row.credential_count} credentials</small> : null}
-          </article>
-        ))}
-        {filtered.length === 0 ? <EmptyState icon={icon} title={`No ${title.toLowerCase()}`} /> : null}
-      </div>
-    </section>
-  );
-}
-
 function CredentialVaults({ data, onNew, onOpenVault }: { data: ConsoleData; onNew: () => void; onOpenVault: (vault: Vault) => void }) {
   const [query, setQuery] = useState('');
   const vaults = data.vaults.filter((vault) => {
@@ -2212,32 +1968,39 @@ function MemoryTree({ memories, selectedId, onSelect }: { memories: MemoryRecord
   );
 }
 
-function Skills({ data }: { data: ConsoleData }) {
-  return (
-    <section className="resourceGrid">
-      {data.skills.map((skill) => (
-        <article className="resourceCard" key={skill.id}>
-          <div className="resourceIcon"><Zap size={20} /></div>
-          <div>
-            <strong>{skill.name}</strong>
-            <span>{skill.description || skill.file}</span>
-          </div>
-          <small>{skill.file}</small>
-        </article>
-      ))}
-      {data.skills.length === 0 ? <EmptyState icon={<Zap size={22} />} title="No skills" /> : null}
-    </section>
-  );
-}
-
-function Files({ data }: { data: ConsoleData }) {
-  const rows = [
-    ['Agents', data.workspace?.agentsDir],
-    ['Skills', data.workspace?.skillsDir],
-    ['Config', data.workspace?.configPath],
-    ['Data', data.workspace?.dataDir],
+function WorkspacePathsPanel({ workspace }: { workspace: Workspace | null }) {
+  const configDir = workspaceConfigDir(workspace);
+  const directoryRows = [
+    { label: 'Agents', path: workspace?.directories?.agents ?? workspace?.agentsDir, defaultLabel: 'agents/', kind: 'directory' as const },
+    { label: 'Skills', path: workspace?.directories?.skills ?? workspace?.skillsDir, defaultLabel: 'skills/', kind: 'directory' as const },
+    { label: 'Data', path: workspace?.directories?.data ?? workspace?.dataDir, defaultLabel: '.managed-agents/', kind: 'directory' as const },
+    { label: 'Config file', path: workspace?.directories?.config ?? workspace?.configPath, defaultLabel: 'managed-agents.config.yaml', kind: 'file' as const },
   ];
-  return <KeyValuePanel rows={rows} />;
+
+  return (
+    <div className="configFolderPanel">
+      <div className="configFolderHeader">
+        <div className="configFolderIcon"><Box size={20} /></div>
+        <div>
+          <span>Configuration folder</span>
+          <strong title={configDir}>{pathName(configDir) || workspace?.name || 'workspace'}</strong>
+        </div>
+        {configDir ? (
+          <button className="iconButton quiet" type="button" title={configDir} onClick={() => copyText(configDir)}>
+            <Copy size={16} />
+          </button>
+        ) : null}
+      </div>
+      <div className="configPathList">
+        {directoryRows.map((row) => (
+          <div className="configPathRow" key={row.label} title={row.path ?? undefined}>
+            <span>{row.label}</span>
+            <strong>{relativeWorkspacePath(row.path, configDir, row.kind) ?? row.defaultLabel}</strong>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 function WorkspaceView({ data }: { data: ConsoleData }) {
@@ -2279,19 +2042,15 @@ function WorkspaceView({ data }: { data: ConsoleData }) {
           <h2>Current workspace</h2>
           <p>{data.workspace?.name ?? 'local workspace'}</p>
           <KeyValuePanel rows={[
-            ['Root', data.workspace?.root],
             ['Target', data.workspace?.target],
-            ['Config file', data.workspace?.configPath],
+            ['Mode', data.runtime ? 'Local runtime connected' : 'Local runtime starting'],
+            ['Root folder', pathName(data.workspace?.root) || data.workspace?.name],
           ]} />
         </div>
         <div className="panel subtlePanel">
-          <h2>Project directories</h2>
-          <p>Local folders used by the runtime.</p>
-          <KeyValuePanel rows={[
-            ['Agents directory', data.workspace?.agentsDir],
-            ['Skills directory', data.workspace?.skillsDir],
-            ['Data directory', data.workspace?.dataDir],
-          ]} />
+          <h2>Configuration</h2>
+          <p>Local files used by the runtime.</p>
+          <WorkspacePathsPanel workspace={data.workspace} />
         </div>
       </div>
     </section>
@@ -2301,6 +2060,18 @@ function WorkspaceView({ data }: { data: ConsoleData }) {
 function RuntimeView({ data }: { data: ConsoleData }) {
   return (
     <section className="stack">
+      <div className="pageIntro">
+        <div>
+          <h1>Local runtime</h1>
+          <p>Inspect the runtime process, available model adapters, sandbox providers, and managed project paths.</p>
+        </div>
+      </div>
+      <div className="sectionHeaderRow">
+        <div>
+          <h2>Runtime capabilities</h2>
+          <p>Live capability summary for the Console and local API.</p>
+        </div>
+      </div>
       <SummaryStrip
         items={[
           { label: 'Status', value: data.runtime?.status ?? 'unknown', icon: <Gauge size={18} /> },
@@ -2309,6 +2080,12 @@ function RuntimeView({ data }: { data: ConsoleData }) {
           { label: 'Memory', value: data.runtime?.memory ?? 'disabled', icon: <Database size={18} /> },
         ]}
       />
+      <div className="sectionHeaderRow">
+        <div>
+          <h2>Model registry</h2>
+          <p>Configured model identifiers exposed by the runtime.</p>
+        </div>
+      </div>
       <div className="tablePanel">
         <table>
           <thead><tr><th>Model</th><th>Provider</th><th>Status</th></tr></thead>
@@ -2323,6 +2100,13 @@ function RuntimeView({ data }: { data: ConsoleData }) {
           </tbody>
         </table>
       </div>
+      <div className="sectionHeaderRow">
+        <div>
+          <h2>Runtime paths</h2>
+          <p>Project folders and configuration files used by this runtime.</p>
+        </div>
+      </div>
+      <WorkspacePathsPanel workspace={data.workspace} />
     </section>
   );
 }
@@ -2925,10 +2709,6 @@ function ResourceEditorHeader({ title, onRemove }: { title: string; onRemove: ()
   );
 }
 
-function RequiredMark() {
-  return <span className="requiredMark">*</span>;
-}
-
 function ResourceModal({ kind, onClose, onSaved }: { kind: 'environment' | 'credential_vault' | 'memory_store'; onClose: () => void; onSaved: () => void }) {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -3040,19 +2820,7 @@ function ResourceModal({ kind, onClose, onSaved }: { kind: 'environment' | 'cred
     );
   }
 
-  return (
-    <Modal title={`New ${kind.replace('_', ' ')}`} onClose={onClose}>
-      <form className="modalForm" onSubmit={submit}>
-        {error ? <div className="banner error">{error}</div> : null}
-        <label>Name<input value={name} onChange={(event) => setName(event.target.value)} required /></label>
-        <label>Description<input value={description} onChange={(event) => setDescription(event.target.value)} /></label>
-        <div className="modalActions">
-          <button className="secondaryButton" type="button" onClick={onClose}>Cancel</button>
-          <button className="primaryButton" type="submit" disabled={saving}><Plus size={16} />Create</button>
-        </div>
-      </form>
-    </Modal>
-  );
+  throw new Error(`Unsupported resource kind: ${kind}`);
 }
 
 const MCP_REGISTRY_OPTIONS = [
@@ -3273,196 +3041,6 @@ function AddMemoryModal({ storeId, onClose, onSaved }: { storeId: string; onClos
   );
 }
 
-function Toolbar({ query, onQuery, placeholder, actions }: { query: string; onQuery: (value: string) => void; placeholder: string; actions: ReactNode }) {
-  return (
-    <div className="toolbar">
-      <div className="searchBox">
-        <Search size={17} />
-        <input value={query} onChange={(event) => onQuery(event.target.value)} placeholder={placeholder} />
-      </div>
-      <div className="toolbarActions">{actions}</div>
-    </div>
-  );
-}
-
-function SummaryStrip({ items }: { items: Array<{ label: string; value: ReactNode; icon: ReactNode }> }) {
-  return (
-    <div className="summaryStrip">
-      {items.map((item) => (
-        <div className="summaryItem" key={item.label}>
-          <span>{item.icon}</span>
-          <div>
-            <small>{item.label}</small>
-            <strong>{item.value}</strong>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function KeyValuePanel({ rows }: { rows: Array<[string, ReactNode]> }) {
-  return (
-    <div className="tablePanel kv">
-      {rows.map(([key, value]) => (
-        <div className="kvRow" key={key}>
-          <span>{key}</span>
-          <strong>{value || 'not configured'}</strong>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function EmptyState({ icon, title }: { icon: ReactNode; title: string }) {
-  return (
-    <div className="emptyState">
-      {icon}
-      <strong>{title}</strong>
-    </div>
-  );
-}
-
-function LoadingState() {
-  return <div className="loading"><RefreshCw size={18} />Loading console</div>;
-}
-
-function StatusPill({ status }: { status: string }) {
-  return <span className={`status ${status}`}>{status}</span>;
-}
-
-function Modal({ title, subtitle, children, onClose, size = 'default' }: { title: string; subtitle?: string; children: ReactNode; onClose: () => void; size?: 'default' | 'medium' | 'wide' }) {
-  return (
-    <div className="modalBackdrop" role="presentation" onMouseDown={onClose}>
-      <div className={`modal ${size}`} role="dialog" aria-modal="true" aria-label={title} onMouseDown={(event) => event.stopPropagation()}>
-        <div className="modalHeader">
-          <div>
-            <h2>{title}</h2>
-            {subtitle ? <p>{subtitle}</p> : null}
-          </div>
-          <button className="iconButton" type="button" onClick={onClose}><X size={16} /></button>
-        </div>
-        {children}
-      </div>
-    </div>
-  );
-}
-
-type HashRoute = {
-  view: ViewId;
-  agentId?: string;
-  sessionId?: string;
-  environmentId?: string;
-  vaultId?: string;
-  memoryStoreId?: string;
-};
-
-function useHashRoute(): [HashRoute, (view: ViewId, id?: string) => void] {
-  const [route, setRouteState] = useState<HashRoute>(() => parseHashRoute());
-  useEffect(() => {
-    const onHash = () => {
-      setRouteState(parseHashRoute());
-    };
-    window.addEventListener('hashchange', onHash);
-    return () => window.removeEventListener('hashchange', onHash);
-  }, []);
-  const setRoute = (view: ViewId, id?: string) => {
-    const next = view === 'agent-detail' && id
-      ? `agents/${encodeURIComponent(id)}`
-      : view === 'session-detail' && id
-        ? `sessions/${encodeURIComponent(id)}`
-        : view === 'environment-detail' && id
-          ? `environments/${encodeURIComponent(id)}`
-          : view === 'credential-vault-detail' && id
-            ? `credential-vaults/${encodeURIComponent(id)}`
-            : view === 'memory-store-detail' && id
-              ? `memory-stores/${encodeURIComponent(id)}`
-              : view;
-    window.location.hash = next;
-    setRouteState(parseHashRoute(next));
-  };
-  return [route, setRoute];
-}
-
-function parseHashRoute(hash = window.location.hash.replace(/^#/, '')): HashRoute {
-  const value = hash || 'quickstart';
-  if (value.startsWith('agents/')) {
-    const agentId = decodeURIComponent(value.slice('agents/'.length));
-    return agentId ? { view: 'agent-detail', agentId } : { view: 'agents' };
-  }
-  if (value.startsWith('sessions/')) {
-    const sessionId = decodeURIComponent(value.slice('sessions/'.length));
-    return sessionId ? { view: 'session-detail', sessionId } : { view: 'sessions' };
-  }
-  if (value.startsWith('environments/')) {
-    const environmentId = decodeURIComponent(value.slice('environments/'.length));
-    return environmentId ? { view: 'environment-detail', environmentId } : { view: 'environments' };
-  }
-  if (value.startsWith('credential-vaults/')) {
-    const vaultId = decodeURIComponent(value.slice('credential-vaults/'.length));
-    return vaultId ? { view: 'credential-vault-detail', vaultId } : { view: 'credential-vaults' };
-  }
-  if (value.startsWith('memory-stores/')) {
-    const memoryStoreId = decodeURIComponent(value.slice('memory-stores/'.length));
-    return memoryStoreId ? { view: 'memory-store-detail', memoryStoreId } : { view: 'memory-stores' };
-  }
-  if (value === 'agent-detail') return { view: 'agent-detail' };
-  if (value === 'session-detail') return { view: 'session-detail' };
-  if (value === 'environment-detail') return { view: 'environment-detail' };
-  if (value === 'credential-vault-detail') return { view: 'credential-vault-detail' };
-  if (value === 'memory-store-detail') return { view: 'memory-store-detail' };
-  return isView(value) ? { view: value } : { view: 'quickstart' };
-}
-
-function isView(value: string): value is ViewId {
-  return value === 'agent-detail'
-    || value === 'session-detail'
-    || value === 'environment-detail'
-    || value === 'credential-vault-detail'
-    || value === 'memory-store-detail'
-    || NAV_GROUPS.some((group) => group.items.some((item) => item.id === value));
-}
-
-async function getJson<T>(path: string): Promise<T> {
-  const res = await fetch(path);
-  if (!res.ok) throw new Error(`${path} returned ${res.status}`);
-  return res.json() as Promise<T>;
-}
-
-async function getPage<T>(path: string): Promise<Page<T>> {
-  return getJson<Page<T>>(path);
-}
-
-async function postJson<T>(path: string, body: unknown): Promise<T> {
-  return requestJson<T>(path, 'POST', body);
-}
-
-async function putJson<T>(path: string, body: unknown): Promise<T> {
-  return requestJson<T>(path, 'PUT', body);
-}
-
-async function deleteJson<T>(path: string): Promise<T> {
-  const res = await fetch(path, { method: 'DELETE' });
-  if (!res.ok) {
-    const detail = await res.json().catch(() => null) as { error?: { message?: string } } | null;
-    throw new Error(detail?.error?.message ?? `${path} returned ${res.status}`);
-  }
-  return res.json() as Promise<T>;
-}
-
-async function requestJson<T>(path: string, method: 'POST' | 'PUT', body: unknown): Promise<T> {
-  const res = await fetch(path, {
-    method,
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) {
-    const detail = await res.json().catch(() => null) as { error?: { message?: string } } | null;
-    throw new Error(detail?.error?.message ?? `${path} returned ${res.status}`);
-  }
-  return res.json() as Promise<T>;
-}
-
 function createResourceDraft(type: SessionResourceDraft['type']): SessionResourceDraft {
   if (type === 'file') return { type, file_id: '', mount_path: '' };
   if (type === 'github_repository') return { type, url: '', authorization_token: '', checkout: '', mount_path: '' };
@@ -3494,24 +3072,6 @@ function toSessionResourcePayload(resource: SessionResourceDraft): Record<string
   };
 }
 
-function buildToolset(tools: Set<string>, askTools: Set<string>): AgentToolset {
-  const configs: Record<string, ToolConfig> = {};
-  for (const tool of tools) {
-    configs[tool] = {
-      enabled: true,
-      permission_policy: { type: askTools.has(tool) ? 'always_ask' : 'always_allow' },
-    };
-  }
-  return {
-    type: 'agent_toolset_20260401',
-    default_config: {
-      enabled: true,
-      permission_policy: { type: 'always_allow' },
-    },
-    configs,
-  };
-}
-
 function toggleSet<T>(value: T, checked: boolean, setter: Dispatch<SetStateAction<Set<T>>>) {
   setter((current) => {
     const next = new Set(current);
@@ -3529,51 +3089,6 @@ function toolNames(agent: Pick<Agent, 'tools'>): string[] {
     }
   }
   return [...names];
-}
-
-function formatDate(value: string | null | undefined) {
-  if (!value) return 'never';
-  return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(value));
-}
-
-function formatDateShort(value: string | null | undefined) {
-  if (!value) return 'never';
-  return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(new Date(value));
-}
-
-function relativeDate(value: string | null | undefined) {
-  if (!value) return 'unknown';
-  const diffMs = Date.now() - new Date(value).getTime();
-  if (diffMs < 0) return formatDateShort(value);
-  const minutes = Math.floor(diffMs / 60_000);
-  if (minutes < 1) return 'just now';
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days < 31) return `${days}d ago`;
-  const months = Math.floor(days / 30);
-  if (months < 12) return `${months} month${months === 1 ? '' : 's'} ago`;
-  const years = Math.floor(months / 12);
-  return `${years} year${years === 1 ? '' : 's'} ago`;
-}
-
-function formatDuration(start: string | null | undefined, end: string | null | undefined) {
-  if (!start) return '-';
-  const endTime = end ? new Date(end).getTime() : Date.now();
-  const seconds = Math.max(0, Math.floor((endTime - new Date(start).getTime()) / 1000));
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  const remaining = seconds % 60;
-  if (hours > 0) return `${hours}h ${minutes}m`;
-  if (minutes > 0) return `${minutes}m ${remaining}s`;
-  return `${remaining}s`;
-}
-
-function formatUsage(usage: Session['usage']) {
-  const input = usage.input_tokens || 0;
-  const output = usage.output_tokens || 0;
-  return input || output ? `${input} / ${output}` : '-';
 }
 
 function environmentKind(environment: Environment) {
@@ -3703,22 +3218,8 @@ function newDraftId() {
   return `draft_${Math.random().toString(36).slice(2, 10)}`;
 }
 
-function shortId(value: string): string {
-  if (value.length <= 16) return value;
-  return `${value.slice(0, 8)}...${value.slice(-6)}`;
-}
-
 function agentYamlPreview(agent: Template['agent']): string {
   return agentDefinitionYaml(agent);
-}
-
-function ResourceBadge({ icon, label }: { icon: ReactNode; label: ReactNode }) {
-  return (
-    <span className="resourceBadge">
-      {icon}
-      <span>{label}</span>
-    </span>
-  );
 }
 
 function credentialAuthLabel(type: CredentialAuthType) {
@@ -3788,23 +3289,4 @@ function eventTime(event: SessionEvent) {
   const value = event.processed_at ?? event.created_at;
   if (!value) return '-';
   return new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(new Date(value));
-}
-
-function truncateMiddle(value: string, maxLength: number) {
-  if (value.length <= maxLength) return value;
-  const edge = Math.max(4, Math.floor((maxLength - 3) / 2));
-  return `${value.slice(0, edge)}...${value.slice(-edge)}`;
-}
-
-function titleCase(value: string) {
-  return value.replace(/\b\w/g, (char) => char.toUpperCase());
-}
-
-function downloadJson(filename: string, value: unknown) {
-  const url = URL.createObjectURL(new Blob([JSON.stringify(value, null, 2)], { type: 'application/json' }));
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = filename;
-  anchor.click();
-  URL.revokeObjectURL(url);
 }

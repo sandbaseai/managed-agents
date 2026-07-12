@@ -21,7 +21,7 @@ Once running, interact with the local API:
 # Create a session
 curl -X POST http://localhost:3000/v1/sessions \
   -H "Content-Type: application/json" \
-  -d '{"agent": "echo-assistant"}'
+  -d '{"agent": "agent_echo-assistant", "environment_id": "env_default"}'
 
 # Send a message and stream the turn (replace SESSION_ID)
 curl -N -X POST http://localhost:3000/v1/sessions/SESSION_ID/messages \
@@ -41,12 +41,13 @@ also accepts explicit `user.*` events.
 import { ManagedAgentsClient } from 'managed-agents/sdk';
 
 const client = new ManagedAgentsClient({
-  baseUrl: 'http://localhost:3000/v1',
+  baseUrl: 'http://localhost:3000',
   apiKey: 'not-needed-for-local',
 });
 
 const session = await client.sessions.create({
-  agent: 'echo-assistant',
+  agent: 'agent_echo-assistant',
+  environment_id: 'env_default',
 });
 
 await client.sessions.message(session.id, 'Hello!', { stream: false });

@@ -1,29 +1,32 @@
 :root {
   color-scheme: light;
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --bg: #fbfaf8;
-  --sidebar-bg: #f6f5f2;
+  --bg: #fbfbfa;
+  --sidebar-bg: #f7f7f5;
   --surface: #ffffff;
-  --surface-muted: #f4f3ef;
-  --surface-hover: #efede8;
-  --surface-active: #eceae5;
-  --border: #dedbd2;
-  --border-subtle: #ebe8e0;
-  --text: #1f1e1c;
-  --text-soft: #4c4944;
-  --muted: #7d776e;
-  --muted-soft: #9a948a;
-  --accent: #7c65f1;
-  --accent-soft: #f0edff;
-  --accent-border: #ded7ff;
-  --success: #2f6f48;
-  --success-soft: #edf7f1;
-  --info: #2f668f;
-  --info-soft: #eaf3fb;
-  --danger: #a13934;
-  --danger-soft: #fff0ee;
-  --shadow-popover: 0 18px 48px rgba(31, 29, 26, 0.14);
-  --shadow-modal: 0 24px 80px rgba(31, 29, 26, 0.22);
+  --surface-muted: #f4f4f2;
+  --surface-hover: #f0f0ee;
+  --surface-active: #ececea;
+  --border: #deded8;
+  --border-subtle: #ebeae6;
+  --text: #151514;
+  --text-soft: #4e4b47;
+  --muted: #807c75;
+  --muted-soft: #aaa59d;
+  --accent: #7868e6;
+  --accent-soft: #f1efff;
+  --accent-border: #ddd7ff;
+  --success: #167029;
+  --success-soft: #d8f0d4;
+  --info: #1f5f9e;
+  --info-soft: #dbeeff;
+  --danger: #a23b38;
+  --danger-soft: #fdeceb;
+  --warning: #8a5a00;
+  --warning-soft: #fff3d4;
+  --shadow-control: 0 1px 2px rgba(21, 21, 20, 0.08);
+  --shadow-popover: 0 16px 44px rgba(21, 21, 20, 0.14);
+  --shadow-modal: 0 28px 80px rgba(21, 21, 20, 0.26);
   --radius: 8px;
   background: var(--bg);
   color: var(--text);
@@ -42,6 +45,12 @@ body,
   margin: 0;
 }
 
+body {
+  background: var(--bg);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+}
+
 button,
 input,
 textarea,
@@ -55,7 +64,7 @@ button {
 
 .shell {
   display: grid;
-  grid-template-columns: 264px minmax(0, 1fr);
+  grid-template-columns: 256px minmax(0, 1fr);
   min-height: 100%;
   min-width: 0;
 }
@@ -63,11 +72,11 @@ button {
 .sidebar {
   min-width: 0;
   background: var(--sidebar-bg);
-  border-right: 1px solid var(--border);
-  padding: 18px 12px;
+  border-right: 1px solid var(--border-subtle);
+  padding: 16px 10px 12px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
 }
 
 .brand {
@@ -77,28 +86,34 @@ button {
   color: var(--text);
   font-weight: 720;
   letter-spacing: 0;
-  padding: 2px 8px;
+  padding: 2px 10px 6px;
+  min-height: 32px;
 }
 
 .brandMark {
   color: var(--accent);
-  font-size: 21px;
+  font-size: 19px;
   line-height: 1;
 }
 
 .workspaceSwitch {
-  min-height: 52px;
+  min-height: 46px;
   width: 100%;
   display: grid;
-  grid-template-columns: 34px minmax(0, 1fr) 18px;
-  gap: 10px;
+  grid-template-columns: 30px minmax(0, 1fr) 18px;
+  gap: 9px;
   align-items: center;
   text-align: left;
   border: 1px solid var(--border);
   background: var(--surface);
   border-radius: var(--radius);
-  padding: 8px 10px;
+  padding: 7px 9px;
   color: var(--text);
+  box-shadow: var(--shadow-control);
+}
+
+.workspaceSwitch:hover {
+  background: var(--surface-hover);
 }
 
 .workspaceSwitch span:nth-child(2) {
@@ -122,8 +137,8 @@ button {
 }
 
 .workspaceAvatar {
-  width: 34px;
-  height: 34px;
+  width: 30px;
+  height: 30px;
   display: grid;
   place-items: center;
   border-radius: var(--radius);
@@ -131,6 +146,7 @@ button {
   color: var(--accent);
   box-shadow: inset 0 0 0 1px var(--accent-border);
   font-weight: 760;
+  font-size: 13px;
 }
 
 .nav {
@@ -139,7 +155,7 @@ button {
   max-width: 100%;
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 16px;
   overflow: auto;
 }
 
@@ -153,20 +169,22 @@ button {
   color: var(--muted);
   font-size: 12px;
   font-weight: 680;
-  padding: 8px 8px 4px;
+  padding: 6px 10px 4px;
 }
 
 .navItem {
   height: 38px;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 9px;
   border: 0;
   border-radius: var(--radius);
   background: transparent;
   color: var(--text-soft);
   padding: 0 10px;
   text-align: left;
+  font-size: 14px;
+  font-weight: 560;
 }
 
 .navItem:hover {
@@ -186,12 +204,12 @@ button {
 }
 
 .consoleNotice {
-  min-height: 52px;
+  min-height: 50px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 14px;
-  margin: 18px 28px 0;
+  margin: 16px 24px 0;
   padding: 0 14px;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius);
@@ -199,6 +217,7 @@ button {
   position: sticky;
   top: 12px;
   z-index: 5;
+  box-shadow: var(--shadow-control);
 }
 
 .consoleNotice div {
@@ -227,13 +246,13 @@ p {
 }
 
 h1 {
-  font-size: 24px;
+  font-size: 28px;
   line-height: 1.2;
   letter-spacing: 0;
 }
 
 h2 {
-  font-size: 17px;
+  font-size: 18px;
   line-height: 1.3;
   letter-spacing: 0;
 }
@@ -258,19 +277,22 @@ h2 {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  min-height: 36px;
-  padding: 0 13px;
-  font-weight: 680;
+  min-height: 38px;
+  padding: 0 14px;
+  font-weight: 690;
+  line-height: 1;
+  white-space: nowrap;
 }
 
 .primaryButton {
   background: var(--text);
   color: var(--surface);
   border-color: var(--text);
+  box-shadow: var(--shadow-control);
 }
 
 .primaryButton:hover {
-  background: #000;
+  background: #050505;
 }
 
 .primaryButton:disabled {
@@ -282,6 +304,7 @@ h2 {
   background: var(--surface);
   color: var(--text);
   border-color: var(--border);
+  box-shadow: var(--shadow-control);
 }
 
 .secondaryButton:hover,
@@ -314,16 +337,19 @@ h2 {
 }
 
 .iconButton {
-  width: 36px;
+  width: 38px;
   padding: 0;
   background: var(--surface);
   color: var(--text-soft);
   border-color: var(--border);
+  text-decoration: none;
+  box-shadow: var(--shadow-control);
 }
 
 .iconButton.quiet {
   background: transparent;
   border-color: transparent;
+  box-shadow: none;
 }
 
 .iconButton.quiet:hover {
@@ -331,10 +357,10 @@ h2 {
 }
 
 .banner {
-  margin: 18px 28px 0;
+  margin: 16px 24px 0;
   border-radius: var(--radius);
   padding: 12px 14px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-subtle);
   background: var(--surface);
 }
 
@@ -347,17 +373,26 @@ h2 {
 .quickstart {
   display: grid;
   grid-template-columns: minmax(320px, 0.8fr) minmax(420px, 1.2fr);
-  gap: 24px;
-  padding: 32px 40px 40px;
+  gap: 22px;
+  padding: 32px 38px 42px;
 }
 
 .quickPrompt {
+  position: relative;
   min-height: calc(100vh - 122px);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 48px;
+}
+
+.quickstartTitle {
+  position: absolute;
+  top: 0;
+  left: 0;
+  font-size: 17px;
+  line-height: 1.3;
 }
 
 .stepper {
@@ -431,13 +466,20 @@ td span,
 
 .searchBox {
   display: flex;
+  flex-direction: row;
   align-items: center;
   gap: 9px;
-  min-height: 40px;
+  min-height: 42px;
   border: 1px solid var(--border);
   background: var(--surface);
   border-radius: var(--radius);
   padding: 0 12px;
+  color: var(--muted);
+}
+
+.searchBox:focus-within {
+  border-color: var(--muted-soft);
+  box-shadow: 0 0 0 3px rgba(21, 21, 20, 0.06);
 }
 
 .searchBox input {
@@ -504,14 +546,14 @@ pre {
   padding: 14px;
   overflow: auto;
   max-height: 230px;
-  background: #1f2423;
-  color: #eef4ef;
+  background: #171716;
+  color: #f2f2ef;
   font-size: 12px;
   line-height: 1.55;
 }
 
 .stack {
-  padding: 32px 40px 40px;
+  padding: 34px 38px 44px;
   display: flex;
   flex-direction: column;
   gap: 20px;
@@ -524,7 +566,7 @@ pre {
 }
 
 .summaryItem {
-  min-height: 78px;
+  min-height: 76px;
   background: var(--surface);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius);
@@ -576,6 +618,27 @@ pre {
   min-width: 0;
 }
 
+.filterSelect {
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  padding: 0 10px;
+  color: var(--muted);
+}
+
+.filterSelect select {
+  min-width: 110px;
+  border: 0;
+  outline: 0;
+  color: var(--text);
+  background: transparent;
+  font: inherit;
+}
+
 .toolbarActions {
   min-width: 0;
   max-width: 100%;
@@ -583,16 +646,18 @@ pre {
 
 .tablePanel {
   overflow: auto;
+  box-shadow: none;
 }
 
 table {
   width: 100%;
   border-collapse: collapse;
+  font-size: 14px;
 }
 
 th,
 td {
-  padding: 14px 16px;
+  padding: 15px 16px;
   border-bottom: 1px solid var(--border-subtle);
   text-align: left;
   vertical-align: middle;
@@ -600,17 +665,13 @@ td {
 
 th {
   background: var(--surface);
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 760;
+  color: var(--text-soft);
+  font-size: 13px;
+  font-weight: 720;
 }
 
 td {
   color: var(--text);
-}
-
-td:first-child {
-  width: 28%;
 }
 
 td strong,
@@ -627,6 +688,20 @@ tr:last-child td {
   border-bottom: 0;
 }
 
+tr.selectedRow td {
+  background: var(--surface-active);
+}
+
+tr[role="button"],
+.clickableRow {
+  cursor: pointer;
+}
+
+tr[role="button"]:hover td,
+.clickableRow:hover td {
+  background: var(--surface-hover);
+}
+
 .status {
   display: inline-flex;
   align-items: center;
@@ -637,6 +712,7 @@ tr:last-child td {
   color: var(--text-soft);
   font-size: 12px;
   font-weight: 720;
+  text-transform: capitalize;
 }
 
 .status.active,
@@ -673,7 +749,7 @@ tr:last-child td {
 }
 
 .resourceCard {
-  min-height: 130px;
+  min-height: 128px;
   background: var(--surface);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius);
@@ -709,6 +785,242 @@ tr:last-child td {
   line-height: 1.35;
 }
 
+.compactToolbar {
+  justify-content: flex-start;
+}
+
+.skillsLayout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 420px);
+  gap: 18px;
+  align-items: start;
+}
+
+.skillTablePanel {
+  min-height: 480px;
+}
+
+.skillTablePanel tr {
+  height: 58px;
+}
+
+.sourceBadge {
+  display: inline-flex;
+  width: max-content;
+  min-height: 24px;
+  align-items: center;
+  border-radius: 6px;
+  padding: 0 9px;
+  margin-top: 0;
+  font-size: 12px;
+  font-weight: 760;
+}
+
+.sourceBadge.anthropic {
+  background: #dcecff;
+  color: #225d9a;
+}
+
+.sourceBadge.custom {
+  background: var(--surface-muted);
+  color: var(--text-soft);
+}
+
+.skillDrawer {
+  min-height: 480px;
+  max-height: calc(100vh - 188px);
+  overflow: auto;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: 0 12px 30px rgba(21, 21, 20, 0.07);
+}
+
+.drawerHeader {
+  min-height: 86px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 36px;
+  gap: 12px;
+  align-items: start;
+  padding: 18px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.drawerHeader p {
+  color: var(--muted);
+  margin-top: 8px;
+}
+
+.titleLine.compact {
+  gap: 10px;
+}
+
+.titleLine.compact h2 {
+  font-size: 22px;
+}
+
+.drawerBody {
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.drawerBody > p {
+  color: var(--text-soft);
+  line-height: 1.45;
+}
+
+.drawerMetaGrid {
+  display: grid;
+  grid-template-columns: 126px minmax(0, 1fr);
+  gap: 12px 16px;
+  padding: 14px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+  background: var(--surface-muted);
+}
+
+.drawerMetaGrid span {
+  color: var(--muted);
+}
+
+.drawerMetaGrid strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.skillVersionSection {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.skillVersionSection h3 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.skillVersionList {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.skillVersionRow {
+  min-height: 48px;
+  display: grid;
+  grid-template-columns: minmax(110px, auto) minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.skillVersionRow:last-child {
+  border-bottom: 0;
+}
+
+.skillVersionRow small {
+  color: var(--muted);
+}
+
+.skillVersionRow b {
+  min-height: 24px;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 6px;
+  padding: 0 8px;
+  background: var(--info-soft);
+  color: var(--info);
+  font-size: 12px;
+}
+
+.skillUploadDropzone {
+  min-height: 148px;
+  display: grid;
+  place-items: center;
+  gap: 8px;
+  padding: 20px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  text-align: center;
+  color: var(--text-soft);
+}
+
+.skillUploadDropzone.dragActive {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.skillUploadDropzone svg {
+  color: var(--muted);
+}
+
+.skillUploadDropzone span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.skillUploadActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.skillUploadFile {
+  min-height: 72px;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) 36px;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+  background: var(--surface);
+  padding: 12px;
+}
+
+.skillUploadFile strong,
+.skillUploadFile span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.skillUploadFile span {
+  color: var(--muted);
+  font-size: 13px;
+  margin-top: 3px;
+}
+
+.hiddenFileInput {
+  display: none;
+}
+
+.formAlert {
+  min-height: 48px;
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  font-weight: 640;
+}
+
+.formAlert.error {
+  background: var(--danger-soft);
+  border-color: #f3c4bd;
+  color: var(--danger);
+}
+
 .workspaceNotice {
   min-height: 62px;
   display: grid;
@@ -719,6 +1031,7 @@ tr:last-child td {
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius);
   background: var(--surface);
+  box-shadow: var(--shadow-control);
 }
 
 .workspaceNotice svg {
@@ -770,6 +1083,249 @@ tr:last-child td {
   white-space: nowrap;
 }
 
+.configFolderPanel {
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.configFolderHeader {
+  min-height: 68px;
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.configFolderIcon {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-soft);
+  background: var(--surface-muted);
+}
+
+.configFolderHeader span {
+  display: block;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.configFolderHeader strong,
+.configPathRow strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.configPathList {
+  display: grid;
+}
+
+.configPathRow {
+  min-height: 48px;
+  display: grid;
+  grid-template-columns: 130px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.configPathRow:last-child {
+  border-bottom: 0;
+}
+
+.configPathRow span {
+  color: var(--muted);
+}
+
+.configPathRow strong {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 14px;
+  color: var(--text);
+}
+
+.filesBrowser {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(360px, 0.85fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.filesTablePanel {
+  min-height: 420px;
+}
+
+.claudeFilesView {
+  gap: 22px;
+}
+
+.claudeFilesTable {
+  border: 0;
+  box-shadow: none;
+}
+
+.claudeFilesTable table {
+  table-layout: fixed;
+}
+
+.claudeFilesTable th:nth-child(1),
+.claudeFilesTable td:nth-child(1) {
+  width: 16%;
+}
+
+.claudeFilesTable th:nth-child(2),
+.claudeFilesTable td:nth-child(2) {
+  width: 50%;
+}
+
+.claudeFilesTable th:nth-child(3),
+.claudeFilesTable td:nth-child(3),
+.claudeFilesTable th:nth-child(4),
+.claudeFilesTable td:nth-child(4) {
+  width: 14%;
+}
+
+.claudeFilesTable th:nth-child(5),
+.claudeFilesTable td:nth-child(5) {
+  width: 6%;
+}
+
+.claudeFilesTable td {
+  height: 58px;
+}
+
+.claudeFilesTable td strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rowActionsCell {
+  text-align: right;
+}
+
+.rowActionsCell .iconButton {
+  display: inline-grid;
+}
+
+.fileUploadError {
+  max-width: 720px;
+}
+
+.filesTablePanel tr[role="button"] {
+  cursor: pointer;
+}
+
+.filesTablePanel tr[role="button"]:hover td {
+  background: var(--surface-hover);
+}
+
+.fileNameCell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.fileNameCell svg {
+  flex: none;
+  color: var(--muted);
+}
+
+.fileNameCell span {
+  min-width: 0;
+}
+
+.fileNameCell strong,
+.fileNameCell small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fileNameCell small {
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+}
+
+.fileTypeBadge {
+  display: inline-flex;
+  width: max-content;
+  align-items: center;
+  min-height: 24px;
+  border-radius: 6px;
+  background: var(--surface-muted);
+  color: var(--text-soft);
+  padding: 0 8px;
+  font-size: 12px;
+  font-weight: 720;
+}
+
+.filePreviewPanel {
+  min-width: 0;
+  min-height: 420px;
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.filePreviewHeader {
+  min-height: 94px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+  padding: 16px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.filePreviewHeader h2 {
+  margin: 10px 0 4px;
+}
+
+.filePreviewHeader p {
+  margin: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.filePreviewMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.filePreview {
+  max-height: 520px;
+  border-radius: 0;
+}
+
+.fileContentInput {
+  min-height: 240px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+}
+
 .subtlePanel {
   padding: 18px;
   display: flex;
@@ -798,7 +1354,7 @@ tr:last-child td {
 .modalBackdrop {
   position: fixed;
   inset: 0;
-  background: rgba(31, 29, 26, 0.38);
+  background: rgba(21, 21, 20, 0.42);
   display: grid;
   place-items: center;
   padding: 24px;
@@ -811,13 +1367,13 @@ tr:last-child td {
   overflow: auto;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: var(--radius);
   box-shadow: var(--shadow-modal);
 }
 
 .modalHeader {
-  min-height: 58px;
-  padding: 0 18px;
+  min-height: 60px;
+  padding: 0 20px;
   border-bottom: 1px solid var(--border-subtle);
   display: flex;
   align-items: center;
@@ -827,8 +1383,8 @@ tr:last-child td {
 .modalForm {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  padding: 18px;
+  gap: 17px;
+  padding: 20px;
 }
 
 .formGrid {
@@ -852,11 +1408,12 @@ textarea,
 select {
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  min-height: 38px;
-  padding: 8px 10px;
+  min-height: 42px;
+  padding: 9px 11px;
   background: var(--surface);
   color: var(--text);
   outline: 0;
+  font-size: 15px;
 }
 
 textarea {
@@ -928,6 +1485,7 @@ select:focus {
   background: var(--text);
   color: var(--surface);
   font-weight: 760;
+  box-shadow: var(--shadow-control);
 }
 
 .darkButton:disabled {
@@ -936,7 +1494,7 @@ select:focus {
 }
 
 .filterButton {
-  min-height: 40px;
+  min-height: 42px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--surface);
@@ -945,6 +1503,7 @@ select:focus {
   align-items: center;
   gap: 8px;
   padding: 0 12px;
+  box-shadow: var(--shadow-control);
 }
 
 .filterButton strong {
@@ -957,6 +1516,21 @@ select:focus {
   align-items: flex-end;
   justify-content: space-between;
   gap: 18px;
+}
+
+.pageIntro > div {
+  min-width: 0;
+}
+
+.pageIntro h1 {
+  font-size: 30px;
+  font-weight: 760;
+}
+
+.pageIntro p {
+  margin-top: 8px;
+  font-size: 16px;
+  line-height: 1.4;
 }
 
 .pageIntro p,
@@ -1035,12 +1609,8 @@ select:focus {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
 }
 
-.clickableRow {
-  cursor: pointer;
-}
-
 .clickableRow:hover {
-  background: var(--surface-muted);
+  background: transparent;
 }
 
 .resourceBadge {
@@ -1076,7 +1646,7 @@ select:focus {
 }
 
 .agentDetail {
-  padding: 34px 40px 48px;
+  padding: 34px 38px 48px;
 }
 
 .detailCrumb {
@@ -1108,16 +1678,18 @@ select:focus {
 
 .titleLine h1 {
   font-size: 30px;
+  font-weight: 760;
 }
 
 .mutedLine {
-  margin-top: 16px;
-  font-size: 17px;
+  margin-top: 14px;
+  font-size: 15px;
 }
 
 .agentDescription {
   margin-top: 12px;
-  font-size: 18px;
+  font-size: 16px;
+  line-height: 1.45;
 }
 
 .agentHeroActions {
@@ -1128,9 +1700,9 @@ select:focus {
 }
 
 .largeAction {
-  min-height: 44px;
+  min-height: 42px;
   padding-inline: 16px;
-  font-size: 17px;
+  font-size: 15px;
 }
 
 .menuWrap {
@@ -1186,18 +1758,18 @@ select:focus {
 .detailTabs {
   display: flex;
   align-items: flex-end;
-  gap: 26px;
-  margin-top: 32px;
+  gap: 28px;
+  margin-top: 30px;
   border-bottom: 1px solid var(--border);
 }
 
 .detailTabs button {
-  min-height: 48px;
+  min-height: 46px;
   border: 0;
   border-bottom: 3px solid transparent;
   background: transparent;
   color: var(--muted);
-  font-size: 18px;
+  font-size: 16px;
   display: inline-flex;
   align-items: center;
   gap: 10px;
@@ -1234,6 +1806,7 @@ select:focus {
   max-width: 920px;
   background: var(--surface);
   border-radius: var(--radius);
+  border: 1px solid var(--border-subtle);
   overflow: hidden;
 }
 
@@ -1353,27 +1926,27 @@ select:focus {
 .metricGrid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 20px;
+  gap: 16px;
 }
 
 .metricCard {
-  min-height: 150px;
+  min-height: 136px;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius);
   background: var(--surface);
-  padding: 24px;
+  padding: 22px;
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 14px;
+  gap: 12px;
 }
 
 .metricCard strong {
-  font-size: 18px;
+  font-size: 16px;
 }
 
 .metricCard span {
-  font-size: 34px;
+  font-size: 32px;
   font-weight: 780;
 }
 
@@ -1387,7 +1960,7 @@ select:focus {
 }
 
 .sessionDetail {
-  padding: 34px 40px 48px;
+  padding: 34px 38px 48px;
   display: flex;
   flex-direction: column;
   gap: 24px;
@@ -1422,6 +1995,7 @@ select:focus {
 
 .sessionHeroMain h1 {
   font-size: 30px;
+  font-weight: 760;
   overflow-wrap: anywhere;
 }
 
@@ -1453,7 +2027,7 @@ select:focus {
 }
 
 .sessionToolbar {
-  min-height: 54px;
+  min-height: 52px;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -1548,15 +2122,16 @@ select:focus {
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius);
   overflow: hidden;
+  box-shadow: none;
 }
 
 .eventMiniMap {
-  min-height: 54px;
+  min-height: 52px;
   padding: 12px 16px;
   display: flex;
   align-items: center;
   gap: 7px;
-  background: var(--surface-muted);
+  background: #fafafa;
   border-bottom: 1px solid var(--border-subtle);
 }
 
@@ -2023,13 +2598,14 @@ select:focus {
 }
 
 .modalHeader h2 {
-  font-size: 28px;
+  font-size: 26px;
+  font-weight: 760;
 }
 
 .agentComposer {
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 22px;
   padding: 20px;
 }
 
@@ -2047,7 +2623,7 @@ select:focus {
   display: flex;
   align-items: center;
   gap: 10px;
-  font-size: 18px;
+  font-size: 17px;
 }
 
 .sectionTitle span {
@@ -2063,18 +2639,18 @@ select:focus {
 }
 
 .segment button {
-  min-height: 44px;
+  min-height: 42px;
   border: 0;
   border-radius: var(--radius);
   background: transparent;
   color: var(--muted);
-  font-size: 18px;
+  font-size: 16px;
 }
 
 .segment button.active {
   background: var(--surface);
   color: var(--text);
-  box-shadow: 0 1px 4px rgba(31, 29, 26, 0.12);
+  box-shadow: 0 1px 4px rgba(21, 21, 20, 0.12);
 }
 
 .describeBox {
@@ -2094,7 +2670,7 @@ select:focus {
   border: 0;
   box-shadow: none;
   resize: vertical;
-  font-size: 17px;
+  font-size: 15px;
 }
 
 .claudeTemplateGrid {
@@ -2104,7 +2680,7 @@ select:focus {
 }
 
 .claudeTemplateCard {
-  min-height: 130px;
+  min-height: 126px;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius);
   background: var(--surface);
@@ -2121,7 +2697,7 @@ select:focus {
 }
 
 .claudeTemplateCard strong {
-  font-size: 19px;
+  font-size: 18px;
 }
 
 .claudeTemplateCard span,
@@ -2152,7 +2728,7 @@ select:focus {
   align-items: center;
   gap: 6px;
   color: var(--text-soft);
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 720;
 }
 
@@ -2163,7 +2739,7 @@ select:focus {
   box-shadow: none;
   resize: vertical;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
-  font-size: 16px;
+  font-size: 14px;
   line-height: 1.55;
   padding: 14px 22px 22px;
 }
@@ -2176,7 +2752,7 @@ select:focus {
 .stickyActions {
   position: sticky;
   bottom: 0;
-  background: linear-gradient(180deg, rgba(255,255,255,0), var(--surface) 35%);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0), var(--surface) 35%);
   padding: 24px 0 0;
 }
 
@@ -2189,7 +2765,7 @@ select:focus {
 
 .sessionField {
   gap: 10px;
-  font-size: 18px;
+  font-size: 16px;
   color: var(--text);
 }
 
@@ -2212,13 +2788,13 @@ select:focus {
 .resourceEditor textarea {
   min-height: 48px;
   border-radius: var(--radius);
-  font-size: 17px;
+  font-size: 15px;
 }
 
 .linkButton {
   border: 0;
   background: transparent;
-  color: #1c56a0;
+  color: #134f91;
   padding: 0;
   display: inline-flex;
   align-items: center;
@@ -2874,6 +3450,10 @@ select:focus {
   .memoryBrowser {
     grid-template-columns: minmax(220px, 300px) minmax(0, 1fr);
   }
+
+  .filesBrowser {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 760px) {
@@ -2925,7 +3505,8 @@ select:focus {
   }
 
   .toolbar .searchBox,
-  .toolbarActions {
+  .toolbarActions,
+  .filterSelect {
     width: 100%;
   }
 
@@ -2958,6 +3539,21 @@ select:focus {
   .metricGrid,
   .workspaceGrid {
     grid-template-columns: 1fr;
+  }
+
+  .quickstart,
+  .quickstart > *,
+  .quickPrompt,
+  .templatesPanel,
+  .templateGrid,
+  .templateCard,
+  .codePreview {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .quickstart {
+    overflow-x: hidden;
   }
 
   .agentsTablePanel {
@@ -3037,6 +3633,25 @@ select:focus {
     grid-template-columns: 1fr;
   }
 
+  .skillsLayout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .skillTablePanel {
+    min-height: auto;
+    max-width: 100%;
+  }
+
+  .skillTablePanel table {
+    min-width: 620px;
+  }
+
+  .skillDrawer {
+    min-height: auto;
+    max-height: none;
+    box-shadow: none;
+  }
+
   .memoryTree {
     border-right: 0;
     border-bottom: 1px solid var(--border-subtle);
@@ -3103,6 +3718,13 @@ select:focus {
   .kvRow {
     grid-template-columns: 1fr;
     align-items: start;
+    padding: 10px 16px;
+  }
+
+  .configPathRow {
+    grid-template-columns: 1fr;
+    align-items: start;
+    gap: 4px;
     padding: 10px 16px;
   }
 }

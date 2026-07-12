@@ -200,9 +200,17 @@ Tool results are capped before they are persisted or returned to the model.
 
 ## Skills
 
-Skills are Markdown files with optional frontmatter. An agent opts into skills
-with `skills: [{ type: "custom", skill_id }]`. Only selected skills are included
-in the system instructions for that agent.
+Skills are workspace resources exposed through `/v1/skills`. A custom skill is a
+top-level directory containing `SKILL.md` at its root. `SKILL.md` must start with
+YAML frontmatter and include `name` and `description`. Optional files inside the
+same directory are packaged with the skill.
+
+The runtime also exposes the Anthropic built-in skill catalog (`xlsx`, `pptx`,
+`pdf`, `docx`) with `source: "anthropic"`. Project-defined skills use
+`source: "custom"` and `skill_` identifiers. Agents opt into skills with object
+refs such as `skills: [{ type: "custom", skill_id: "skill_code-review" }]` or
+`skills: [{ type: "anthropic", skill_id: "pptx", version: "latest" }]`. Only
+selected custom skills are injected into the local system instructions.
 
 ## MCP Connections
 
@@ -237,6 +245,7 @@ The API is grouped by resources:
 - `/v1/environments`
 - `/v1/credential-vaults`
 - `/v1/memory-stores`
+- `/v1/skills`
 - `/v1/x/health`
 - `/v1/x/metrics`
 - `/v1/x/mcp/status`
@@ -244,7 +253,6 @@ The API is grouped by resources:
 - `/v1/x/runtime`
 - `/v1/x/workspace`
 - `/v1/x/templates`
-- `/v1/x/skills`
 
 Optional bearer-token authentication protects non-public routes when configured.
 

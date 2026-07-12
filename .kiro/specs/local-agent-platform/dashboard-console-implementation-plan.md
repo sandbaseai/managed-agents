@@ -250,22 +250,27 @@ Purpose: feed Local Runtime, Settings, and sidebar status.
 }
 ```
 
-### `GET /v1/x/skills`
+### `GET /v1/skills`
 
-Purpose: feed Skills page and template/agent preview badges.
+Purpose: feed the Claude-aligned Skills registry.
 
 ```json
 {
   "data": [
     {
-      "name": "code-review",
+      "id": "skill_code-review",
+      "type": "skill",
+      "display_title": "Code review",
       "description": "Review code for correctness and maintainability.",
-      "path": "/path/to/skills/code-review.md",
-      "assigned_agents": ["echo-assistant"],
-      "builtin": false
+      "source": "custom",
+      "latest_version": "20260712",
+      "file": "code-review/SKILL.md",
+      "created_at": "2026-07-12T00:00:00.000Z",
+      "updated_at": "2026-07-12T00:00:00.000Z"
     }
   ]
 }
+```
 ```
 
 ### `GET /v1/x/templates`
@@ -469,9 +474,9 @@ components/domain/
 
 ### Skills
 
-- lists loaded skills
-- previews markdown
-- shows assigned agents
+- lists built-in and custom skills
+- shows source, latest version, and updated time
+- previews skill details and versions
 
 ### Credential Vaults
 
@@ -527,7 +532,7 @@ components/domain/
 
 - add `/v1/x/workspace`
 - add `/v1/x/runtime`
-- add `/v1/x/skills`
+- add `/v1/skills`
 - add `/v1/x/templates`
 - add read-only `/v1/x/vaults`, `/v1/x/memory`, `/v1/x/evals`
 - add tests for route shapes
