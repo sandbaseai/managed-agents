@@ -344,6 +344,238 @@ describe('CMA-compatible API', () => {
     });
   });
 
+  describe('PUT /v1/environments/:id', () => {
+    it('updates Claude-style environment fields', async () => {
+      const res = await app.request('/v1/environments/env_default', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: 'Cloud runner',
+          description: 'Container template for console sessions.',
+          config: {
+            hosting_type: 'cloud',
+            sandbox_provider: 'cloud',
+            network: {
+              type: 'limited',
+              allow_mcp_server_network_access: false,
+              allow_package_manager_network_access: true,
+              allowed_hosts: ['api.github.com'],
+            },
+            packages: [{ manager: 'pip', package: 'ruff==0.5.0' }],
+          },
+          metadata: { owner: 'platform' },
+        }),
+      });
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.name).toBe('Cloud runner');
+      expect(body.description).toBe('Container template for console sessions.');
+      expect(body.config.hosting_type).toBe('cloud');
+      expect(body.config.network.allowed_hosts).toEqual(['api.github.com']);
+      expect(body.config.packages[0].package).toBe('ruff==0.5.0');
+      expect(body.metadata.owner).toBe('platform');
+    });
+
+    it('returns 404 for non-existent environments', async () => {
+      const res = await app.request('/v1/environments/env_nope', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'Missing' }),
+      });
+      expect(res.status).toBe(404);
+    });
+  });
+
+  describe('Credential vaults', () => {
+    it('creates a vault and stores credential metadata without returning the secret value', async () => {
+      const vaultRes = await app.request('/v1/credential-vaults', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'Production vault' }),
+      });
+      expect(vaultRes.status).toBe(201);
+      const vault = await vaultRes.json();
+      expect(vault.id).toMatch(/^vlt_/);
+      expect(vault.credential_count).toBe(0);
+      expect(vault.credentials).toEqual([]);
+
+      const credentialRes = await app.request(`/v1/credential-vaults/${vault.id}/credentials`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: 'API token',
+          auth_type: 'environment_variable',
+          variable_name: 'MY_API_KEY',
+          value: 'sk-test-secret-value',
+          network: { type: 'limited', allowed_hosts: ['api.example.com'] },
+          injection_locations: ['request_headers'],
+        }),
+      });
+      expect(credentialRes.status).toBe(201);
+      const credential = await credentialRes.json();
+      expect(credential.id).toMatch(/^vcrd_/);
+      expect(credential.variable_name).toBe('MY_API_KEY');
+      expect(credential.value).toBeUndefined();
+      expect(credential.value_hint).toBe('••••alue');
+      expect(credential.network.allowed_hosts).toEqual(['api.example.com']);
+      expect(credential.injection_locations).toEqual(['request_headers']);
+      expect(JSON.stringify(credential)).not.toContain('sk-test-secret-value');
+
+      const storedCredential = db.prepare(
+        'SELECT secret_ciphertext, secret_nonce, secret_tag FROM credential_records WHERE id = ?',
+      ).get(credential.id) as { secret_ciphertext: string; secret_nonce: string; secret_tag: string };
+      expect(storedCredential.secret_ciphertext).toBeTruthy();
+      expect(storedCredential.secret_nonce).toBeTruthy();
+      expect(storedCredential.secret_tag).toBeTruthy();
+      expect(storedCredential.secret_ciphertext).not.toContain('sk-test-secret-value');
+
+      const listRes = await app.request('/v1/credential-vaults');
+      const list = await listRes.json();
+      const listedVault = list.data.find((item: any) => item.id === vault.id);
+      expect(listedVault.credential_count).toBe(1);
+      expect(listedVault.credentials[0].value).toBeUndefined();
+      expect(listedVault.credentials[0].value_hint).toBe('••••alue');
+    });
+
+    it('rejects non-standard credential injection locations', async () => {
+      const vaultRes = await app.request('/v1/credential-vaults', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'Strict vault' }),
+      });
+      const vault = await vaultRes.json();
+
+      const credentialRes = await app.request(`/v1/credential-vaults/${vault.id}/credentials`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          auth_type: 'bearer_token',
+          value: 'sk-test-secret-value',
+          injection_locations: ['headers'],
+        }),
+      });
+      expect(credentialRes.status).toBe(400);
+      expect((await credentialRes.json()).error.message).toContain('request_headers');
+    });
+
+    it('archives and deletes credentials within a vault', async () => {
+      const vaultRes = await app.request('/v1/credential-vaults', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'Lifecycle vault' }),
+      });
+      const vault = await vaultRes.json();
+      const credentialRes = await app.request(`/v1/credential-vaults/${vault.id}/credentials`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          auth_type: 'mcp_oauth',
+          mcp_server_url: 'https://mcp.example.com',
+        }),
+      });
+      const credential = await credentialRes.json();
+
+      const archiveRes = await app.request(`/v1/credential-vaults/${vault.id}/credentials/${credential.id}/archive`, { method: 'POST' });
+      expect(archiveRes.status).toBe(200);
+      expect((await archiveRes.json()).status).toBe('archived');
+
+      const deleteRes = await app.request(`/v1/credential-vaults/${vault.id}/credentials/${credential.id}`, { method: 'DELETE' });
+      expect(deleteRes.status).toBe(200);
+      expect((await deleteRes.json()).status).toBe('deleted');
+    });
+  });
+
+  describe('Memory stores', () => {
+    it('creates a memory store and manages memories by path', async () => {
+      const storeRes = await app.request('/v1/memory-stores', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: 'Research notes',
+          description: 'Persistent notes for agents.',
+        }),
+      });
+      expect(storeRes.status).toBe(201);
+      const store = await storeRes.json();
+      expect(store.id).toMatch(/^memstore_/);
+      expect(store.memory_count).toBe(0);
+      expect(store.memories).toEqual([]);
+
+      const memoryRes = await app.request(`/v1/memory-stores/${store.id}/memories`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          path: '/note/d',
+          content: 'ddd',
+        }),
+      });
+      expect(memoryRes.status).toBe(201);
+      const memory = await memoryRes.json();
+      expect(memory.id).toMatch(/^mem_/);
+      expect(memory.path).toBe('/note/d');
+      expect(memory.content).toBe('ddd');
+
+      const updateRes = await app.request(`/v1/memory-stores/${store.id}/memories/${memory.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: 'updated' }),
+      });
+      expect(updateRes.status).toBe(200);
+      expect((await updateRes.json()).content).toBe('updated');
+
+      const listRes = await app.request('/v1/memory-stores');
+      const list = await listRes.json();
+      const listedStore = list.data.find((item: any) => item.id === store.id);
+      expect(listedStore.memory_count).toBe(1);
+      expect(listedStore.memories[0].path).toBe('/note/d');
+
+      const deleteRes = await app.request(`/v1/memory-stores/${store.id}/memories/${memory.id}`, { method: 'DELETE' });
+      expect(deleteRes.status).toBe(200);
+      expect((await deleteRes.json()).deleted).toBe(true);
+
+      const recreateRes = await app.request(`/v1/memory-stores/${store.id}/memories`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          path: '/note/d',
+          content: 'recreated',
+        }),
+      });
+      expect(recreateRes.status).toBe(201);
+      expect((await recreateRes.json()).content).toBe('recreated');
+    });
+
+    it('rejects memory paths that are not file-like absolute paths', async () => {
+      const storeRes = await app.request('/v1/memory-stores', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'Absolute paths only' }),
+      });
+      const store = await storeRes.json();
+      const res = await app.request(`/v1/memory-stores/${store.id}/memories`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: 'note/d', content: 'ddd' }),
+      });
+      expect(res.status).toBe(400);
+
+      const rootRes = await app.request(`/v1/memory-stores/${store.id}/memories`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: '/', content: 'ddd' }),
+      });
+      expect(rootRes.status).toBe(400);
+
+      const directoryRes = await app.request(`/v1/memory-stores/${store.id}/memories`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: '/note/', content: 'ddd' }),
+      });
+      expect(directoryRes.status).toBe(400);
+    });
+  });
+
   describe('DELETE /v1/sessions/:id', () => {
     it('deletes a session and retains the event log (R9.8)', async () => {
       const createRes = await app.request('/v1/sessions', {

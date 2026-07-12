@@ -187,10 +187,91 @@ ALTER TABLE agents ADD COLUMN version INTEGER NOT NULL DEFAULT 1;
 ALTER TABLE agents ADD COLUMN archived_at TEXT;
 `;
 
+const M006_CREDENTIAL_RECORDS = `
+CREATE TABLE credential_records (
+  id TEXT PRIMARY KEY,
+  vault_id TEXT NOT NULL,
+  name TEXT NOT NULL DEFAULT '',
+  auth_type TEXT NOT NULL,
+  mcp_server_url TEXT,
+  variable_name TEXT,
+  value_hint TEXT NOT NULL DEFAULT '',
+  network TEXT NOT NULL DEFAULT '{}',
+  injection_locations TEXT NOT NULL DEFAULT '[]',
+  status TEXT NOT NULL DEFAULT 'active',
+  metadata TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  last_used_at TEXT,
+  archived_at TEXT,
+  FOREIGN KEY (vault_id) REFERENCES credential_vaults(id)
+);
+
+CREATE INDEX idx_credential_records_vault ON credential_records(vault_id, created_at DESC);
+CREATE INDEX idx_credential_records_status ON credential_records(status, created_at DESC);
+`;
+
+const M007_MEMORY_RECORDS = `
+CREATE TABLE memory_records (
+  id TEXT PRIMARY KEY,
+  store_id TEXT NOT NULL,
+  path TEXT NOT NULL,
+  content TEXT NOT NULL,
+  metadata TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  archived_at TEXT,
+  FOREIGN KEY (store_id) REFERENCES memory_stores(id),
+  UNIQUE (store_id, path)
+);
+
+CREATE INDEX idx_memory_records_store ON memory_records(store_id, path);
+CREATE INDEX idx_memory_records_updated ON memory_records(store_id, updated_at DESC);
+`;
+
+const M008_CREDENTIAL_SECRET_STORAGE = `
+ALTER TABLE credential_records ADD COLUMN secret_ciphertext TEXT NOT NULL DEFAULT '';
+ALTER TABLE credential_records ADD COLUMN secret_nonce TEXT NOT NULL DEFAULT '';
+ALTER TABLE credential_records ADD COLUMN secret_tag TEXT NOT NULL DEFAULT '';
+`;
+
+const M009_MEMORY_ACTIVE_PATH_INDEX = `
+CREATE TABLE memory_records_next (
+  id TEXT PRIMARY KEY,
+  store_id TEXT NOT NULL,
+  path TEXT NOT NULL,
+  content TEXT NOT NULL,
+  metadata TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  archived_at TEXT,
+  FOREIGN KEY (store_id) REFERENCES memory_stores(id)
+);
+
+INSERT INTO memory_records_next (
+  id, store_id, path, content, metadata, created_at, updated_at, archived_at
+)
+SELECT id, store_id, path, content, metadata, created_at, updated_at, archived_at
+FROM memory_records;
+
+DROP TABLE memory_records;
+ALTER TABLE memory_records_next RENAME TO memory_records;
+
+CREATE INDEX idx_memory_records_store ON memory_records(store_id, path);
+CREATE INDEX idx_memory_records_updated ON memory_records(store_id, updated_at DESC);
+CREATE UNIQUE INDEX idx_memory_records_active_path
+  ON memory_records(store_id, path)
+  WHERE archived_at IS NULL;
+`;
+
 export const MIGRATIONS: Migration[] = [
   { version: 1, name: '001_initial', sql: M001_INITIAL },
   { version: 2, name: '002_memory', sql: M002_MEMORY },
   { version: 3, name: '003_work_items', sql: M003_WORK_ITEMS },
   { version: 4, name: '004_console_resources', sql: M004_CONSOLE_RESOURCES },
   { version: 5, name: '005_agent_versioning', sql: M005_AGENT_VERSIONING },
+  { version: 6, name: '006_credential_records', sql: M006_CREDENTIAL_RECORDS },
+  { version: 7, name: '007_memory_records', sql: M007_MEMORY_RECORDS },
+  { version: 8, name: '008_credential_secret_storage', sql: M008_CREDENTIAL_SECRET_STORAGE },
+  { version: 9, name: '009_memory_active_path_index', sql: M009_MEMORY_ACTIVE_PATH_INDEX },
 ];
