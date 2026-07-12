@@ -4,7 +4,7 @@
  * Simulates a process crash mid-turn (a session left 'running' with an
  * unresolved tool_use) and verifies reconcileOrphans() injects a placeholder
  * tool_result and resets the session to idle so the message sequence stays
- * valid and the session is resumable.
+ * valid and the session can continue.
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -70,7 +70,7 @@ describe('Crash recovery', () => {
     expect((resultEvent!.content![0] as any).is_error).toBe(true);
   });
 
-  it('resets orphaned session to idle (paused) so it is resumable', () => {
+  it('resets orphaned session to idle (paused) so it can continue', () => {
     const sessionId = createOrphanedSession();
     manager.reconcileOrphans();
     expect(manager.get(sessionId)!.status).toBe('paused');

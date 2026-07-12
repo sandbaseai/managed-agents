@@ -2,7 +2,7 @@
 
 ## Overview
 
-This implementation plan covers the minimum viable path for managed-agents — a CMA-compatible agent runtime built with TypeScript, Hono, better-sqlite3, and Vercel AI SDK.
+This implementation plan covers the minimum viable path for managed-agents — a CMA-compatible agent runtime built with TypeScript, Hono, Node `node:sqlite`, and Vercel AI SDK.
 
 MVP scope: project setup → CMA protocol types → Agent YAML loading → Session state machine + Event_Log → Vercel AI SDK streamText → CMA-compatible API → end-to-end verification with @anthropic-ai/sdk.
 
@@ -43,8 +43,8 @@ managed-agents/
 - [ ] 1. Initialize project structure and extract CMA protocol types
   - [ ] 1.1 Set up single-package project structure
     - Create `package.json` with name `managed-agents`, type `module`, engines `node>=22`
-    - Install core dependencies: `typescript`, `hono`, `@hono/node-server`, `better-sqlite3`, `ai` (Vercel AI SDK), `@ai-sdk/openai`, `@ai-sdk/anthropic`, `yaml`, `zod`, `nanoid`
-    - Install dev dependencies: `vitest`, `fast-check`, `@types/better-sqlite3`, `@types/node`, `tsx`, `tsup`
+    - Install core dependencies: `typescript`, `hono`, `@hono/node-server`, `ai` (Vercel AI SDK), `@ai-sdk/openai`, `@ai-sdk/anthropic`, `yaml`, `zod`, `nanoid`
+    - Install dev dependencies: `vitest`, `fast-check`, `@types/node`, `tsx`, `tsup`
     - Create `tsconfig.json` (strict, ESM, paths alias `@/` → `src/`)
     - Create `vitest.config.ts`
     - Create `src/` directory structure as shown in overview

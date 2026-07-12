@@ -24,14 +24,17 @@ curl -X POST http://localhost:3000/v1/sessions \
   -H "Content-Type: application/json" \
   -d '{"agent": "echo-assistant"}'
 
-# Send a message (replace SESSION_ID)
-curl -X POST http://localhost:3000/v1/sessions/SESSION_ID/events \
+# Send a message and stream the turn (replace SESSION_ID)
+curl -N -X POST http://localhost:3000/v1/sessions/SESSION_ID/messages \
   -H "Content-Type: application/json" \
-  -d '{"type": "user.message", "content": [{"type": "text", "text": "Hello!"}]}'
+  -d '{"content": "Hello!"}'
 
 # Get events
 curl http://localhost:3000/v1/sessions/SESSION_ID/events
 ```
+
+For lower-level event-driven integrations, `POST /v1/sessions/:id/events`
+also accepts explicit `user.*` events.
 
 ## With @anthropic-ai/sdk
 

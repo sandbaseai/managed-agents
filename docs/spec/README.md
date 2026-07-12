@@ -8,6 +8,5 @@ This directory contains the design specification for the managed-agents platform
 - `architecture.md` — high-level architecture overview
 
 > Note: These specification documents are authored in Chinese as internal design
-> artifacts and are intentionally excluded from the repository's English-only
-> source policy (see the `no-chinese` CI check). All code, comments, and
-> configuration remain English-only.
+> artifacts. Public runtime docs, code comments, and configuration examples
+> should stay concise and accurate for open-source users.

@@ -11,7 +11,10 @@
  */
 
 import { Hono } from 'hono';
+import { streamSSE } from 'hono/streaming';
 import type { ServerDeps } from '../server.js';
+import type { SessionEvent } from '@/types/session.js';
+import type { ContentBlock } from '@/types/cma-protocol.js';
 
 export function sessionsRoutes(deps: ServerDeps) {
   const app = new Hono();
@@ -129,6 +132,132 @@ export function sessionsRoutes(deps: ServerDeps) {
     }
   });
 
+  // POST /:id/messages — Send a user.message and optionally stream the turn.
+  app.post('/:id/messages', async (c) => {
+    const sessionId = c.req.param('id');
+
+    let body: any;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: { type: 'invalid_request', message: 'Request body must be valid JSON' } }, 400);
+    }
+
+    const content = normalizeMessageContent(body && typeof body === 'object' ? body.content : undefined);
+    if (!content) {
+      return c.json(
+        {
+          error: {
+            type: 'invalid_request',
+            message: 'content must be a string or an array of content blocks',
+          },
+        },
+        400,
+      );
+    }
+
+    const session = sessionManager.get(sessionId);
+    if (!session) {
+      return c.json({ error: { type: 'not_found', message: 'Session not found' } }, 404);
+    }
+    if (['completed', 'failed'].includes(session.status)) {
+      return c.json({ error: { type: 'conflict', message: `Session ${sessionId} is in terminal state: ${session.status}` } }, 409);
+    }
+
+    const event = { type: 'user.message' as const, content };
+    const shouldStream = body && typeof body === 'object' ? body.stream !== false : true;
+
+    if (!shouldStream) {
+      try {
+        await sessionManager.sendEvent(sessionId, event);
+        return c.json({ accepted: true });
+      } catch (err: any) {
+        if (err.message?.includes('not found')) {
+          return c.json({ error: { type: 'not_found', message: err.message } }, 404);
+        }
+        if (err.message?.includes('terminal state')) {
+          return c.json({ error: { type: 'conflict', message: err.message } }, 409);
+        }
+        return c.json({ error: { type: 'internal_error', message: err.message } }, 500);
+      }
+    }
+
+    return streamSSE(c, async (stream) => {
+      let closed = false;
+      const queue: Array<SessionEvent | undefined> = [];
+      let wake: ((event: SessionEvent | undefined) => void) | undefined;
+
+      const push = (event: SessionEvent | undefined) => {
+        if (wake) {
+          const resolve = wake;
+          wake = undefined;
+          resolve(event);
+        } else {
+          queue.push(event);
+        }
+      };
+
+      const nextEvent = async () => {
+        const hasQueued = queue.length > 0;
+        const queued = queue.shift();
+        if (hasQueued) return queued;
+        return new Promise<SessionEvent | undefined>((resolve) => {
+          wake = resolve;
+        });
+      };
+
+      const unsubscribe = sessionManager.subscribe(sessionId, push);
+      stream.onAbort(() => {
+        closed = true;
+        unsubscribe();
+        push(undefined);
+      });
+
+      const writeEvent = async (sessionEvent: SessionEvent) => {
+        const transient = sessionEvent.seq === 0;
+        await stream.writeSSE({
+          ...(transient ? {} : { id: String(sessionEvent.seq) }),
+          event: sessionEvent.type,
+          data: JSON.stringify({
+            id: sessionEvent.id,
+            seq: sessionEvent.seq,
+            type: sessionEvent.type,
+            content: sessionEvent.content ?? null,
+            ...(('delta' in sessionEvent) ? { delta: (sessionEvent as any).delta } : {}),
+            ...(('message_id' in sessionEvent) ? { message_id: (sessionEvent as any).message_id } : {}),
+            processed_at: sessionEvent.processedAt?.toISOString() ?? null,
+            parent_event_id: sessionEvent.parentEventId ?? null,
+          }),
+        });
+      };
+
+      try {
+        await sessionManager.sendEvent(sessionId, event);
+
+        while (!closed) {
+          const sessionEvent = await nextEvent();
+          if (!sessionEvent) break;
+          await writeEvent(sessionEvent);
+
+          if (isMessageStreamTerminalEvent(sessionEvent)) {
+            break;
+          }
+        }
+      } catch (err: any) {
+        await stream.writeSSE({
+          event: 'session.error',
+          data: JSON.stringify({
+            type: 'session.error',
+            content: [{ type: 'text', text: err.message ?? String(err) }],
+          }),
+        });
+      } finally {
+        closed = true;
+        unsubscribe();
+      }
+    });
+  });
+
   // GET /:id/events — List events (paginated)
   app.get('/:id/events', (c) => {
     const sessionId = c.req.param('id');
@@ -201,4 +330,22 @@ function sessionToResponse(session: any) {
     created_at: session.createdAt instanceof Date ? session.createdAt.toISOString() : session.createdAt,
     updated_at: session.updatedAt instanceof Date ? session.updatedAt.toISOString() : session.updatedAt,
   };
+}
+
+function normalizeMessageContent(content: unknown): ContentBlock[] | null {
+  if (typeof content === 'string') {
+    return [{ type: 'text', text: content }];
+  }
+  if (Array.isArray(content) && content.every((block) => block && typeof block === 'object')) {
+    return content as ContentBlock[];
+  }
+  return null;
+}
+
+function isMessageStreamTerminalEvent(event: SessionEvent): boolean {
+  return (
+    event.type === 'session.status_idle' ||
+    event.type === 'session.status_terminated' ||
+    event.type === 'session.error'
+  );
 }

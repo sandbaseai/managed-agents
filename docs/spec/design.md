@@ -1,8 +1,10 @@
-# Design Document — AgentBox Local Agent Platform
+# Design Document — managed-agents Local Agent Platform
 
 ## Overview
 
-AgentBox 是一个开源的本地 Agent 运行平台，兼容 Claude Managed Agents (CMA) 协议，支持任意模型（Ollama/vLLM/Claude/GPT），提供声明式多 Agent 编排、MCP 工具集成、场景模板系统和精美 Web Dashboard。
+managed-agents 是一个开源的本地 Agent 运行平台，兼容 Claude Managed Agents (CMA) 核心协议，支持任意模型（Ollama/vLLM/Claude/GPT），提供声明式多 Agent 编排、MCP 工具集成、场景模板系统和内嵌最小 Web Dashboard。
+
+**Dashboard 范围决策：v1 保留 dependency-free 的内嵌最小 Dashboard，用于本地对话、Session/Agent 查看和事件流观察；React/Vite/shadcn Console 延后到 v1.1/v2。**
 
 **产品边界：Agent 执行层，非工作流编排层。**
 
@@ -21,12 +23,12 @@ AgentBox 是一个开源的本地 Agent 运行平台，兼容 Claude Managed Age
 | 层 | 技术 | 选型理由 |
 |---|---|---|
 | HTTP 服务器 | Hono | 轻量、Edge-ready、中间件丰富 |
-| Web UI | React + Vite + shadcn/ui + TanStack Query | 生态成熟、HMR 快、静态打包小；参考 OMA Console 设计风格 |
-| 数据库 | better-sqlite3 | 零配置、单文件、同步 API 简化并发 |
+| Web UI | 内嵌 HTML/CSS/JS（v1）；React + Vite + shadcn/ui（v1.1/v2） | v1 降低依赖和发布复杂度；后续可升级为完整 Console |
+| 数据库 | Node `node:sqlite` | Node 22+ 内置 SQLite，减少原生依赖安装问题 |
 | AI SDK | Vercel AI SDK | 统一多模型 streaming、内置 maxSteps 循环 |
-| MCP 客户端 | @modelcontextprotocol/sdk | 官方实现、协议完整 |
+| MCP 客户端 | Vercel AI SDK experimental MCP helpers | 与当前 engine 集成简单；标记为实验性能力 |
 | CLI | Commander.js | Node.js CLI 标准选择 |
-| 运行时 | Node.js (>=18) + TypeScript | 全栈统一、生态丰富 |
+| 运行时 | Node.js (>=22) + TypeScript | 使用 Node 内置 SQLite 和现代 Web API |
 
 **协议选型：**
 
@@ -52,10 +54,10 @@ AgentBox 是一个开源的本地 Agent 运行平台，兼容 Claude Managed Age
 
 ```mermaid
 graph TB
-    subgraph "AgentBox 单进程"
+    subgraph "managed-agents 单进程"
         CLI[CLI - Commander.js]
         API[REST API - Hono]
-        WebUI[Web Dashboard - React/Vite]
+        WebUI[Minimal Web Dashboard - embedded HTML]
         
         CLI --> Core
         API --> Core
@@ -76,7 +78,7 @@ graph TB
         end
 
         subgraph Storage["Storage Layer"]
-            SQLite[(SQLite - better-sqlite3)]
+            SQLite[(SQLite - node:sqlite)]
         end
 
         Core --> Plugins
@@ -467,8 +469,8 @@ my-project/
 ├── skills/                    # Skill 定义文件 (SKILL.md 格式)
 │   ├── code-review.md
 │   └── web-search.md
-├── agentbox.config.yaml       # 项目配置（模型注册表、环境、Memory 等）
-└── .agentbox/                 # 运行时数据（gitignore）
+├── managed-agents.config.yaml       # 项目配置（模型注册表、环境、Memory 等）
+└── .managed-agents/                 # 运行时数据（gitignore）
     ├── data.db                # SQLite 数据库
     └── sandbox/               # Local sandbox 工作目录
         └── <session_id>/
@@ -476,7 +478,7 @@ my-project/
 
 ### 5. 配置文件格式
 
-**agentbox.config.yaml：**
+**managed-agents.config.yaml：**
 
 ```yaml
 # 模型注册表
@@ -511,7 +513,7 @@ memory:
     api_key: ${MEM0_API_KEY}
 
 # 模板仓库（可选）
-template_repo: https://github.com/agentbox-ai/templates
+template_repo: https://github.com/sandbaseai/managed-agents-templates
 
 # 环境级覆盖
 overrides:
@@ -978,7 +980,7 @@ Error: [TYPE] reason
 
 Example:
 Error: [AGENT_LOAD] agents/broken.yaml - missing required field 'model' at line 3
-  → Add a 'model' field referencing a registered model name (see agentbox.config.yaml)
+  → Add a 'model' field referencing a registered model name (see managed-agents.config.yaml)
 ```
 
 ### 重试策略明细

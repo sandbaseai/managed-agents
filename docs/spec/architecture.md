@@ -1,4 +1,4 @@
-# AgentBox 完整架构图
+# managed-agents 完整架构图
 
 ## 1. 系统总体架构
 
@@ -12,7 +12,7 @@ graph TB
     subgraph Entry["入口层"]
         CLI[CLI<br/>Commander.js]
         API[REST API<br/>Hono · CMA 兼容]
-        Dashboard[Web Dashboard<br/>React + Vite]
+        Dashboard[Minimal Web Dashboard<br/>embedded HTML]
     end
     
     User --> CLI
@@ -73,7 +73,7 @@ graph TB
     subgraph Storage["存储层"]
         SQLite[(SQLite<br/>data.db)]
         FS[文件系统<br/>agents/ · skills/]
-        Sandbox[Sandbox 工作目录<br/>.agentbox/sandbox/]
+        Sandbox[Sandbox 工作目录<br/>.managed-agents/sandbox/]
     end
     
     EL --> SQLite
@@ -296,12 +296,12 @@ graph LR
     subgraph "用户项目（Git 管理）"
         A[agents/*.yaml]
         S[skills/*.md]
-        C[agentbox.config.yaml]
+        C[managed-agents.config.yaml]
     end
     
     subgraph "运行时数据（.gitignore）"
-        DB[(.agentbox/data.db)]
-        SB[.agentbox/sandbox/<br/>session-id/]
+        DB[(.managed-agents/data.db)]
+        SB[.managed-agents/sandbox/<br/>session-id/]
     end
     
     subgraph "外部"

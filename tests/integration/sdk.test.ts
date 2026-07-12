@@ -91,6 +91,30 @@ describe('Client SDK', () => {
     expect(types).toContain('user.message');
   });
 
+  it('sends a message through the convenience endpoint without streaming', async () => {
+    const s = await client.sessions.create({ agent: 'echo' });
+    const ack = await client.sessions.message(s.id, 'hi via messages', { stream: false });
+    expect(ack.accepted).toBe(true);
+
+    await new Promise((r) => setTimeout(r, 60));
+    const { data } = await client.sessions.events(s.id);
+    expect(data.map((e) => e.type)).toContain('user.message');
+  });
+
+  it('streams a message through the convenience endpoint', async () => {
+    const s = await client.sessions.create({ agent: 'echo' });
+    const received: string[] = [];
+
+    for await (const ev of client.sessions.message(s.id, 'go via messages')) {
+      received.push(ev.type);
+      if (ev.type === 'session.status_idle') break;
+    }
+
+    expect(received).toContain('user.message');
+    expect(received).toContain('agent.message');
+    expect(received).toContain('session.status_idle');
+  });
+
   it('tails the live stream and receives the agent reply', async () => {
     const s = await client.sessions.create({ agent: 'echo' });
 

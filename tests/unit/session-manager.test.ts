@@ -128,21 +128,12 @@ describe('Session Manager', () => {
     });
   });
 
-  describe('resume', () => {
-    it('throws for non-existent session', () => {
-      expect(() => manager.resume('sess_nonexist')).toThrow('Session not found');
-    });
-
-    it('throws for terminal sessions', async () => {
+  describe('automatic continuation', () => {
+    it('keeps non-terminal sessions queryable for the next user event', () => {
       const session = manager.create({ agent: 'agent_test' });
-      await manager.stop(session.id); // → completed
-      expect(() => manager.resume(session.id)).toThrow('Cannot resume terminal session');
-    });
-
-    it('returns session for non-terminal states', () => {
-      const session = manager.create({ agent: 'agent_test' });
-      const resumed = manager.resume(session.id);
-      expect(resumed.id).toBe(session.id);
+      const current = manager.get(session.id);
+      expect(current!.status).toBe('queued');
+      expect(current!.id).toBe(session.id);
     });
   });
 });

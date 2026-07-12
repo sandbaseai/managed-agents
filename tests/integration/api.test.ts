@@ -10,6 +10,8 @@ import { tmpdir } from 'node:os';
 import { Database } from '@/core/db/database.js';
 import { SessionManager } from '@/core/session/session-manager.js';
 import { createServer } from '@/api/server.js';
+import type { Session, SessionEvent } from '@/types/session.js';
+import type { UserEvent } from '@/types/cma-protocol.js';
 
 describe('CMA-compatible API', () => {
   let app: ReturnType<typeof createServer>;
@@ -25,6 +27,19 @@ describe('CMA-compatible API', () => {
     db.exec(`INSERT INTO agents (id, name, definition) VALUES ('agent_echo-agent', 'echo-agent', '{}')`);
 
     const sessionManager = new SessionManager(db);
+    sessionManager.setExecutor({
+      async *execute(session: Session, event: UserEvent): AsyncIterable<SessionEvent> {
+        const text = event.content?.find((block: any) => block.type === 'text')?.text ?? '';
+        yield {
+          id: 'sevt_fake_agent_message',
+          sessionId: session.id,
+          seq: 0,
+          type: 'agent.message',
+          content: [{ type: 'text', text: `echo: ${text}` }],
+          createdAt: new Date(),
+        };
+      },
+    });
 
     app = createServer({
       sessionManager,
@@ -198,6 +213,78 @@ describe('CMA-compatible API', () => {
         body: JSON.stringify({ type: 'user.message', content: [{ type: 'text', text: 'hi' }] }),
       });
       expect(res.status).toBe(404);
+    });
+  });
+
+  describe('POST /v1/sessions/:id/messages', () => {
+    async function createSession() {
+      const res = await app.request('/v1/sessions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ agent: 'echo-agent' }),
+      });
+      return (await res.json()).id as string;
+    }
+
+    it('accepts a string message without streaming', async () => {
+      const id = await createSession();
+      const res = await app.request(`/v1/sessions/${id}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: 'hi', stream: false }),
+      });
+
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ accepted: true });
+    });
+
+    it('rejects invalid message content with 400', async () => {
+      const id = await createSession();
+      const res = await app.request(`/v1/sessions/${id}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(null),
+      });
+
+      expect(res.status).toBe(400);
+    });
+
+    it('streams a message turn by default', async () => {
+      const id = await createSession();
+      const res = await app.request(`/v1/sessions/${id}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: [{ type: 'text', text: 'hello' }] }),
+      });
+
+      expect(res.status).toBe(200);
+      expect(res.headers.get('content-type')).toContain('text/event-stream');
+      const text = await res.text();
+      expect(text).toContain('event: user.message');
+      expect(text).toContain('event: agent.message');
+      expect(text).toContain('echo: hello');
+      expect(text).toContain('event: session.status_idle');
+    });
+
+    it('returns 404 for messages on non-existent sessions', async () => {
+      const res = await app.request('/v1/sessions/sess_nope/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: 'hi' }),
+      });
+      expect(res.status).toBe(404);
+    });
+
+    it('returns 409 for messages on terminal sessions', async () => {
+      const id = await createSession();
+      await app.request(`/v1/sessions/${id}/stop`, { method: 'POST' });
+
+      const res = await app.request(`/v1/sessions/${id}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: 'hi' }),
+      });
+      expect(res.status).toBe(409);
     });
   });
 

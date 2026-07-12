@@ -2,7 +2,8 @@
  * Workspace Snapshot Manager (Requirement 9.11)
  *
  * Periodically (or on demand) archives a Sandbox working directory to a tar.gz
- * so a Session can restore its file-system contents on resume. Event_Log
+ * so a Session can restore its file-system contents when it continues after
+ * its sandbox has been re-provisioned. Event_Log
  * replay restores the conversation; snapshots restore the actual bytes.
  *
  * Snapshots are recorded in the `snapshots` table. This uses the `tar` CLI
