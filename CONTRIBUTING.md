@@ -51,7 +51,7 @@ The current required checks are:
 - Prefer existing project patterns over new abstractions.
 - Keep public APIs stable unless the change is explicitly API work.
 - Add focused tests when changing runtime behavior, protocol handling, sandboxing, or session lifecycle.
-- Documentation may include Chinese design notes under `.kiro/` and `docs/spec/`; public README and runtime-facing docs should stay concise and accurate.
+- Public documentation should be written in English and stay focused on release-facing project behavior.
 
 ## Commit Message Format
 

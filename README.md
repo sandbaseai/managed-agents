@@ -1,22 +1,22 @@
 # managed-agents
 
-Local-first agent runtime inspired by Claude Managed Agents. Run stateful agents on your own machine with YAML definitions, MCP tools, skills, templates, SSE session events, and a minimal built-in dashboard.
+Local-first runtime for stateful managed agents. Run agents on your own machine with YAML definitions, MCP tools, skills, templates, SSE session events, and a minimal built-in dashboard.
 
-> A small, hackable runtime for CMA-style agents: local execution, portable config, open-source internals.
+> A small, hackable runtime for stateful agents: local execution, portable config, and open-source code.
 
 ## Status
 
-This project is pre-1.0. The core runtime is usable, but the public API surface is still being aligned with Claude Managed Agents.
+This project is pre-1.0. The core runtime is usable, but the public API surface is still being stabilized.
 
 | Area | Status | Notes |
 | --- | --- | --- |
 | Agent YAML loading | Stable | Agents live in `agents/*.yaml`. |
 | Session/event runtime | Stable | Sessions persist history and stream events over SSE. |
 | Local sandbox | Stable | Local subprocess backend with workspace path isolation. |
-| Models | Stable | OpenAI-compatible and Anthropic providers through Vercel AI SDK. |
+| Models | Stable | Provider registry for local and hosted model APIs. |
 | MCP, skills, templates | Experimental | Implemented, still expanding compatibility coverage. |
 | Docker/self-hosted sandboxes | Experimental | Available for integration testing and advanced setups. |
-| CMA API compatibility | In progress | Core event/session endpoints and `POST /v1/sessions/:id/messages` exist; official compatibility coverage is still expanding. |
+| Managed-agent API compatibility | In progress | Core event/session endpoints and `POST /v1/sessions/:id/messages` exist; compatibility coverage is still expanding. |
 | Dashboard | Minimal | Built-in dependency-free HTML dashboard, not a full React console. |
 
 ## Quick Start
@@ -76,13 +76,13 @@ managed-agents template install <template-name-or-path>
 
 ## API Shape
 
-The runtime exposes CMA-style session and event endpoints. The stable path today is:
+The runtime exposes session and event endpoints for managed-agent clients. The stable path today is:
 
 1. Create or select a session.
 2. Send user events to the session.
 3. Subscribe to the session event stream.
 
-The project is intentionally conservative about compatibility claims. It aims to support common Claude Managed Agents client patterns, but it should not yet be treated as a drop-in implementation of every CMA endpoint.
+The project is intentionally conservative about compatibility claims. It supports common session and event patterns, but it should not yet be treated as a complete implementation of every managed-agent endpoint.
 
 ## Project Layout
 
