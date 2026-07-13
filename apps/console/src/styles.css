@@ -1161,6 +1161,78 @@ tr[role="button"]:hover td,
   color: var(--text);
 }
 
+.compactSelect {
+  min-height: 38px;
+  min-width: 150px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0 36px 0 12px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 620;
+}
+
+.runtimeLogPanel {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.runtimeStatus {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--surface-muted);
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.runtimeStatus.error {
+  color: var(--danger);
+}
+
+.runtimeLogList {
+  max-height: 420px;
+  overflow: auto;
+  background: #171716;
+  color: #f2f2ef;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.runtimeLogLine {
+  display: grid;
+  grid-template-columns: 130px minmax(0, 1fr);
+  gap: 12px;
+  padding: 8px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.runtimeLogLine:last-child {
+  border-bottom: 0;
+}
+
+.runtimeLogLine.warn .runtimeLogMeta {
+  color: #ffd18a;
+}
+
+.runtimeLogLine.error .runtimeLogMeta {
+  color: #ff9a9a;
+}
+
+.runtimeLogMeta {
+  color: #a9a59f;
+  white-space: nowrap;
+}
+
+.runtimeLogMessage {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: #f2f2ef;
+}
+
 .filesBrowser {
   display: grid;
   grid-template-columns: minmax(0, 1.15fr) minmax(360px, 0.85fr);
@@ -3586,8 +3658,14 @@ select:focus {
 
   .toolbar .searchBox,
   .toolbarActions,
-  .filterSelect {
+  .filterSelect,
+  .compactSelect {
     width: 100%;
+  }
+
+  .runtimeLogLine {
+    grid-template-columns: 1fr;
+    gap: 2px;
   }
 
   .toolbarActions .filterButton {

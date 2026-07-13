@@ -260,6 +260,16 @@ export type Runtime = {
   auth_enabled: boolean;
 };
 
+export type RuntimeLogLevel = 'debug' | 'info' | 'warn' | 'error';
+
+export type RuntimeLogEntry = {
+  level: RuntimeLogLevel;
+  time: string;
+  msg: string;
+  line: string;
+  [key: string]: unknown;
+};
+
 export type Workspace = {
   type: 'workspace';
   name: string;

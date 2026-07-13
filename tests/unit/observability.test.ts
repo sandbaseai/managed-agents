@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { createLogger } from '@/core/observability/logger.js';
+import { createLogger, InMemoryLogStore } from '@/core/observability/logger.js';
 import { Metrics } from '@/core/observability/metrics.js';
 
 describe('Logger', () => {
@@ -35,6 +35,31 @@ describe('Logger', () => {
     log.info('readable', { k: 'v' });
     expect(lines[0]).toContain('INFO readable');
     expect(lines[0]).toContain('"k":"v"');
+  });
+
+  it('captures logs in an in-memory ring buffer', () => {
+    const store = new InMemoryLogStore(2);
+    const log = createLogger({ level: 'debug', logStore: store, write: () => undefined });
+    log.info('first');
+    log.warn('second', { component: 'runtime' });
+    log.error('third');
+
+    const all = store.list();
+    expect(all.map((entry) => entry.msg)).toEqual(['second', 'third']);
+    expect(all[0].line).toContain('second');
+    expect(store.list({ level: 'error' }).map((entry) => entry.msg)).toEqual(['third']);
+    expect(store.list({ query: 'runtime' }).map((entry) => entry.msg)).toEqual(['second']);
+  });
+
+  it('shares the in-memory sink with child loggers', () => {
+    const store = new InMemoryLogStore();
+    const log = createLogger({ level: 'debug', logStore: store, write: () => undefined }).child({ sessionId: 's1' });
+    log.info('child-event');
+
+    expect(store.list()[0]).toMatchObject({
+      msg: 'child-event',
+      sessionId: 's1',
+    });
   });
 });
 

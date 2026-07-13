@@ -22,7 +22,7 @@ import type { SessionManager } from '@/core/session/session-manager.js';
 import type { AgentDefinition } from '@/types/agent.js';
 import { workerRoutes } from './routes/worker.js';
 import type { WorkQueue } from '@/sandbox/self-hosted-provider.js';
-import type { Logger } from '@/core/observability/logger.js';
+import type { Logger, LogStore } from '@/core/observability/logger.js';
 import type { Metrics } from '@/core/observability/metrics.js';
 import type { Skill } from '@/core/skills/loader.js';
 import type { Database } from '@/core/db/database.js';
@@ -66,8 +66,12 @@ export interface ServerDeps {
   consoleRoot?: string | null;
   /** Optional structured logger for request logging. */
   logger?: Logger;
+  /** Optional in-process log store (exposed at /v1/x/logs). */
+  logStore?: LogStore;
   /** Optional metrics registry (exposed at /v1/x/metrics). */
   metrics?: Metrics;
+  /** Optional runtime restart hook (exposed at /v1/x/restart). */
+  restart?: () => Promise<void> | void;
   /** Optional work queue for the self_hosted sandbox worker endpoints (R9.14). */
   workQueue?: WorkQueue;
 }

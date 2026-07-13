@@ -243,6 +243,7 @@ The Console provides a local dashboard for:
 - Uploading skills
 - Creating and archiving local API keys
 - Reviewing local runtime and workspace configuration
+- Restarting the local runtime and viewing recent structured runtime logs
 
 ## CLI
 
@@ -504,6 +505,10 @@ Run the runtime and Console during development:
 npm run dev
 npm run dev:console
 ```
+
+The Local Runtime page in the Console can restart the CLI-managed server and
+display the current process log buffer. The same controls are available through
+`POST /v1/x/restart` and `GET /v1/x/logs`.
 
 ## Release Checks
 

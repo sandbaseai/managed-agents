@@ -11,6 +11,7 @@ import { Database } from '@/core/db/database.js';
 import { SessionManager } from '@/core/session/session-manager.js';
 import { createServer } from '@/api/server.js';
 import { loadSkills } from '@/core/skills/loader.js';
+import { createLogger, InMemoryLogStore } from '@/core/observability/logger.js';
 import type { Session, SessionEvent } from '@/types/session.js';
 import type { UserEvent } from '@/types/cma-protocol.js';
 
@@ -21,6 +22,8 @@ describe('Managed Agents API', () => {
   let dataDir: string;
   let agentsDir: string;
   let skillsDir: string;
+  let logStore: InMemoryLogStore;
+  let restartRequested = false;
 
   beforeAll(() => {
     tmpDir = mkdtempSync(join(tmpdir(), 'ma-api-test-'));
@@ -64,6 +67,10 @@ describe('Managed Agents API', () => {
       },
     });
 
+    logStore = new InMemoryLogStore();
+    const logger = createLogger({ level: 'debug', logStore, write: () => undefined });
+    logger.info('test_runtime_ready', { component: 'integration' });
+
     app = createServer({
       db,
       sessionManager,
@@ -96,6 +103,12 @@ describe('Managed Agents API', () => {
         authEnabled: false,
       },
       skills: loadSkills(skillsDir).skills,
+      logger,
+      logStore,
+      restart: () => {
+        restartRequested = true;
+        logger.warn('test_restart_called', { component: 'integration' });
+      },
       reloadAgents: () => ({ agents: [], errors: [] }),
     });
   });
@@ -612,6 +625,28 @@ describe('Managed Agents API', () => {
       expect(skills.data.some((item: any) => item.id === 'pptx' && item.source === 'anthropic')).toBe(true);
       expect(skills.data.some((item: any) => item.id === 'skill_research' && item.source === 'custom')).toBe(true);
       expect(skills.data.every((item: any) => item.type === 'skill')).toBe(true);
+    });
+
+    it('exposes recent runtime logs through the extension API', async () => {
+      const { res, body } = await getJson('/v1/x/logs?limit=10&q=test_runtime_ready');
+      expect(res.status).toBe(200);
+      expectPage(body);
+      expect(body.data.some((entry: any) => entry.msg === 'test_runtime_ready')).toBe(true);
+      expect(body.data[0]).toHaveProperty('line');
+
+      const warnOnly = await getJson('/v1/x/logs?level=warn&limit=10');
+      expect(warnOnly.res.status).toBe(200);
+      expect(warnOnly.body.data.every((entry: any) => ['warn', 'error'].includes(entry.level))).toBe(true);
+    });
+
+    it('schedules runtime restart through the extension API', async () => {
+      restartRequested = false;
+      const { res, body } = await postJson('/v1/x/restart', {});
+      expect(res.status).toBe(202);
+      expect(body).toMatchObject({ restarting: true, status: 'scheduled' });
+      await new Promise((resolve) => setTimeout(resolve, 80));
+      expect(restartRequested).toBe(true);
+      expect(logStore.list({ query: 'test_restart_called' })).toHaveLength(1);
     });
 
     it('creates, retrieves, lists, and deletes skills through /v1/skills', async () => {
