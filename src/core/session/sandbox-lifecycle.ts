@@ -1,5 +1,4 @@
-import type { AgentDefinition } from '@/types/agent.js';
-import type { SandboxProvider, SandboxInstance, SandboxProviderType } from '@/types/sandbox.js';
+import type { SandboxProvider, SandboxInstance, SandboxProviderType, EnvironmentConfig } from '@/types/sandbox.js';
 import type { Session } from '@/types/session.js';
 import type { SandboxProviderRegistry } from '@/sandbox/registry.js';
 import type { SnapshotManager } from './snapshot-manager.js';
@@ -7,8 +6,7 @@ import type { SnapshotManager } from './snapshot-manager.js';
 export interface SandboxLifecycleDeps {
   sandboxProvider: SandboxProvider;
   sandboxRegistry?: SandboxProviderRegistry;
-  resolveEnvProviderType?: (envName: string) => SandboxProviderType | undefined;
-  resolveEnvSnapshot?: (envName: string) => boolean;
+  resolveEnvironmentConfig?: (environmentId: string) => EnvironmentConfig | undefined;
   snapshots?: SnapshotManager;
 }
 
@@ -17,19 +15,15 @@ export class SandboxLifecycle {
 
   constructor(private readonly deps: SandboxLifecycleDeps) {}
 
-  async getOrProvision(session: Session, agent: AgentDefinition): Promise<SandboxInstance> {
+  async getOrProvision(session: Session): Promise<SandboxInstance> {
     const existing = this.sandboxes.get(session.id);
     if (existing) return existing;
 
-    const providerType = this.resolveProviderType(agent);
-    const provider = this.resolveProvider(providerType);
-    const sandbox = await provider.provision(session.id, {
-      name: agent.environment ?? 'local',
-      sandbox_provider: providerType,
-      timeout: 300,
-    });
+    const envConfig = this.resolveEnvironmentConfig(session);
+    const provider = this.resolveProvider(envConfig.sandbox_provider);
+    const sandbox = await provider.provision(session.id, envConfig);
 
-    if (this.snapshotsEnabled(agent) && this.deps.snapshots && sandbox.hostWorkDir) {
+    if (this.snapshotsEnabled(envConfig) && this.deps.snapshots && sandbox.hostWorkDir) {
       try {
         this.deps.snapshots.restoreLatest(session.id, sandbox.hostWorkDir);
       } catch {
@@ -41,8 +35,9 @@ export class SandboxLifecycle {
     return sandbox;
   }
 
-  snapshotAfterTurn(session: Session, agent: AgentDefinition, sandbox: SandboxInstance): void {
-    if (this.snapshotsEnabled(agent) && this.deps.snapshots && sandbox.hostWorkDir) {
+  snapshotAfterTurn(session: Session, sandbox: SandboxInstance): void {
+    const envConfig = this.resolveEnvironmentConfig(session);
+    if (this.snapshotsEnabled(envConfig) && this.deps.snapshots && sandbox.hostWorkDir) {
       try {
         this.deps.snapshots.create(session.id, sandbox.hostWorkDir);
       } catch {
@@ -63,16 +58,16 @@ export class SandboxLifecycle {
     }
   }
 
-  snapshotsEnabled(agent: AgentDefinition): boolean {
-    return !!(this.deps.resolveEnvSnapshot && agent.environment && this.deps.resolveEnvSnapshot(agent.environment));
+  snapshotsEnabled(envConfig: EnvironmentConfig): boolean {
+    return envConfig.snapshot?.enabled === true;
   }
 
-  private resolveProviderType(agent: AgentDefinition): SandboxProviderType {
-    if (this.deps.resolveEnvProviderType && agent.environment) {
-      const type = this.deps.resolveEnvProviderType(agent.environment);
-      if (type) return type;
-    }
-    return 'local';
+  private resolveEnvironmentConfig(session: Session): EnvironmentConfig {
+    return this.deps.resolveEnvironmentConfig?.(session.environmentId) ?? {
+      name: session.environmentId || 'local',
+      sandbox_provider: 'local',
+      timeout: 300,
+    };
   }
 
   private resolveProvider(type: SandboxProviderType): SandboxProvider {

@@ -202,6 +202,9 @@ describe('Managed Agents API', () => {
 
       const detail = await app.request(`/v1/sessions/${body.id}`);
       expect(JSON.stringify(await detail.json())).not.toContain('ghp_super_secret_token');
+      const stored = db.prepare('SELECT resources FROM sessions WHERE id = ?').get(body.id) as { resources: string };
+      expect(stored.resources).not.toContain('ghp_super_secret_token');
+      expect(stored.resources).toContain('encrypted_secret');
     });
 
     it('rejects session resources that do not reference existing workspace resources', async () => {
@@ -813,7 +816,6 @@ description: Uploaded from a compressed package.
   describe('PUT /v1/environments/:id', () => {
     it('creates, gets, and archives environment resources', async () => {
       const { res, body } = await postJson('/v1/environments', {
-        id: 'env_contract_runner',
         name: 'Contract runner',
         description: 'Configuration template for sessions and code execution.',
         config: {
@@ -831,7 +833,7 @@ description: Uploaded from a compressed package.
       });
 
       expect(res.status).toBe(201);
-      expect(body.id).toBe('env_contract_runner');
+      expect(body.id).toMatch(/^env_/);
       expect(body.type).toBe('environment');
       expect(body.status).toBe('active');
       expect(body.hosting_type).toBe('self_hosted');
@@ -840,20 +842,29 @@ description: Uploaded from a compressed package.
       expect(body.packages[0].package).toBe('pytest==8.3.4');
       expect(body.config.network.allowed_hosts).toEqual(['api.example.com']);
 
-      const getRes = await app.request('/v1/environments/env_contract_runner');
+      const getRes = await app.request(`/v1/environments/${body.id}`);
       expect(getRes.status).toBe(200);
       expect((await getRes.json()).metadata.tier).toBe('qa');
 
-      const archiveRes = await app.request('/v1/environments/env_contract_runner/archive', { method: 'POST' });
+      const archiveRes = await app.request(`/v1/environments/${body.id}/archive`, { method: 'POST' });
       expect(archiveRes.status).toBe(200);
       expect((await archiveRes.json()).status).toBe('archived');
+
+      const getArchived = await app.request(`/v1/environments/${body.id}`);
+      expect(getArchived.status).toBe(404);
     });
 
-    it('rejects duplicate environment ids with a conflict', async () => {
-      await postJson('/v1/environments', { id: 'env_duplicate_contract', name: 'Duplicate contract' });
-      const { res, body } = await postJson('/v1/environments', { id: 'env_duplicate_contract', name: 'Duplicate contract' });
-      expect(res.status).toBe(409);
-      expect(body.error.type).toBe('conflict');
+    it('ignores client-supplied environment ids', async () => {
+      const first = await postJson('/v1/environments', { id: 'env_duplicate_contract', name: 'Duplicate contract' });
+      const second = await postJson('/v1/environments', { id: 'env_duplicate_contract', name: 'Duplicate contract' });
+
+      expect(first.res.status).toBe(201);
+      expect(second.res.status).toBe(201);
+      expect(first.body.id).toMatch(/^env_/);
+      expect(second.body.id).toMatch(/^env_/);
+      expect(first.body.id).not.toBe('env_duplicate_contract');
+      expect(second.body.id).not.toBe('env_duplicate_contract');
+      expect(first.body.id).not.toBe(second.body.id);
     });
 
     it('generates environment ids and allows duplicate display names', async () => {
@@ -907,7 +918,6 @@ description: Uploaded from a compressed package.
 
     it('accepts standard top-level environment fields', async () => {
       const { res, body } = await postJson('/v1/environments', {
-        id: 'env_standard_top_level',
         name: 'Standard top level',
         description: 'Uses the same shape as the Console create form.',
         hosting_type: 'cloud',
@@ -1005,6 +1015,14 @@ description: Uploaded from a compressed package.
       const archiveVaultRes = await app.request(`/v1/credential-vaults/${vault.id}/archive`, { method: 'POST' });
       expect(archiveVaultRes.status).toBe(200);
       expect((await archiveVaultRes.json()).status).toBe('archived');
+
+      const archivedDetailRes = await app.request(`/v1/credential-vaults/${vault.id}`);
+      expect(archivedDetailRes.status).toBe(404);
+      const archivedCredentialCreate = await postJson(`/v1/credential-vaults/${vault.id}/credentials`, {
+        auth_type: 'mcp_oauth',
+        mcp_server_url: 'https://mcp.example.com',
+      });
+      expect(archivedCredentialCreate.res.status).toBe(404);
     });
 
     it('creates a vault and stores credential metadata without returning the secret value', async () => {
@@ -1024,6 +1042,7 @@ description: Uploaded from a compressed package.
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: 'API token',
+          id: 'vcrd_client_supplied',
           auth_type: 'environment_variable',
           variable_name: 'MY_API_KEY',
           value: 'sk-test-secret-value',
@@ -1034,6 +1053,7 @@ description: Uploaded from a compressed package.
       expect(credentialRes.status).toBe(201);
       const credential = await credentialRes.json();
       expect(credential.id).toMatch(/^vcrd_/);
+      expect(credential.id).not.toBe('vcrd_client_supplied');
       expect(credential.variable_name).toBe('MY_API_KEY');
       expect(credential.value).toBeUndefined();
       expect(credential.value_hint).toBe('••••alue');
@@ -1058,13 +1078,15 @@ description: Uploaded from a compressed package.
     });
 
     it('allows duplicate credential vault display names', async () => {
-      const first = await postJson('/v1/credential-vaults', { name: 'Shared credentials' });
-      const second = await postJson('/v1/credential-vaults', { name: 'Shared credentials' });
+      const first = await postJson('/v1/credential-vaults', { id: 'vlt_client_supplied', name: 'Shared credentials' });
+      const second = await postJson('/v1/credential-vaults', { id: 'vlt_client_supplied', name: 'Shared credentials' });
 
       expect(first.res.status).toBe(201);
       expect(second.res.status).toBe(201);
       expect(first.body.id).toMatch(/^vlt_/);
       expect(second.body.id).toMatch(/^vlt_/);
+      expect(first.body.id).not.toBe('vlt_client_supplied');
+      expect(second.body.id).not.toBe('vlt_client_supplied');
       expect(first.body.id).not.toBe(second.body.id);
       expect(first.body.name).toBe('Shared credentials');
       expect(second.body.name).toBe('Shared credentials');
@@ -1161,6 +1183,14 @@ description: Uploaded from a compressed package.
       const archiveStoreRes = await app.request(`/v1/memory_stores/${store.id}/archive`, { method: 'POST' });
       expect(archiveStoreRes.status).toBe(200);
       expect((await archiveStoreRes.json()).status).toBe('archived');
+
+      const archivedDetailRes = await app.request(`/v1/memory_stores/${store.id}`);
+      expect(archivedDetailRes.status).toBe(404);
+      const archivedMemoryCreate = await postJson(`/v1/memory_stores/${store.id}/memories`, {
+        path: '/folder/b',
+        content: 'beta',
+      });
+      expect(archivedMemoryCreate.res.status).toBe(404);
     });
 
     it('creates a memory store and manages memories by path', async () => {
@@ -1169,12 +1199,14 @@ description: Uploaded from a compressed package.
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: 'Research notes',
+          id: 'memstore_client_supplied',
           description: 'Persistent notes for agents.',
         }),
       });
       expect(storeRes.status).toBe(201);
       const store = await storeRes.json();
       expect(store.id).toMatch(/^memstore_/);
+      expect(store.id).not.toBe('memstore_client_supplied');
       expect(store.memory_count).toBe(0);
       expect(store.memories).toEqual([]);
 
@@ -1183,12 +1215,14 @@ description: Uploaded from a compressed package.
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           path: '/note/d',
+          id: 'mem_client_supplied',
           content: 'ddd',
         }),
       });
       expect(memoryRes.status).toBe(201);
       const memory = await memoryRes.json();
       expect(memory.id).toMatch(/^mem_/);
+      expect(memory.id).not.toBe('mem_client_supplied');
       expect(memory.path).toBe('/note/d');
       expect(memory.content).toBe('ddd');
 
