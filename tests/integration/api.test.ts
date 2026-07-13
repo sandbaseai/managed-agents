@@ -39,8 +39,15 @@ describe('Managed Agents API', () => {
     db.runMigrations();
     db.exec(`INSERT INTO environments (id, name, config) VALUES ('env_default', 'local', '{}')`);
     db.exec(`INSERT INTO credential_vaults (id, name) VALUES ('vlt_test', 'test vault')`);
-    // Match production id scheme (index.ts inserts agents with id = agent_<name>)
-    db.exec(`INSERT INTO agents (id, name, definition) VALUES ('agent_echo-agent', 'echo-agent', '{}')`);
+    db.prepare('INSERT INTO agents (id, name, definition) VALUES (?, ?, ?)').run(
+      'agent_echo-agent',
+      'echo-agent',
+      JSON.stringify({
+        name: 'echo-agent',
+        model: 'gpt-4o',
+        system: 'Echo back what the user says.',
+      }),
+    );
 
     const sessionManager = new SessionManager(db);
     sessionManager.setExecutor({
@@ -154,7 +161,7 @@ describe('Managed Agents API', () => {
     });
 
     it('accepts standard agent refs, resources, vault ids, and redacts repository tokens', async () => {
-      const { body: store } = await postJson('/v1/memory-stores', {
+      const { body: store } = await postJson('/v1/memory_stores', {
         name: 'Session resource memory',
         description: 'Mounted session memory.',
       });
@@ -491,7 +498,8 @@ describe('Managed Agents API', () => {
       });
 
       expect(res.status).toBe(201);
-      expect(body.id).toBe('agent_runtime-agent');
+      expect(body.id).toMatch(/^agent_/);
+      expect(body.id).not.toBe('agent_runtime-agent');
       expect(body.name).toBe('runtime-agent');
       expect(existsSync(join(agentsDir, 'runtime-agent.yaml'))).toBe(false);
       expect(existsSync(join(agentsDir, 'Runtime agent.yaml'))).toBe(false);
@@ -504,6 +512,25 @@ describe('Managed Agents API', () => {
 
       const list = await getJson('/v1/agents');
       expect(list.body.data.some((item: any) => item.id === body.id)).toBe(true);
+    });
+
+    it('allows duplicate display names because ids are server generated', async () => {
+      const definition = {
+        name: 'duplicate-name-agent',
+        model: 'gpt-4o',
+        system: 'Handle duplicate names.',
+      };
+
+      const first = await postJson('/v1/agents', definition);
+      const second = await postJson('/v1/agents', definition);
+
+      expect(first.res.status).toBe(201);
+      expect(second.res.status).toBe(201);
+      expect(first.body.name).toBe('duplicate-name-agent');
+      expect(second.body.name).toBe('duplicate-name-agent');
+      expect(first.body.id).toMatch(/^agent_/);
+      expect(second.body.id).toMatch(/^agent_/);
+      expect(second.body.id).not.toBe(first.body.id);
     });
   });
 
@@ -534,7 +561,7 @@ describe('Managed Agents API', () => {
         '/v1/sessions',
         '/v1/environments',
         '/v1/credential-vaults',
-        '/v1/memory-stores',
+        '/v1/memory_stores',
         '/v1/skills',
         '/v1/x/templates',
       ];
@@ -829,6 +856,19 @@ description: Uploaded from a compressed package.
       expect(body.error.type).toBe('conflict');
     });
 
+    it('generates environment ids and allows duplicate display names', async () => {
+      const first = await postJson('/v1/environments', { name: 'Reusable environment' });
+      const second = await postJson('/v1/environments', { name: 'Reusable environment' });
+
+      expect(first.res.status).toBe(201);
+      expect(second.res.status).toBe(201);
+      expect(first.body.id).toMatch(/^env_/);
+      expect(second.body.id).toMatch(/^env_/);
+      expect(first.body.id).not.toBe(second.body.id);
+      expect(first.body.name).toBe('Reusable environment');
+      expect(second.body.name).toBe('Reusable environment');
+    });
+
     it('updates environment fields', async () => {
       const res = await app.request('/v1/environments/env_default', {
         method: 'PUT',
@@ -1017,6 +1057,19 @@ description: Uploaded from a compressed package.
       expect(listedVault.credentials[0].value_hint).toBe('••••alue');
     });
 
+    it('allows duplicate credential vault display names', async () => {
+      const first = await postJson('/v1/credential-vaults', { name: 'Shared credentials' });
+      const second = await postJson('/v1/credential-vaults', { name: 'Shared credentials' });
+
+      expect(first.res.status).toBe(201);
+      expect(second.res.status).toBe(201);
+      expect(first.body.id).toMatch(/^vlt_/);
+      expect(second.body.id).toMatch(/^vlt_/);
+      expect(first.body.id).not.toBe(second.body.id);
+      expect(first.body.name).toBe('Shared credentials');
+      expect(second.body.name).toBe('Shared credentials');
+    });
+
     it('rejects non-standard credential injection locations', async () => {
       const vaultRes = await app.request('/v1/credential-vaults', {
         method: 'POST',
@@ -1067,7 +1120,7 @@ description: Uploaded from a compressed package.
 
   describe('Memory stores', () => {
     it('supports detail, normalized path conflicts, active memory filtering, and store archive', async () => {
-      const { res: storeRes, body: store } = await postJson('/v1/memory-stores', {
+      const { res: storeRes, body: store } = await postJson('/v1/memory_stores', {
         name: 'Contract memory store',
         description: 'Persistent memory for contract tests.',
         metadata: { owner: 'qa' },
@@ -1076,7 +1129,7 @@ description: Uploaded from a compressed package.
       expect(store.type).toBe('memory_store');
       expect(store.memory_count).toBe(0);
 
-      const { res: memoryRes, body: memory } = await postJson(`/v1/memory-stores/${store.id}/memories`, {
+      const { res: memoryRes, body: memory } = await postJson(`/v1/memory_stores/${store.id}/memories`, {
         path: '/folder/a',
         content: 'alpha',
         metadata: { kind: 'note' },
@@ -1084,34 +1137,34 @@ description: Uploaded from a compressed package.
       expect(memoryRes.status).toBe(201);
       expect(memory.path).toBe('/folder/a');
 
-      const duplicate = await postJson(`/v1/memory-stores/${store.id}/memories`, {
+      const duplicate = await postJson(`/v1/memory_stores/${store.id}/memories`, {
         path: '/folder//a',
         content: 'duplicate',
       });
       expect(duplicate.res.status).toBe(409);
       expect(duplicate.body.error.type).toBe('conflict');
 
-      const detailRes = await app.request(`/v1/memory-stores/${store.id}`);
+      const detailRes = await app.request(`/v1/memory_stores/${store.id}`);
       expect(detailRes.status).toBe(200);
       const detail = await detailRes.json();
       expect(detail.memory_count).toBe(1);
       expect(detail.memories[0].content).toBe('alpha');
 
-      const deleteRes = await app.request(`/v1/memory-stores/${store.id}/memories/${memory.id}`, { method: 'DELETE' });
+      const deleteRes = await app.request(`/v1/memory_stores/${store.id}/memories/${memory.id}`, { method: 'DELETE' });
       expect(deleteRes.status).toBe(200);
 
-      const memoriesRes = await app.request(`/v1/memory-stores/${store.id}/memories`);
+      const memoriesRes = await app.request(`/v1/memory_stores/${store.id}/memories`);
       const memories = await memoriesRes.json();
       expectPage(memories);
       expect(memories.data).toEqual([]);
 
-      const archiveStoreRes = await app.request(`/v1/memory-stores/${store.id}/archive`, { method: 'POST' });
+      const archiveStoreRes = await app.request(`/v1/memory_stores/${store.id}/archive`, { method: 'POST' });
       expect(archiveStoreRes.status).toBe(200);
       expect((await archiveStoreRes.json()).status).toBe('archived');
     });
 
     it('creates a memory store and manages memories by path', async () => {
-      const storeRes = await app.request('/v1/memory-stores', {
+      const storeRes = await app.request('/v1/memory_stores', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1125,7 +1178,7 @@ description: Uploaded from a compressed package.
       expect(store.memory_count).toBe(0);
       expect(store.memories).toEqual([]);
 
-      const memoryRes = await app.request(`/v1/memory-stores/${store.id}/memories`, {
+      const memoryRes = await app.request(`/v1/memory_stores/${store.id}/memories`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1139,7 +1192,7 @@ description: Uploaded from a compressed package.
       expect(memory.path).toBe('/note/d');
       expect(memory.content).toBe('ddd');
 
-      const updateRes = await app.request(`/v1/memory-stores/${store.id}/memories/${memory.id}`, {
+      const updateRes = await app.request(`/v1/memory_stores/${store.id}/memories/${memory.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content: 'updated' }),
@@ -1147,17 +1200,17 @@ description: Uploaded from a compressed package.
       expect(updateRes.status).toBe(200);
       expect((await updateRes.json()).content).toBe('updated');
 
-      const listRes = await app.request('/v1/memory-stores');
+      const listRes = await app.request('/v1/memory_stores');
       const list = await listRes.json();
       const listedStore = list.data.find((item: any) => item.id === store.id);
       expect(listedStore.memory_count).toBe(1);
       expect(listedStore.memories[0].path).toBe('/note/d');
 
-      const deleteRes = await app.request(`/v1/memory-stores/${store.id}/memories/${memory.id}`, { method: 'DELETE' });
+      const deleteRes = await app.request(`/v1/memory_stores/${store.id}/memories/${memory.id}`, { method: 'DELETE' });
       expect(deleteRes.status).toBe(200);
       expect((await deleteRes.json()).deleted).toBe(true);
 
-      const recreateRes = await app.request(`/v1/memory-stores/${store.id}/memories`, {
+      const recreateRes = await app.request(`/v1/memory_stores/${store.id}/memories`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1170,27 +1223,27 @@ description: Uploaded from a compressed package.
     });
 
     it('rejects memory paths that are not file-like absolute paths', async () => {
-      const storeRes = await app.request('/v1/memory-stores', {
+      const storeRes = await app.request('/v1/memory_stores', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: 'Absolute paths only' }),
       });
       const store = await storeRes.json();
-      const res = await app.request(`/v1/memory-stores/${store.id}/memories`, {
+      const res = await app.request(`/v1/memory_stores/${store.id}/memories`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ path: 'note/d', content: 'ddd' }),
       });
       expect(res.status).toBe(400);
 
-      const rootRes = await app.request(`/v1/memory-stores/${store.id}/memories`, {
+      const rootRes = await app.request(`/v1/memory_stores/${store.id}/memories`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ path: '/', content: 'ddd' }),
       });
       expect(rootRes.status).toBe(400);
 
-      const directoryRes = await app.request(`/v1/memory-stores/${store.id}/memories`, {
+      const directoryRes = await app.request(`/v1/memory_stores/${store.id}/memories`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ path: '/note/', content: 'ddd' }),

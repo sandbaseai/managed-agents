@@ -90,6 +90,7 @@ export function agentId(name: string): string {
 export function toApiAgent(
   agent: AgentDefinition,
   dates?: {
+    id?: string;
     createdAt?: string | null;
     updatedAt?: string | null;
     archivedAt?: string | null;
@@ -98,7 +99,7 @@ export function toApiAgent(
   },
 ): ApiAgent {
   return {
-    id: agentId(agent.name),
+    id: dates?.id ?? agentId(agent.name),
     type: 'agent',
     name: agent.name,
     description: agent.description ?? '',
@@ -123,7 +124,7 @@ export function toApiSession(session: Session, agent?: AgentDefinition): ApiSess
     type: 'session',
     title: session.title ?? null,
     agent: agent
-      ? toApiAgent(agent)
+      ? toApiAgent(agent, { id: session.agentId })
       : { id: session.agentId, type: 'agent', name: session.agentName },
     environment_id: session.environmentId,
     status: toApiSessionStatus(session.status),

@@ -169,7 +169,7 @@ export function App() {
         getPage<Session>('/v1/sessions?limit=100'),
         getPage<Environment>('/v1/environments'),
         getPage<Vault>('/v1/credential-vaults'),
-        getPage<MemoryStore>('/v1/memory-stores'),
+        getPage<MemoryStore>('/v1/memory_stores'),
         getPage<WorkspaceFile>('/v1/files'),
         getPage<ApiKey>('/v1/api-keys'),
         getPage<Skill>('/v1/skills'),
@@ -1870,7 +1870,7 @@ function MemoryStoreDetail({
 
   const save = async () => {
     if (!selected) return;
-    await putJson(`/v1/memory-stores/${store.id}/memories/${selected.id}`, { content });
+    await putJson(`/v1/memory_stores/${store.id}/memories/${selected.id}`, { content });
     setEditing(false);
     onRefresh();
   };
@@ -2933,7 +2933,7 @@ function ResourceModal({ kind, onClose, onSaved }: { kind: 'environment' | 'cred
     event.preventDefault();
     setSaving(true);
     setError('');
-    const path = kind === 'environment' ? '/v1/environments' : kind === 'credential_vault' ? '/v1/credential-vaults' : '/v1/memory-stores';
+    const path = kind === 'environment' ? '/v1/environments' : kind === 'credential_vault' ? '/v1/credential-vaults' : '/v1/memory_stores';
     try {
       await postJson(path, {
         name,
@@ -3226,7 +3226,7 @@ function AddMemoryModal({ storeId, onClose, onSaved }: { storeId: string; onClos
     setSaving(true);
     setError('');
     try {
-      await postJson(`/v1/memory-stores/${storeId}/memories`, { path: normalizedPath, content });
+      await postJson(`/v1/memory_stores/${storeId}/memories`, { path: normalizedPath, content });
       onSaved();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));

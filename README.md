@@ -257,6 +257,10 @@ curl -X POST http://127.0.0.1:3000/v1/agents \
   }'
 ```
 
+The response contains the stable `agent_...` id to use for sessions. Agent
+names are display labels; Console/API-created agents receive server-generated
+ids and do not rely on name-derived identifiers.
+
 Create an environment:
 
 ```bash
@@ -281,6 +285,9 @@ curl -X POST http://127.0.0.1:3000/v1/environments \
   }'
 ```
 
+The response contains the stable `env_...` id to use for sessions. Environment
+names are display labels and do not need to be unique.
+
 Create a memory store:
 
 ```bash
@@ -292,6 +299,9 @@ curl -X POST http://127.0.0.1:3000/v1/memory_stores \
     "metadata": { "team": "platform" }
   }'
 ```
+
+Memory store names are labels for humans and prompts; they do not need to be
+unique. Use the returned `memstore_...` id when mounting a store into a session.
 
 Create a session:
 

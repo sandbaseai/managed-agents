@@ -65,14 +65,10 @@ metadata:
   owner: platform
 ```
 
-Standard agent ids are derived from the name:
-
-```text
-assistant -> agent_assistant
-echo-assistant -> agent_echo-assistant
-```
-
-Use the standard id in API calls, sessions, and SDK requests.
+Agent ids are stable object identifiers. YAML seed agents use deterministic ids
+when they are first imported, while agents created through the API or Console
+receive server-generated `agent_...` ids. Use the returned id in API calls,
+sessions, and SDK requests; treat `name` as a human-readable display field.
 
 ## Console Workflow
 
@@ -200,7 +196,7 @@ curl -X POST http://127.0.0.1:3000/v1/sessions \
 Create a memory store:
 
 ```bash
-curl -X POST http://127.0.0.1:3000/v1/memory-stores \
+curl -X POST http://127.0.0.1:3000/v1/memory_stores \
   -H "Content-Type: application/json" \
   -d '{"name": "project-memory", "description": "Long-term project notes"}'
 ```
@@ -208,7 +204,7 @@ curl -X POST http://127.0.0.1:3000/v1/memory-stores \
 Add a memory:
 
 ```bash
-curl -X POST http://127.0.0.1:3000/v1/memory-stores/MEMORY_STORE_ID/memories \
+curl -X POST http://127.0.0.1:3000/v1/memory_stores/MEMORY_STORE_ID/memories \
   -H "Content-Type: application/json" \
   -d '{"path": "/notes/overview", "content": "Use concise release notes."}'
 ```

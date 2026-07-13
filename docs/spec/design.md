@@ -98,6 +98,10 @@ The default store is SQLite. The logical tables are:
 The event log is the source of truth for reconstructing model context and user
 visible history.
 
+Resource identity is id-based. Human-readable names are labels and are not used
+as uniqueness boundaries for API-created agents, environments, credential
+vaults, or memory stores.
+
 Workspace metadata is supplied from the active runtime configuration in the Web
 Console. A future desktop shell may persist a local workspace registry outside
 the project directory so users can create, open, and switch workspaces without
@@ -246,7 +250,7 @@ The API is grouped by resources:
 - `/v1/sessions/:id/messages`
 - `/v1/environments`
 - `/v1/credential-vaults`
-- `/v1/memory-stores`
+- `/v1/memory_stores`
 - `/v1/skills`
 - `/v1/x/health`
 - `/v1/x/metrics`

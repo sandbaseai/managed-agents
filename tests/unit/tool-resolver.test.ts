@@ -60,13 +60,14 @@ describe('ToolResolver', () => {
           enabled: true,
           permission_policy: { type: 'always_allow' },
         },
-        configs: {
-          bash: {
+        configs: [
+          {
+            name: 'bash',
             enabled: true,
             permission_policy: { type: 'always_ask' },
           },
-          read: { enabled: true },
-        },
+          { name: 'read', enabled: true },
+        ],
       }],
     } satisfies AgentDefinition;
 

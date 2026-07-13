@@ -16,7 +16,8 @@ import type { ServerDeps } from '../server.js';
 import type { SessionEvent } from '@/types/session.js';
 import type { ContentBlock } from '@/types/cma-protocol.js';
 import type { AgentDefinition } from '@/types/agent.js';
-import { agentId, pageOf, toApiEvent, toApiSession } from '../standard.js';
+import { pageOf, toApiEvent, toApiSession } from '../standard.js';
+import { loadAgentDefinitionById } from '@/core/agent/store.js';
 
 export function sessionsRoutes(deps: ServerDeps) {
   const app = new Hono();
@@ -367,7 +368,7 @@ function internalStatusFilter(status: string | undefined) {
 }
 
 function findAgentById(deps: ServerDeps, id: string): AgentDefinition | undefined {
-  return deps.agents.find((agent) => agentId(agent.name) === id);
+  return loadAgentDefinitionById(deps.db, id);
 }
 
 function normalizeAgentRef(value: unknown): string | null {

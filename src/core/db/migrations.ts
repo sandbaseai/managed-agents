@@ -322,6 +322,99 @@ CREATE TABLE api_keys (
 CREATE INDEX idx_api_keys_status_created ON api_keys(status, created_at DESC);
 `;
 
+const M013_STANDARD_OBJECT_IDS = `
+CREATE TABLE agents_next (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  definition TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'active',
+  error_message TEXT,
+  loaded_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  version INTEGER NOT NULL DEFAULT 1,
+  archived_at TEXT
+);
+
+INSERT INTO agents_next (
+  id, name, definition, status, error_message, loaded_at, updated_at, version, archived_at
+)
+SELECT id, name, definition, status, error_message, loaded_at, updated_at, version, archived_at
+FROM agents;
+
+DROP TABLE agents;
+ALTER TABLE agents_next RENAME TO agents;
+CREATE INDEX idx_agents_status_loaded ON agents(status, loaded_at ASC);
+
+CREATE TABLE memory_stores_next (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  provider TEXT NOT NULL DEFAULT 'sqlite',
+  status TEXT NOT NULL DEFAULT 'active',
+  config TEXT NOT NULL DEFAULT '{}',
+  metadata TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  archived_at TEXT
+);
+
+INSERT INTO memory_stores_next (
+  id, name, description, provider, status, config, metadata, created_at, updated_at, archived_at
+)
+SELECT id, name, description, provider, status, config, metadata, created_at, updated_at, archived_at
+FROM memory_stores;
+
+DROP TABLE memory_stores;
+ALTER TABLE memory_stores_next RENAME TO memory_stores;
+CREATE INDEX idx_memory_stores_status_created ON memory_stores(status, created_at DESC);
+`;
+
+const M014_ENVIRONMENT_OBJECT_IDS = `
+CREATE TABLE environments_next (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  config TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  description TEXT NOT NULL DEFAULT '',
+  metadata TEXT NOT NULL DEFAULT '{}',
+  updated_at TEXT,
+  archived_at TEXT
+);
+
+INSERT INTO environments_next (
+  id, name, config, created_at, description, metadata, updated_at, archived_at
+)
+SELECT id, name, config, created_at, description, metadata, updated_at, archived_at
+FROM environments;
+
+DROP TABLE environments;
+ALTER TABLE environments_next RENAME TO environments;
+CREATE INDEX idx_environments_status_created ON environments(archived_at, created_at DESC);
+`;
+
+const M015_CREDENTIAL_VAULT_OBJECT_IDS = `
+CREATE TABLE credential_vaults_next (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'active',
+  metadata TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  archived_at TEXT
+);
+
+INSERT INTO credential_vaults_next (
+  id, name, description, status, metadata, created_at, updated_at, archived_at
+)
+SELECT id, name, description, status, metadata, created_at, updated_at, archived_at
+FROM credential_vaults;
+
+DROP TABLE credential_vaults;
+ALTER TABLE credential_vaults_next RENAME TO credential_vaults;
+CREATE INDEX idx_credential_vaults_status_created ON credential_vaults(status, created_at DESC);
+`;
+
 export const MIGRATIONS: Migration[] = [
   { version: 1, name: '001_initial', sql: M001_INITIAL },
   { version: 2, name: '002_memory', sql: M002_MEMORY },
@@ -335,4 +428,7 @@ export const MIGRATIONS: Migration[] = [
   { version: 10, name: '010_file_resources', sql: M010_FILE_RESOURCES },
   { version: 11, name: '011_skill_resources', sql: M011_SKILL_RESOURCES },
   { version: 12, name: '012_api_keys', sql: M012_API_KEYS },
+  { version: 13, name: '013_standard_object_ids', sql: M013_STANDARD_OBJECT_IDS },
+  { version: 14, name: '014_environment_object_ids', sql: M014_ENVIRONMENT_OBJECT_IDS },
+  { version: 15, name: '015_credential_vault_object_ids', sql: M015_CREDENTIAL_VAULT_OBJECT_IDS },
 ];

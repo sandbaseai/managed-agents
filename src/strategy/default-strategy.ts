@@ -14,7 +14,7 @@
  * Reference: OMA default-loop.ts
  */
 
-import { streamText } from 'ai';
+import { jsonSchema, streamText } from 'ai';
 import type { LanguageModelV1 } from 'ai';
 import type { AgentStrategy, StrategyContext } from '@/types/strategy.js';
 import type { SessionEvent } from '@/types/session.js';
@@ -64,7 +64,7 @@ export class DefaultStrategy implements AgentStrategy {
       // Build Vercel AI SDK tool definitions from our CoreTool map
       const aiTools: Record<string, any> = {};
       for (const [name, tool] of Object.entries(tools)) {
-        aiTools[name] = tool;
+        aiTools[name] = toAiTool(tool);
       }
 
       // Convert our messages to Vercel AI SDK format
@@ -251,4 +251,23 @@ export class DefaultStrategy implements AgentStrategy {
       throw error;
     }
   }
+}
+
+function toAiTool(tool: any): any {
+  if (!tool || typeof tool !== 'object') return tool;
+  if (!tool.parameters || typeof tool.parameters !== 'object') return tool;
+  if (isAiSdkSchema(tool.parameters)) return tool;
+
+  return {
+    ...tool,
+    parameters: jsonSchema(tool.parameters),
+  };
+}
+
+function isAiSdkSchema(value: unknown): boolean {
+  return Boolean(
+    value &&
+    typeof value === 'object' &&
+    ('jsonSchema' in value || '_def' in value),
+  );
 }

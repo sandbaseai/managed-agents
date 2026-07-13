@@ -39,10 +39,10 @@ describe('Agent Definition Schema Validation', () => {
               enabled: true,
               permission_policy: { type: 'always_allow' },
             },
-            configs: {
-              bash: { enabled: true },
-              read: { enabled: true },
-            },
+            configs: [
+              { name: 'bash', enabled: true },
+              { name: 'read', enabled: true },
+            ],
           },
         ],
         max_turns: 50,
@@ -59,6 +59,16 @@ describe('Agent Definition Schema Validation', () => {
     it('accepts agent names with hyphens and underscores', () => {
       const result = validateAgentDefinition({ ...validMinimal, name: 'my_agent-v2' });
       expect(result.valid).toBe(true);
+    });
+
+    it('accepts Claude-style model config objects', () => {
+      const result = validateAgentDefinition({
+        ...validMinimal,
+        model: { id: 'gpt-4o', speed: 'standard' },
+      });
+      expect(result.valid).toBe(true);
+      expect(result.data?.model).toBe('gpt-4o');
+      expect(result.data?.model_config).toEqual({ id: 'gpt-4o', speed: 'standard' });
     });
   });
 

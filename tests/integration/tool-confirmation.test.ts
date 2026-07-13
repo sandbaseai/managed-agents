@@ -121,12 +121,13 @@ describe('Tool confirmation — execute/deny pending tool', () => {
             enabled: true,
             permission_policy: { type: 'always_allow' },
           },
-          configs: {
-            bash: {
+          configs: [
+            {
+              name: 'bash',
               enabled: true,
               permission_policy: { type: 'always_ask' },
             },
-          },
+          ],
         }],
       }],
       modelRegistry,

@@ -88,13 +88,22 @@ export class Database {
     const pending = [...migrations].sort((a, b) => a.version - b.version);
     for (const migration of pending) {
       if (applied.has(migration.version)) continue;
-      this.transaction(() => {
-        this.exec(migration.sql);
-        this.prepare('INSERT INTO _migrations (version, name) VALUES (?, ?)').run(
-          migration.version,
-          migration.name,
-        );
-      });
+      this.exec('PRAGMA foreign_keys = OFF');
+      try {
+        this.transaction(() => {
+          this.exec(migration.sql);
+          this.prepare('INSERT INTO _migrations (version, name) VALUES (?, ?)').run(
+            migration.version,
+            migration.name,
+          );
+        });
+      } finally {
+        this.exec('PRAGMA foreign_keys = ON');
+      }
+      const violations = this.prepare('PRAGMA foreign_key_check').all();
+      if (violations.length > 0) {
+        throw new Error(`Migration ${migration.version} left foreign key violations`);
+      }
     }
   }
 
