@@ -1,12 +1,21 @@
 import { createCipheriv, createHash, randomBytes } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { Hono } from 'hono';
 import { nanoid } from 'nanoid';
 import type { ServerDeps } from '../server.js';
 import { pageOf } from '../standard.js';
 
 type ResourceKind = 'environment' | 'credential_vault' | 'memory_store';
+type FileCreateInput = {
+  name: string;
+  mediaType: string;
+  bytes: Buffer;
+  metadata: Record<string, string>;
+};
+
+const FILE_PREVIEW_MAX_BYTES = 24 * 1024;
+const FILE_CONTENT_MAX_BYTES = 10 * 1024 * 1024;
 
 export function resourceRoutes(deps: ServerDeps) {
   const app = new Hono();
@@ -21,6 +30,7 @@ export function resourceRoutes(deps: ServerDeps) {
     if (!body.ok) return body.response;
     const name = stringField(body.value.name);
     if (!name) return invalid(c, 'name is required');
+    const config = normalizeEnvironmentConfig(body.value);
     const id = typeof body.value.id === 'string' && body.value.id.startsWith('env_')
       ? body.value.id
       : `env_${slug(name)}`;
@@ -31,7 +41,7 @@ export function resourceRoutes(deps: ServerDeps) {
         id,
         name,
         stringField(body.value.description) ?? '',
-        JSON.stringify(objectField(body.value.config)),
+        JSON.stringify(config),
         JSON.stringify(stringRecordField(body.value.metadata)),
       );
       const row = deps.db.prepare('SELECT * FROM environments WHERE id = ?').get(id) as unknown as EnvironmentRow;
@@ -55,12 +65,13 @@ export function resourceRoutes(deps: ServerDeps) {
     if (!existing) return notFound(c, 'Environment not found');
 
     const name = stringField(body.value.name) ?? existing.name;
+    const config = normalizeEnvironmentConfig(body.value, parseObject(existing.config));
     deps.db.prepare(
       'UPDATE environments SET name = ?, description = ?, config = ?, metadata = ?, updated_at = datetime(\'now\') WHERE id = ?',
     ).run(
       name,
       stringField(body.value.description) ?? existing.description ?? '',
-      JSON.stringify(body.value.config === undefined ? parseObject(existing.config) : objectField(body.value.config)),
+      JSON.stringify(config),
       JSON.stringify(body.value.metadata === undefined ? parseObject(existing.metadata) : stringRecordField(body.value.metadata)),
       id,
     );
@@ -69,6 +80,48 @@ export function resourceRoutes(deps: ServerDeps) {
   });
 
   app.post('/environments/:id/archive', (c) => archiveResource(c, deps, 'environments', toEnvironment));
+
+  app.get('/files', (c) => {
+    return c.json(pageOf(listFileResources(deps)));
+  });
+
+  app.post('/files', async (c) => {
+    if (!deps.workspace?.dataDir) return invalid(c, 'workspace data directory is not configured');
+
+    try {
+      const input = await readCreateFileRequest(c);
+      if (!input.ok) return input.response;
+      const file = persistFileResource(deps, input.value);
+      return c.json(file, 201);
+    } catch (err: any) {
+      if (String(err.message).includes('UNIQUE')) return conflict(c, 'File id already exists');
+      return c.json({ error: { type: 'internal_error', message: err.message } }, 500);
+    }
+  });
+
+  app.get('/files/:id', (c) => {
+    const row = deps.db.prepare('SELECT * FROM files WHERE id = ? AND archived_at IS NULL').get(c.req.param('id')) as FileRow | undefined;
+    return row ? c.json(toFileResource(row, deps)) : notFound(c, 'File not found');
+  });
+
+  app.get('/files/:id/content', (c) => {
+    const row = deps.db.prepare('SELECT * FROM files WHERE id = ? AND archived_at IS NULL').get(c.req.param('id')) as FileRow | undefined;
+    if (!row || !isManagedFileStoragePath(row.storage_path, deps) || !existsSync(row.storage_path)) return notFound(c, 'File not found');
+    return new Response(readFileSync(row.storage_path), {
+      headers: {
+        'Content-Type': row.media_type || 'application/octet-stream',
+        'Content-Disposition': `attachment; filename="${row.name.replace(/"/g, '')}"`,
+      },
+    });
+  });
+
+  app.delete('/files/:id', (c) => {
+    const row = deps.db.prepare('SELECT * FROM files WHERE id = ? AND archived_at IS NULL').get(c.req.param('id')) as FileRow | undefined;
+    if (!row) return notFound(c, 'File not found');
+    deps.db.prepare('UPDATE files SET status = ?, archived_at = datetime(\'now\'), updated_at = datetime(\'now\') WHERE id = ?').run('archived', row.id);
+    const archived = deps.db.prepare('SELECT * FROM files WHERE id = ?').get(row.id) as unknown as FileRow;
+    return c.json(toFileResource(archived, deps));
+  });
 
   app.get('/credential-vaults', (c) => {
     const rows = deps.db.prepare(`${vaultSelect()} ORDER BY v.created_at DESC`).all() as unknown as VaultRow[];
@@ -283,18 +336,253 @@ export function resourceRoutes(deps: ServerDeps) {
 }
 
 function toEnvironment(row: EnvironmentRow) {
+  const config = parseObject(row.config);
   return {
     id: row.id,
     type: 'environment' as ResourceKind,
     name: row.name,
     description: row.description ?? '',
+    hosting_type: environmentHostingType(config),
+    sandbox_provider: typeof config.sandbox_provider === 'string' ? config.sandbox_provider : null,
+    network: objectField(config.network),
+    packages: Array.isArray(config.packages) ? config.packages : [],
     status: row.archived_at ? 'archived' : 'active',
-    config: parseObject(row.config),
+    config,
     metadata: parseObject(row.metadata),
     created_at: row.created_at,
     updated_at: row.updated_at ?? row.created_at,
     archived_at: row.archived_at ?? null,
   };
+}
+
+function normalizeEnvironmentConfig(
+  body: Record<string, unknown>,
+  existing: Record<string, unknown> = {},
+): Record<string, unknown> {
+  const config = {
+    ...existing,
+    ...objectField(body.config),
+  };
+  for (const key of ['hosting_type', 'sandbox_provider', 'network', 'packages'] as const) {
+    if (body[key] !== undefined) config[key] = body[key];
+  }
+  return config;
+}
+
+function environmentHostingType(config: Record<string, unknown>): 'cloud' | 'self_hosted' {
+  if (config.hosting_type === 'self_hosted') return 'self_hosted';
+  if (config.hosting_type === 'cloud') return 'cloud';
+  if (config.sandbox_provider === 'self_hosted' || config.sandbox_provider === 'local') return 'self_hosted';
+  return 'cloud';
+}
+
+export function listFileResources(deps: ServerDeps) {
+  const rows = deps.db.prepare(
+    `SELECT *
+     FROM files
+     WHERE archived_at IS NULL
+     ORDER BY created_at DESC`,
+  ).all() as unknown as FileRow[];
+  return rows.map((row) => toFileResource(row, deps));
+}
+
+function toFileResource(row: FileRow, deps: ServerDeps) {
+  const preview = previewFileResource(row, deps);
+  return {
+    id: row.id,
+    type: 'file',
+    name: row.name,
+    media_type: row.media_type,
+    size_bytes: row.size_bytes,
+    status: row.archived_at ? 'archived' : row.status,
+    metadata: parseObject(row.metadata),
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    archived_at: row.archived_at ?? null,
+    preview: preview?.content ?? null,
+    preview_truncated: preview?.truncated ?? false,
+  };
+}
+
+async function readCreateFileRequest(c: any): Promise<{ ok: true; value: FileCreateInput } | { ok: false; response: Response }> {
+  const contentType = c.req.header('content-type') ?? '';
+  if (contentType.includes('multipart/form-data')) {
+    return readMultipartFileRequest(c);
+  }
+
+  const body = await readObjectBody(c);
+  if (!body.ok) return body;
+
+  const name = fileName(body.value.name);
+  if (!name) return { ok: false, response: invalid(c, 'name is required') };
+  const content = typeof body.value.content === 'string' ? body.value.content : '';
+  const encoding = stringField(body.value.encoding) ?? 'utf8';
+  if (encoding !== 'utf8' && encoding !== 'base64') {
+    return { ok: false, response: invalid(c, 'encoding must be utf8 or base64') };
+  }
+
+  const bytes = encoding === 'base64' ? Buffer.from(content, 'base64') : Buffer.from(content, 'utf8');
+  if (bytes.length > FILE_CONTENT_MAX_BYTES) {
+    return { ok: false, response: invalid(c, 'file content exceeds the 10 MB limit') };
+  }
+
+  return {
+    ok: true,
+    value: {
+      name,
+      mediaType: stringField(body.value.media_type) ?? mediaTypeForName(name),
+      bytes,
+      metadata: stringRecordField(body.value.metadata),
+    },
+  };
+}
+
+async function readMultipartFileRequest(c: any): Promise<{ ok: true; value: FileCreateInput } | { ok: false; response: Response }> {
+  let body: Record<string, unknown>;
+  try {
+    body = await c.req.parseBody({ all: true }) as Record<string, unknown>;
+  } catch {
+    return { ok: false, response: invalid(c, 'Request body must be valid multipart/form-data') };
+  }
+
+  const files: Array<{ name: string; mediaType?: string; bytes: Buffer }> = [];
+  let requestedName: string | undefined;
+  let requestedMediaType: string | undefined;
+  let metadata: Record<string, string> = {};
+
+  for (const [key, rawValue] of Object.entries(body)) {
+    const values = Array.isArray(rawValue) ? rawValue : [rawValue];
+    for (const value of values) {
+      if (isFileField(key) && isUploadedFileLike(value)) {
+        const bytes = Buffer.from(await value.arrayBuffer());
+        files.push({ name: value.name, mediaType: value.type, bytes });
+        continue;
+      }
+      if (key === 'name' && typeof value === 'string') requestedName = value;
+      if (key === 'media_type' && typeof value === 'string') requestedMediaType = value;
+      if (key === 'metadata' && typeof value === 'string') metadata = parseStringRecord(value);
+    }
+  }
+
+  if (files.length === 0) return { ok: false, response: invalid(c, 'file is required') };
+  if (files.length > 1) return { ok: false, response: invalid(c, 'Only one file can be uploaded per request') };
+
+  const upload = files[0];
+  const name = fileName(requestedName) ?? fileName(upload.name);
+  if (!name) return { ok: false, response: invalid(c, 'name is required') };
+  if (upload.bytes.length > FILE_CONTENT_MAX_BYTES) {
+    return { ok: false, response: invalid(c, 'file content exceeds the 10 MB limit') };
+  }
+
+  return {
+    ok: true,
+    value: {
+      name,
+      mediaType: stringField(requestedMediaType) ?? stringField(upload.mediaType) ?? mediaTypeForName(name),
+      bytes: upload.bytes,
+      metadata,
+    },
+  };
+}
+
+function persistFileResource(deps: ServerDeps, input: FileCreateInput) {
+  if (!deps.workspace?.dataDir) throw new Error('workspace data directory is not configured');
+  const id = `file_${nanoid(18)}`;
+  const storageDir = resolve(deps.workspace.dataDir, 'files');
+  mkdirSync(storageDir, { recursive: true });
+  const storagePath = managedFileStoragePath(storageDir, id);
+  const now = new Date().toISOString();
+
+  try {
+    writeFileSync(storagePath, input.bytes, { mode: 0o600 });
+    deps.db.prepare(
+      `INSERT INTO files (id, name, media_type, size_bytes, storage_path, metadata, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      id,
+      input.name,
+      input.mediaType,
+      input.bytes.length,
+      storagePath,
+      JSON.stringify(input.metadata),
+      now,
+      now,
+    );
+  } catch (err) {
+    if (existsSync(storagePath)) rmSync(storagePath, { force: true });
+    throw err;
+  }
+
+  const row = deps.db.prepare('SELECT * FROM files WHERE id = ?').get(id) as unknown as FileRow;
+  return toFileResource(row, deps);
+}
+
+function isFileField(key: string): boolean {
+  return key === 'file' || key === 'files' || key === 'files[]';
+}
+
+function isUploadedFileLike(value: unknown): value is { name: string; type?: string; arrayBuffer: () => Promise<ArrayBuffer> } {
+  return typeof value === 'object'
+    && value !== null
+    && typeof (value as { name?: unknown }).name === 'string'
+    && typeof (value as { arrayBuffer?: unknown }).arrayBuffer === 'function';
+}
+
+function parseStringRecord(value: string): Record<string, string> {
+  try {
+    return stringRecordField(JSON.parse(value));
+  } catch {
+    return {};
+  }
+}
+
+function previewFileResource(row: FileRow, deps: ServerDeps): { content: string; truncated: boolean } | null {
+  if (!isPreviewableMediaType(row.media_type) || !isManagedFileStoragePath(row.storage_path, deps) || !existsSync(row.storage_path)) return null;
+  const bytes = readFileSync(row.storage_path).subarray(0, FILE_PREVIEW_MAX_BYTES);
+  const raw = bytes.toString('utf8');
+  if (raw.includes('\u0000')) return null;
+  return {
+    content: raw,
+    truncated: row.size_bytes > FILE_PREVIEW_MAX_BYTES,
+  };
+}
+
+function isManagedFileStoragePath(path: string, deps: ServerDeps): boolean {
+  if (!deps.workspace?.dataDir) return false;
+  const storageDir = resolve(deps.workspace.dataDir, 'files');
+  const resolvedPath = resolve(path);
+  const relativePath = relative(storageDir, resolvedPath);
+  return Boolean(relativePath) && !relativePath.startsWith('..') && !isAbsolute(relativePath);
+}
+
+function managedFileStoragePath(storageDir: string, id: string): string {
+  const targetPath = resolve(storageDir, id);
+  if (targetPath !== storageDir && targetPath.startsWith(storageDir + sep)) {
+    return targetPath;
+  }
+  throw new Error('File storage path escapes the managed files directory.');
+}
+
+function isPreviewableMediaType(mediaType: string): boolean {
+  return mediaType.startsWith('text/')
+    || mediaType === 'application/json'
+    || mediaType === 'application/yaml'
+    || mediaType === 'application/x-yaml';
+}
+
+function mediaTypeForName(name: string): string {
+  if (/\.md$/i.test(name)) return 'text/markdown';
+  if (/\.ya?ml$/i.test(name)) return 'application/yaml';
+  if (/\.json$/i.test(name)) return 'application/json';
+  if (/\.(txt|log|csv)$/i.test(name)) return 'text/plain';
+  return 'application/octet-stream';
+}
+
+function fileName(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim().replace(/[\\/]/g, '_');
+  if (!trimmed) return undefined;
+  return trimmed.slice(0, 255);
 }
 
 function vaultSelect(where = '') {
@@ -572,6 +860,19 @@ interface EnvironmentRow {
   metadata: string;
   created_at: string;
   updated_at: string | null;
+  archived_at: string | null;
+}
+
+interface FileRow {
+  id: string;
+  name: string;
+  media_type: string;
+  size_bytes: number;
+  storage_path: string;
+  status: string;
+  metadata: string;
+  created_at: string;
+  updated_at: string;
   archived_at: string | null;
 }
 

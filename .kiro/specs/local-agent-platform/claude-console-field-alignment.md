@@ -761,28 +761,33 @@ Purpose: built-in and workspace skill registry.
 
 List fields:
 
-- `ID` or `skill_id`
+- `ID`
 - `Name`
-- `Type`: `built-in` or `custom`
-- `Version`
+- `Source`: `anthropic` or `custom`
+- `Latest version`
 - `Description`
-- `Assigned agents`
 - `Updated`
 
 Import/create fields:
 
-- `Name`
-- `Description`
-- `Type`
-- `Version`
-- `Source path` or uploaded package
+- `files`: all files in the same top-level directory
+- root `SKILL.md` file inside that directory
+- `display_title` (optional, human-readable only)
+
+`SKILL.md` rules:
+
+- must start with YAML frontmatter (`---`)
+- frontmatter must include `name` and `description`
 
 Agent YAML skill shape:
 
 ```yaml
 skills:
   - type: custom
-    skill_id: code-review
+    skill_id: skill_code-review
+    version: latest
+  - type: anthropic
+    skill_id: pptx
     version: latest
 ```
 
@@ -791,6 +796,7 @@ Standard skill model:
 - Skill refs use object form with `type`, `skill_id`, and `version`.
 - Built-in Claude skills use `type: anthropic`.
 - Project-defined skills use `type: custom`.
+- `/v1/skills` is the standard resource API for list/create/retrieve/delete.
 
 ## Deployments
 
@@ -913,7 +919,10 @@ P0 standard APIs:
 - `GET /v1/x/workspace`
 - `GET /v1/x/runtime`
 - `GET /v1/x/templates`
-- `GET /v1/x/skills`
+- `GET /v1/skills`
+- `POST /v1/skills`
+- `GET /v1/skills/:skill_id`
+- `DELETE /v1/skills/:skill_id`
 - `GET /v1/environments`
 - `POST /v1/environments`
 - `GET /v1/credential-vaults`

@@ -25,9 +25,9 @@ describe('Templates', () => {
 
   function makeProject(dir: string) {
     mkdirSync(join(dir, 'agents'), { recursive: true });
-    mkdirSync(join(dir, 'skills'), { recursive: true });
+    mkdirSync(join(dir, 'skills', 's'), { recursive: true });
     writeFileSync(join(dir, 'agents', 'a.yaml'), 'name: a\nmodel:\n  id: m\n  speed: standard\nsystem: p\n');
-    writeFileSync(join(dir, 'skills', 's.md'), '---\nname: s\ndescription: d\n---\nbody');
+    writeFileSync(join(dir, 'skills', 's', 'SKILL.md'), '---\nname: s\ndescription: d\n---\nbody');
   }
 
   describe('createTemplate', () => {
@@ -39,7 +39,7 @@ describe('Templates', () => {
       const result = createTemplate(project, tpl, { name: 'my-template', description: 'test' });
       expect(existsSync(join(tpl, 'manifest.yaml'))).toBe(true);
       expect(existsSync(join(tpl, 'agents', 'a.yaml'))).toBe(true);
-      expect(existsSync(join(tpl, 'skills', 's.md'))).toBe(true);
+      expect(existsSync(join(tpl, 'skills', 's', 'SKILL.md'))).toBe(true);
       expect(result.files).toContain('manifest.yaml');
 
       const manifest = readManifest(tpl);
@@ -59,7 +59,7 @@ describe('Templates', () => {
       const result = installTemplate(tpl, target);
 
       expect(result.installed).toContain(join('agents', 'a.yaml'));
-      expect(result.installed).toContain(join('skills', 's.md'));
+      expect(result.installed).toContain(join('skills', 's', 'SKILL.md'));
 
       // Byte-identical
       expect(readFileSync(join(target, 'agents', 'a.yaml'), 'utf-8')).toBe(
@@ -104,7 +104,7 @@ describe('Templates', () => {
       mkdirSync(dest, { recursive: true });
       installTemplate(tpl, dest);
 
-      for (const f of ['agents/a.yaml', 'skills/s.md']) {
+      for (const f of ['agents/a.yaml', 'skills/s/SKILL.md']) {
         expect(readFileSync(join(dest, f), 'utf-8')).toBe(readFileSync(join(source, f), 'utf-8'));
       }
     });

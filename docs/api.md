@@ -1,0 +1,371 @@
+# API Reference
+
+The runtime exposes a JSON HTTP API under `/v1`. The local Console and SDK use
+the same API.
+
+## Base URL
+
+```text
+http://127.0.0.1:3000/v1
+```
+
+## Compatibility Headers
+
+The local runtime accepts requests with the same beta headers used by Claude
+Managed Agents clients. They are optional locally, but useful when testing SDK
+code intended to run against the hosted API:
+
+```text
+anthropic-beta: managed-agents-2026-04-01
+anthropic-beta: agent-memory-2026-07-22
+```
+
+## Authentication
+
+Authentication is disabled by default for local development. If API keys are
+configured, send a bearer token with every request:
+
+```text
+Authorization: Bearer sk-local-example
+```
+
+## Common Shapes
+
+Collection responses:
+
+```json
+{
+  "data": [],
+  "has_more": false,
+  "first_id": null,
+  "last_id": null
+}
+```
+
+Error responses:
+
+```json
+{
+  "error": {
+    "type": "invalid_request",
+    "message": "name is required"
+  }
+}
+```
+
+Common error types are `invalid_request`, `not_found`, `conflict`,
+`not_available`, and `internal_error`.
+
+## Agents
+
+Agents are file-backed YAML definitions exposed as standard API resources.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/v1/agents` | List loaded agents. |
+| `POST` | `/v1/agents` | Create an agent YAML file. |
+| `GET` | `/v1/agents/{agent_id}` | Retrieve an agent. |
+| `PUT` | `/v1/agents/{agent_id}` | Save a new agent version. |
+| `GET` | `/v1/agents/{agent_id}/versions` | List versions known to the local store. |
+| `POST` | `/v1/agents/{agent_id}/archive` | Archive an agent. |
+
+Create an agent:
+
+```bash
+curl -X POST http://127.0.0.1:3000/v1/agents \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "assistant",
+    "description": "Helps with development tasks.",
+    "model": { "id": "gpt-4o", "speed": "standard" },
+    "system": "You are a helpful assistant.",
+    "mcp_servers": [],
+    "tools": [{ "type": "agent_toolset_20260401" }],
+    "skills": [],
+    "metadata": {}
+  }'
+```
+
+Agent response:
+
+```json
+{
+  "id": "agent_assistant",
+  "type": "agent",
+  "name": "assistant",
+  "description": "Helps with development tasks.",
+  "model": { "id": "gpt-4o", "speed": "standard" },
+  "status": "active",
+  "version": 1,
+  "created_at": "2026-07-12T00:00:00.000Z",
+  "updated_at": "2026-07-12T00:00:00.000Z",
+  "archived_at": null
+}
+```
+
+## Sessions
+
+Sessions run an agent in an environment and persist a resumable event log.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/v1/sessions` | List sessions. |
+| `POST` | `/v1/sessions` | Create a session. |
+| `GET` | `/v1/sessions/{session_id}` | Retrieve a session. |
+| `POST` | `/v1/sessions/{session_id}/messages` | Send a user message and optionally stream. |
+| `POST` | `/v1/sessions/{session_id}/events` | Append user events. |
+| `GET` | `/v1/sessions/{session_id}/events` | List persisted events. |
+| `GET` | `/v1/sessions/{session_id}/events/stream` | Stream live events with SSE. |
+| `POST` | `/v1/sessions/{session_id}/stop` | Stop a session. |
+| `DELETE` | `/v1/sessions/{session_id}` | Delete a session from active listings. |
+
+Create a session:
+
+```bash
+curl -X POST http://127.0.0.1:3000/v1/sessions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "agent": "agent_assistant",
+    "environment_id": "env_default",
+    "title": "Local test",
+    "resources": [],
+    "vault_ids": [],
+    "metadata": { "source": "docs" }
+  }'
+```
+
+Supported session resources:
+
+```json
+[
+  {
+    "type": "file",
+    "file_id": "file_abc123",
+    "mount_path": "/uploads/input.txt"
+  },
+  {
+    "type": "github_repository",
+    "url": "https://github.com/owner/repo",
+    "authorization_token": "ghp_example",
+    "checkout": "main",
+    "mount_path": "/workspace/repo"
+  },
+  {
+    "type": "memory_store",
+    "memory_store_id": "memstore_abc123",
+    "access": "read_write",
+    "instructions": "Use this for durable project notes."
+  }
+]
+```
+
+Only `user.*` events can be appended by clients:
+
+```bash
+curl -X POST http://127.0.0.1:3000/v1/sessions/SESSION_ID/events \
+  -H "Content-Type: application/json" \
+  -d '{
+    "events": [
+      {
+        "type": "user.message",
+        "content": [{ "type": "text", "text": "Hello" }]
+      }
+    ]
+  }'
+```
+
+Send and stream a message:
+
+```bash
+curl -N -X POST http://127.0.0.1:3000/v1/sessions/SESSION_ID/messages \
+  -H "Content-Type: application/json" \
+  -d '{"content": "Hello", "stream": true}'
+```
+
+Resume the event stream:
+
+```bash
+curl -N http://127.0.0.1:3000/v1/sessions/SESSION_ID/events/stream \
+  -H "Last-Event-ID: EVENT_ID"
+```
+
+## Files
+
+Files can be uploaded once and mounted into sessions.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/v1/files` | List active files. |
+| `POST` | `/v1/files` | Upload a file. |
+| `GET` | `/v1/files/{file_id}` | Retrieve file metadata and preview. |
+| `GET` | `/v1/files/{file_id}/content` | Download file content. |
+| `DELETE` | `/v1/files/{file_id}` | Archive a file. |
+
+Multipart upload:
+
+```bash
+curl -X POST http://127.0.0.1:3000/v1/files \
+  -F "file=@notes.txt"
+```
+
+JSON upload:
+
+```bash
+curl -X POST http://127.0.0.1:3000/v1/files \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "notes.txt",
+    "media_type": "text/plain",
+    "content": "hello",
+    "encoding": "utf8"
+  }'
+```
+
+The per-file upload limit is 10 MB.
+
+## Skills
+
+Skills are reusable instruction packages. See [Skills](skills.md) for package
+format and upload rules.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/v1/skills` | List skills. |
+| `POST` | `/v1/skills` | Upload a skill package. |
+| `GET` | `/v1/skills/{skill_id}` | Retrieve a skill. |
+| `DELETE` | `/v1/skills/{skill_id}` | Delete a custom skill. |
+
+List query parameters:
+
+| Parameter | Purpose |
+| --- | --- |
+| `limit` | Page size, maximum 100. |
+| `page` | Cursor from `next_page`. |
+| `source` | `custom` or `anthropic`. |
+
+Upload:
+
+```bash
+zip -r code-review-assistant.zip code-review-assistant
+
+curl -X POST http://127.0.0.1:3000/v1/skills \
+  -F "files=@code-review-assistant.zip"
+```
+
+Skill list responses include `next_page` in addition to the common page fields.
+
+## Environments
+
+Environments describe where sessions run.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/v1/environments` | List environments. |
+| `POST` | `/v1/environments` | Create an environment. |
+| `GET` | `/v1/environments/{environment_id}` | Retrieve an environment. |
+| `PUT` | `/v1/environments/{environment_id}` | Update an environment. |
+| `POST` | `/v1/environments/{environment_id}/archive` | Archive an environment. |
+
+Create:
+
+```bash
+curl -X POST http://127.0.0.1:3000/v1/environments \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "local-dev",
+    "description": "Local development environment",
+    "hosting_type": "self_hosted",
+    "sandbox_provider": "local",
+    "network": {
+      "type": "limited",
+      "allow_mcp_server_network_access": false,
+      "allow_package_manager_network_access": true,
+      "allowed_hosts": []
+    },
+    "packages": []
+  }'
+```
+
+## Credential Vaults
+
+Credential vaults group secrets that sessions can attach by id.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/v1/credential-vaults` | List vaults. |
+| `POST` | `/v1/credential-vaults` | Create a vault. |
+| `GET` | `/v1/credential-vaults/{vault_id}` | Retrieve a vault. |
+| `POST` | `/v1/credential-vaults/{vault_id}/archive` | Archive a vault. |
+| `GET` | `/v1/credential-vaults/{vault_id}/credentials` | List credentials. |
+| `POST` | `/v1/credential-vaults/{vault_id}/credentials` | Add a credential. |
+| `POST` | `/v1/credential-vaults/{vault_id}/credentials/{credential_id}/archive` | Archive a credential. |
+| `DELETE` | `/v1/credential-vaults/{vault_id}/credentials/{credential_id}` | Delete a credential. |
+
+Credential `auth_type` values:
+
+- `mcp_oauth`
+- `bearer_token`
+- `environment_variable`
+
+Add a credential:
+
+```bash
+curl -X POST http://127.0.0.1:3000/v1/credential-vaults/VAULT_ID/credentials \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "github-token",
+    "auth_type": "environment_variable",
+    "variable_name": "GITHUB_TOKEN",
+    "value": "ghp_example",
+    "network": {
+      "type": "limited",
+      "allowed_hosts": ["api.github.com"]
+    },
+    "injection_locations": ["request_headers"]
+  }'
+```
+
+Secret values are encrypted at rest. Responses return `value_hint`, not the raw
+secret.
+
+## Memory Stores
+
+Memory stores persist named memory entries that can be mounted into sessions.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/v1/memory-stores` | List memory stores. |
+| `POST` | `/v1/memory-stores` | Create a memory store. |
+| `GET` | `/v1/memory-stores/{store_id}` | Retrieve a memory store. |
+| `POST` | `/v1/memory-stores/{store_id}/archive` | Archive a memory store. |
+| `GET` | `/v1/memory-stores/{store_id}/memories` | List memories. |
+| `POST` | `/v1/memory-stores/{store_id}/memories` | Add a memory. |
+| `PUT` | `/v1/memory-stores/{store_id}/memories/{memory_id}` | Update a memory. |
+| `DELETE` | `/v1/memory-stores/{store_id}/memories/{memory_id}` | Delete a memory. |
+
+Create a memory:
+
+```bash
+curl -X POST http://127.0.0.1:3000/v1/memory-stores/STORE_ID/memories \
+  -H "Content-Type: application/json" \
+  -d '{
+    "path": "/notes/release",
+    "content": "Keep release notes concise."
+  }'
+```
+
+Memory paths must start with `/` and must not end with `/`.
+
+## Runtime Extension Endpoints
+
+Extension endpoints expose local runtime operations.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/v1/x/health` | Health check. |
+| `GET` | `/v1/x/runtime` | Runtime status. |
+| `GET` | `/v1/x/workspace` | Workspace paths and metadata. |
+| `GET` | `/v1/x/templates` | Built-in agent templates. |
+| `POST` | `/v1/x/reload` | Reload file-backed agents. |
+| `GET` | `/v1/x/metrics` | Prometheus metrics, when enabled. |
+| `GET` | `/v1/x/mcp/status?session_id=...` | MCP connection status for a session. |

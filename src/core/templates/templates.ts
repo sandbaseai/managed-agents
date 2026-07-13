@@ -4,7 +4,7 @@
  * A template is a directory containing:
  *   manifest.yaml   — { name, description, version?, author?, tags? }
  *   agents/         — Agent definition files (.yaml/.json)
- *   skills/         — Skill files (.md), optional
+ *   skills/         — Skill directories with SKILL.md at the root, optional
  *   mcp/            — MCP config files, optional
  *
  * `installTemplate` copies a template's agents/ and skills/ into a project.
@@ -22,9 +22,10 @@ import {
   copyFileSync,
   rmSync,
 } from 'node:fs';
-import { join, basename } from 'node:path';
+import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
+import { defaultTemplateCacheDir } from '@/core/config/paths.js';
 
 export interface TemplateManifest {
   name: string;
@@ -73,16 +74,7 @@ export function installTemplate(
     const destDir = join(projectDir, sub);
     mkdirSync(destDir, { recursive: true });
 
-    for (const file of readdirSync(srcDir)) {
-      const src = join(srcDir, file);
-      const dest = join(destDir, file);
-      if (existsSync(dest) && !opts.force) {
-        skipped.push(join(sub, file));
-        continue;
-      }
-      copyFileSync(src, dest);
-      installed.push(join(sub, file));
-    }
+    copyTree(srcDir, destDir, sub, opts, installed, skipped);
   }
 
   return { installed, skipped };
@@ -105,13 +97,44 @@ export function createTemplate(
     if (!existsSync(srcDir)) continue;
     const destDir = join(templateDir, sub);
     mkdirSync(destDir, { recursive: true });
-    for (const file of readdirSync(srcDir)) {
-      copyFileSync(join(srcDir, file), join(destDir, file));
-      files.push(join(sub, basename(file)));
-    }
+    copyTree(srcDir, destDir, sub, { force: true }, files, []);
   }
 
   return { files };
+}
+
+function copyTree(
+  srcDir: string,
+  destDir: string,
+  relativeRoot: string,
+  opts: { force?: boolean },
+  copied: string[],
+  skipped: string[],
+): void {
+  for (const entry of readdirSync(srcDir, { withFileTypes: true })) {
+    const src = join(srcDir, entry.name);
+    const dest = join(destDir, entry.name);
+    const relativePath = join(relativeRoot, entry.name);
+
+    if (entry.isDirectory()) {
+      mkdirSync(dest, { recursive: true });
+      copyTree(src, dest, relativePath, opts, copied, skipped);
+      continue;
+    }
+
+    if (!entry.isFile()) {
+      continue;
+    }
+
+    if (existsSync(dest) && !opts.force) {
+      skipped.push(relativePath);
+      continue;
+    }
+
+    mkdirSync(destDir, { recursive: true });
+    copyFileSync(src, dest);
+    copied.push(relativePath);
+  }
 }
 
 /**
@@ -124,7 +147,7 @@ export function createTemplate(
  */
 export async function resolveTemplateSource(
   nameOrPath: string,
-  opts: { repo?: string; cacheDir: string } = { cacheDir: '.managed-agents/templates-cache' },
+  opts: { repo?: string; cacheDir: string } = { cacheDir: defaultTemplateCacheDir() },
 ): Promise<string> {
   // Local path takes precedence
   if (existsSync(join(nameOrPath, 'manifest.yaml'))) {

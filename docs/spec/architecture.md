@@ -173,8 +173,11 @@ graph LR
     Workspace -. cleanup .-> Sessions
 ```
 
-Project configuration is separate from runtime data. Runtime data belongs under
-`.managed-agents/` by default and should not be committed.
+Project configuration and optional seed files are separate from runtime data.
+Runtime metadata belongs in SQLite under the user-level runtime directory,
+`~/.managed-agents/<workspace-name>-<hash>/data.db` by default. Uploaded bytes,
+snapshots, and sandbox workspaces live under the same per-workspace runtime
+directory and should not be committed.
 
 ## Workspace Boundary
 
@@ -182,9 +185,11 @@ Project configuration is separate from runtime data. Runtime data belongs under
 graph TB
     Workspace["Workspace<br/>project boundary"]
     Config["Config<br/>managed-agents.config.yaml"]
-    Agents["Agents<br/>agents/*.yaml"]
-    Skills["Skills<br/>skills/*.md"]
-    RuntimeData["Runtime Data<br/>.managed-agents/"]
+    Agents["Agent Seeds<br/>agents/*.yaml"]
+    Skills["Skill Seeds<br/>skills/*/SKILL.md"]
+    RuntimeData["Runtime Data<br/>~/.managed-agents/&lt;workspace&gt;/"]
+    DB["SQLite<br/>data.db"]
+    Files["Blob Storage<br/>files/ skills/ snapshots/"]
     Vaults["Credential Vaults"]
     Memory["Memory Stores"]
     Sessions["Sessions"]
@@ -193,7 +198,9 @@ graph TB
     Workspace --> Config
     Workspace --> Agents
     Workspace --> Skills
-    Workspace --> RuntimeData
+    Workspace -. owns slug .-> RuntimeData
+    RuntimeData --> DB
+    RuntimeData --> Files
     RuntimeData --> Vaults
     RuntimeData --> Memory
     RuntimeData --> Sessions

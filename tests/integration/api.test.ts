@@ -1,28 +1,44 @@
 /**
- * Integration test for the CMA-compatible API.
+ * Integration test for the Managed Agents API.
  * Validates: Requirements 7.1, 7.2, 7.3, 7.6
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { join } from 'node:path';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { Database } from '@/core/db/database.js';
 import { SessionManager } from '@/core/session/session-manager.js';
 import { createServer } from '@/api/server.js';
+import { loadSkills } from '@/core/skills/loader.js';
 import type { Session, SessionEvent } from '@/types/session.js';
 import type { UserEvent } from '@/types/cma-protocol.js';
 
-describe('CMA-compatible API', () => {
+describe('Managed Agents API', () => {
   let app: ReturnType<typeof createServer>;
   let db: Database;
   let tmpDir: string;
+  let dataDir: string;
+  let agentsDir: string;
+  let skillsDir: string;
 
   beforeAll(() => {
     tmpDir = mkdtempSync(join(tmpdir(), 'ma-api-test-'));
+    agentsDir = join(tmpDir, 'agents');
+    skillsDir = join(tmpDir, 'skills');
+    dataDir = join(tmpDir, '.managed-agents');
+    const configPath = join(tmpDir, 'managed-agents.config.yaml');
+    mkdirSync(agentsDir, { recursive: true });
+    mkdirSync(skillsDir, { recursive: true });
+    mkdirSync(dataDir, { recursive: true });
+    writeFileSync(join(agentsDir, 'echo-agent.yaml'), 'name: echo-agent\nmodel: claude-sonnet-4-6\n');
+    mkdirSync(join(skillsDir, 'research'), { recursive: true });
+    writeFileSync(join(skillsDir, 'research', 'SKILL.md'), '---\nname: research\ndescription: Use cited sources.\n---\n# Research\n\nUse cited sources.\n');
+    writeFileSync(configPath, 'models:\n  - name: local\n    api_key: secret-value\n');
     db = new Database(join(tmpDir, 'test.db'));
     db.runMigrations();
     db.exec(`INSERT INTO environments (id, name, config) VALUES ('env_default', 'local', '{}')`);
+    db.exec(`INSERT INTO credential_vaults (id, name) VALUES ('vlt_test', 'test vault')`);
     // Match production id scheme (index.ts inserts agents with id = agent_<name>)
     db.exec(`INSERT INTO agents (id, name, definition) VALUES ('agent_echo-agent', 'echo-agent', '{}')`);
 
@@ -52,6 +68,15 @@ describe('CMA-compatible API', () => {
         },
       ],
       consoleRoot: null,
+      workspace: {
+        root: tmpDir,
+        dataDir,
+        agentsDir,
+        skillsDir,
+        configPath,
+        target: 'local',
+      },
+      skills: loadSkills(skillsDir).skills,
       reloadAgents: () => ({ agents: [], errors: [] }),
     });
   });
@@ -60,6 +85,27 @@ describe('CMA-compatible API', () => {
     db.close();
     rmSync(tmpDir, { recursive: true, force: true });
   });
+
+  async function getJson(path: string) {
+    const res = await app.request(path);
+    return { res, body: await res.json() as any };
+  }
+
+  async function postJson(path: string, body: unknown) {
+    const res = await app.request(path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    return { res, body: await res.json() as any };
+  }
+
+  function expectPage(body: any) {
+    expect(Array.isArray(body.data)).toBe(true);
+    expect(typeof body.has_more).toBe('boolean');
+    expect(body.first_id === null || typeof body.first_id === 'string').toBe(true);
+    expect(body.last_id === null || typeof body.last_id === 'string').toBe(true);
+  }
 
   describe('GET /', () => {
     it('returns server info', async () => {
@@ -95,6 +141,104 @@ describe('CMA-compatible API', () => {
       expect(body.agent.name).toBe('echo-agent');
     });
 
+    it('accepts standard agent refs, resources, vault ids, and redacts repository tokens', async () => {
+      const { body: store } = await postJson('/v1/memory-stores', {
+        name: 'Session resource memory',
+        description: 'Mounted session memory.',
+      });
+      const { body: file } = await postJson('/v1/files', {
+        name: 'resource.txt',
+        media_type: 'text/plain',
+        content: 'session resource',
+      });
+      const { res, body } = await postJson('/v1/sessions', {
+        title: 'resource run',
+        agent: { id: 'agent_echo-agent', type: 'agent', version: 1 },
+        environment_id: 'env_default',
+        vault_ids: ['vlt_test'],
+        resources: [
+          { type: 'file', file_id: file.id, mount_path: '/uploads/file.txt' },
+          {
+            type: 'github_repository',
+            url: 'https://github.com/example/repo',
+            authorization_token: 'ghp_super_secret_token',
+            checkout: { type: 'branch', name: 'main' },
+            mount_path: '/workspace/repo',
+          },
+          { type: 'memory_store', memory_store_id: store.id, mount_path: '/memory' },
+        ],
+        metadata: { source: 'contract-test' },
+      });
+
+      expect(res.status).toBe(201);
+      expect(body.agent.id).toBe('agent_echo-agent');
+      expect(body.environment_id).toBe('env_default');
+      expect(body.title).toBe('resource run');
+      expect(body.vault_ids).toEqual(['vlt_test']);
+      expect(body.metadata.source).toBe('contract-test');
+      expect(body.resources).toHaveLength(3);
+      expect(JSON.stringify(body.resources)).not.toContain('ghp_super_secret_token');
+      expect(body.resources.find((resource: any) => resource.type === 'github_repository').authorization_token).toBeUndefined();
+      expect(body.resources.find((resource: any) => resource.type === 'memory_store').memory_store_id).toBe(store.id);
+
+      const detail = await app.request(`/v1/sessions/${body.id}`);
+      expect(JSON.stringify(await detail.json())).not.toContain('ghp_super_secret_token');
+    });
+
+    it('rejects session resources that do not reference existing workspace resources', async () => {
+      const { res, body } = await postJson('/v1/sessions', {
+        agent: 'agent_echo-agent',
+        resources: [{ type: 'file', file_id: 'file_missing', mount_path: '/uploads/missing.txt' }],
+      });
+
+      expect(res.status).toBe(400);
+      expect(body.error.message).toContain('File not found');
+    });
+
+    it('rejects malformed session environment, vault, and resource references', async () => {
+      const missingEnvironment = await postJson('/v1/sessions', {
+        agent: 'agent_echo-agent',
+        environment_id: 'env_missing',
+      });
+      expect(missingEnvironment.res.status).toBe(400);
+      expect(missingEnvironment.body.error.message).toContain('Environment not found');
+
+      const malformedVault = await postJson('/v1/sessions', {
+        agent: 'agent_echo-agent',
+        vault_ids: ['vlt_test', 42],
+      });
+      expect(malformedVault.res.status).toBe(400);
+      expect(malformedVault.body.error.message).toContain('vault_ids[1]');
+
+      const missingVault = await postJson('/v1/sessions', {
+        agent: 'agent_echo-agent',
+        vault_ids: ['vlt_missing'],
+      });
+      expect(missingVault.res.status).toBe(400);
+      expect(missingVault.body.error.message).toContain('Credential vault not found');
+
+      const malformedCheckout = await postJson('/v1/sessions', {
+        agent: 'agent_echo-agent',
+        resources: [
+          {
+            type: 'github_repository',
+            url: 'https://github.com/example/repo',
+            authorization_token: 'ghp_super_secret_token',
+            checkout: ['main'],
+          },
+        ],
+      });
+      expect(malformedCheckout.res.status).toBe(400);
+      expect(malformedCheckout.body.error.message).toContain('checkout');
+
+      const missingMemoryStore = await postJson('/v1/sessions', {
+        agent: 'agent_echo-agent',
+        resources: [{ type: 'memory_store', memory_store_id: 'memstore_missing' }],
+      });
+      expect(missingMemoryStore.res.status).toBe(400);
+      expect(missingMemoryStore.body.error.message).toContain('Memory store not found');
+    });
+
     it('rejects without agent field', async () => {
       const res = await app.request('/v1/sessions', {
         method: 'POST',
@@ -104,7 +248,7 @@ describe('CMA-compatible API', () => {
       expect(res.status).toBe(400);
     });
 
-    it('ignores unknown fields (Property 15 — forward compat)', async () => {
+    it('ignores unknown fields (Property 15 - forward compatibility)', async () => {
       const res = await app.request('/v1/sessions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -176,7 +320,7 @@ describe('CMA-compatible API', () => {
     });
   });
 
-  describe('POST /v1/sessions/:id/events — validation', () => {
+  describe('POST /v1/sessions/:id/events - validation', () => {
     async function createSession() {
       const res = await app.request('/v1/sessions', {
         method: 'POST',
@@ -324,6 +468,33 @@ describe('CMA-compatible API', () => {
     });
   });
 
+  describe('POST /v1/agents', () => {
+    it('stores created agents in SQLite without writing source YAML files', async () => {
+      const { res, body } = await postJson('/v1/agents', {
+        name: 'runtime-agent',
+        description: 'Created through the API.',
+        model: { id: 'claude-sonnet-5', speed: 'standard' },
+        system: 'Handle runtime requests.',
+        tools: [{ type: 'agent_toolset_20260401' }],
+      });
+
+      expect(res.status).toBe(201);
+      expect(body.id).toBe('agent_runtime-agent');
+      expect(body.name).toBe('runtime-agent');
+      expect(existsSync(join(agentsDir, 'runtime-agent.yaml'))).toBe(false);
+      expect(existsSync(join(agentsDir, 'Runtime agent.yaml'))).toBe(false);
+
+      const row = db.prepare('SELECT definition FROM agents WHERE id = ?').get(body.id) as
+        | { definition: string }
+        | undefined;
+      expect(row).toBeDefined();
+      expect(JSON.parse(row!.definition).name).toBe('runtime-agent');
+
+      const list = await getJson('/v1/agents');
+      expect(list.body.data.some((item: any) => item.id === body.id)).toBe(true);
+    });
+  });
+
   describe('GET /v1/agents/:id', () => {
     it('does not resolve agents by bare name', async () => {
       const res = await app.request('/v1/agents/echo-agent');
@@ -344,8 +515,301 @@ describe('CMA-compatible API', () => {
     });
   });
 
+  describe('standard API page contracts', () => {
+    it('returns standard page envelopes for collection endpoints', async () => {
+      const collectionPaths = [
+        '/v1/agents',
+        '/v1/sessions',
+        '/v1/environments',
+        '/v1/credential-vaults',
+        '/v1/memory-stores',
+        '/v1/skills',
+        '/v1/x/templates',
+      ];
+
+      for (const path of collectionPaths) {
+        const { res, body } = await getJson(path);
+        expect(res.status, path).toBe(200);
+        expectPage(body);
+      }
+    });
+
+    it('exposes workspace, runtime, templates, and standard skills metadata for the console', async () => {
+      const workspaceRes = await app.request('/v1/x/workspace');
+      expect(workspaceRes.status).toBe(200);
+      const workspace = await workspaceRes.json();
+      expect(workspace.type).toBe('workspace');
+      expect(workspace.name).toBeTruthy();
+      expect(workspace.directories).toBeDefined();
+      expect(typeof workspace.directories).toBe('object');
+
+      const runtimeRes = await app.request('/v1/x/runtime');
+      expect(runtimeRes.status).toBe(200);
+      const runtime = await runtimeRes.json();
+      expect(runtime.type).toBe('runtime');
+      expect(runtime.status).toBe('running');
+      expect(runtime.agents_loaded).toBeGreaterThanOrEqual(1);
+
+      const templatesRes = await app.request('/v1/x/templates');
+      const templates = await templatesRes.json();
+      expect(templates.data.some((item: any) => item.name === 'Incident commander')).toBe(true);
+      expect(templates.data.every((item: any) => item.type === 'template')).toBe(true);
+
+      const skillsRes = await app.request('/v1/skills');
+      const skills = await skillsRes.json();
+      expectPage(skills);
+      expect(skills.data.some((item: any) => item.id === 'pptx' && item.source === 'anthropic')).toBe(true);
+      expect(skills.data.some((item: any) => item.id === 'skill_research' && item.source === 'custom')).toBe(true);
+      expect(skills.data.every((item: any) => item.type === 'skill')).toBe(true);
+    });
+
+    it('creates, retrieves, lists, and deletes skills through /v1/skills', async () => {
+      const skillContent = `---
+name: contract-skill
+description: Exercises the standard skill API.
+---
+
+# Contract Skill
+
+Use this in API tests.
+`;
+      const create = await postJson('/v1/skills', {
+        display_title: 'Contract Skill',
+        files: [
+          { path: 'contract-skill/SKILL.md', content: skillContent },
+          { path: 'contract-skill/resources/example.txt', content: 'resource' },
+        ],
+      });
+
+      expect(create.res.status).toBe(201);
+      expect(create.body.id).toMatch(/^skill_[A-Za-z0-9_-]+$/);
+      expect(create.body.id).not.toBe('skill_contract-skill');
+      expect(create.body.type).toBe('skill');
+      expect(create.body.source).toBe('custom');
+      expect(create.body.display_title).toBe('Contract Skill');
+      expect(create.body.latest_version).toBeTruthy();
+
+      const skillId = create.body.id;
+      const storedSkill = db.prepare('SELECT instructions, storage_path FROM skills WHERE id = ?').get(skillId) as
+        | { instructions: string; storage_path: string | null }
+        | undefined;
+      expect(storedSkill).toBeDefined();
+      expect(storedSkill!.instructions).toContain('Use this in API tests.');
+      expect(storedSkill!.storage_path).toBe(join(dataDir, 'skills', skillId));
+      expect(existsSync(storedSkill!.storage_path!)).toBe(true);
+      expect(existsSync(join(storedSkill!.storage_path!, 'SKILL.md'))).toBe(true);
+      expect(existsSync(join(storedSkill!.storage_path!, 'resources', 'example.txt'))).toBe(true);
+      expect(existsSync(join(skillsDir, 'contract-skill'))).toBe(false);
+
+      const get = await getJson(`/v1/skills/${skillId}`);
+      expect(get.res.status).toBe(200);
+      expect(get.body.id).toBe(skillId);
+      expect(get.body.name).toBe('contract-skill');
+      expect(get.body.description).toBe('Exercises the standard skill API.');
+
+      const customList = await getJson('/v1/skills?source=custom');
+      expect(customList.body.data.some((item: any) => item.id === skillId)).toBe(true);
+      expect(customList.body.data.every((item: any) => item.source === 'custom')).toBe(true);
+
+      const del = await app.request(`/v1/skills/${skillId}`, { method: 'DELETE' });
+      expect(del.status).toBe(200);
+      expect(await del.json()).toEqual({ id: skillId, type: 'skill_deleted' });
+      expect(existsSync(storedSkill!.storage_path!)).toBe(false);
+      const archived = db.prepare('SELECT archived_at FROM skills WHERE id = ?').get(skillId) as
+        | { archived_at: string | null }
+        | undefined;
+      expect(archived?.archived_at).toBeTruthy();
+
+      const missing = await app.request(`/v1/skills/${skillId}`);
+      expect(missing.status).toBe(404);
+    });
+
+    it('extracts zip skill packages before validating SKILL.md', async () => {
+      const zip = makeStoredZip([
+        {
+          path: 'zip-skill/SKILL.md',
+          content: `---
+name: zip-skill
+description: Uploaded from a compressed package.
+---
+
+# Zip Skill
+`,
+        },
+        { path: 'zip-skill/resources/example.txt', content: 'resource' },
+        { path: 'zip-skill/.DS_Store', content: 'ignored' },
+        { path: '__MACOSX/zip-skill/._SKILL.md', content: 'ignored' },
+      ]);
+
+      const create = await postJson('/v1/skills', {
+        files: [{ filename: 'zip-skill.zip', base64: zip.toString('base64') }],
+      });
+
+      expect(create.res.status).toBe(201);
+      expect(create.body.id).toMatch(/^skill_[A-Za-z0-9_-]+$/);
+      expect(create.body.id).not.toBe('skill_zip-skill');
+      expect(create.body.name).toBe('zip-skill');
+      expect(create.body.display_title).toBe('zip-skill');
+
+      const get = await getJson(`/v1/skills/${create.body.id}`);
+      expect(get.res.status).toBe(200);
+      expect(get.body.description).toBe('Uploaded from a compressed package.');
+
+      const del = await app.request(`/v1/skills/${create.body.id}`, { method: 'DELETE' });
+      expect(del.status).toBe(200);
+    });
+
+    it('rejects zip skill packages whose declared unpacked size exceeds the limit', async () => {
+      const zip = makeStoredZip([
+        { path: 'huge-skill/SKILL.md', content: '', declaredSize: 8 * 1024 * 1024 + 1 },
+      ]);
+
+      const create = await postJson('/v1/skills', {
+        files: [{ filename: 'huge-skill.zip', base64: zip.toString('base64') }],
+      });
+
+      expect(create.res.status).toBe(400);
+      expect(create.body.error.message).toContain('8MB');
+    });
+
+    it('rejects invalid skill uploads with standard validation messages', async () => {
+      const flat = await postJson('/v1/skills', {
+        files: [{ path: 'SKILL.md', content: '---\nname: flat\ndescription: invalid\n---\nBody' }],
+      });
+      expect(flat.res.status).toBe(400);
+      expect(flat.body.error.message).toContain('top-level directory');
+
+      const missingFrontmatter = await postJson('/v1/skills', {
+        files: [{ path: 'bad-skill/SKILL.md', content: '# No frontmatter' }],
+      });
+      expect(missingFrontmatter.res.status).toBe(400);
+      expect(missingFrontmatter.body.error.message).toContain('YAML frontmatter');
+    });
+
+    it('creates and exposes file resources without leaking internal paths', async () => {
+      const create = await postJson('/v1/files', {
+        name: 'notes.md',
+        media_type: 'text/markdown',
+        content: '# Notes\n\nSession mountable file.',
+      });
+      expect(create.res.status).toBe(201);
+      expect(create.body.id).toMatch(/^file_/);
+      expect(create.body.type).toBe('file');
+      expect(create.body.name).toBe('notes.md');
+      expect(create.body.media_type).toBe('text/markdown');
+      expect(create.body.size_bytes).toBeGreaterThan(0);
+      expect(create.body.preview).toContain('Session mountable file');
+      expect(create.body.storage_path).toBeUndefined();
+
+      const { res, body } = await getJson('/v1/files');
+      expect(res.status).toBe(200);
+      expectPage(body);
+      const listed = body.data.find((file: any) => file.id === create.body.id);
+      expect(listed).toBeDefined();
+      expect(JSON.stringify(body)).not.toContain('.managed-agents');
+      expect(JSON.stringify(body)).not.toContain('secrets.key');
+
+      const content = await app.request(`/v1/files/${create.body.id}/content`);
+      expect(content.status).toBe(200);
+      expect(content.headers.get('content-type')).toContain('text/markdown');
+      expect(await content.text()).toContain('# Notes');
+
+      const archive = await app.request(`/v1/files/${create.body.id}`, { method: 'DELETE' });
+      expect(archive.status).toBe(200);
+      expect((await archive.json() as any).status).toBe('archived');
+
+      const afterArchive = await getJson('/v1/files');
+      expect(afterArchive.body.data.some((file: any) => file.id === create.body.id)).toBe(false);
+    });
+
+    it('always generates file ids and keeps storage inside the managed files directory', async () => {
+      const create = await postJson('/v1/files', {
+        id: 'file_/../../escape.txt',
+        name: 'escape.txt',
+        content: 'should stay managed',
+      });
+
+      expect(create.res.status).toBe(201);
+      expect(create.body.id).toMatch(/^file_/);
+      expect(create.body.id).not.toBe('file_/../../escape.txt');
+      expect(existsSync(join(dataDir, 'escape.txt'))).toBe(false);
+    });
+
+    it('uploads file resources with multipart form data', async () => {
+      const form = new FormData();
+      form.append(
+        'file',
+        new Blob(['uploaded through the console'], { type: 'text/plain' }),
+        'sandbase-upload-test.txt',
+      );
+
+      const res = await app.request('/v1/files', {
+        method: 'POST',
+        body: form,
+      });
+      const body = await res.json() as any;
+
+      expect(res.status).toBe(201);
+      expect(body.id).toMatch(/^file_/);
+      expect(body.name).toBe('sandbase-upload-test.txt');
+      expect(body.media_type).toBe('text/plain');
+      expect(body.size_bytes).toBe(28);
+      expect(body.preview).toContain('uploaded through the console');
+
+      const content = await app.request(`/v1/files/${body.id}/content`);
+      expect(content.status).toBe(200);
+      expect(content.headers.get('content-disposition')).toContain('sandbase-upload-test.txt');
+      expect(await content.text()).toBe('uploaded through the console');
+    });
+  });
+
   describe('PUT /v1/environments/:id', () => {
-    it('updates Claude-style environment fields', async () => {
+    it('creates, gets, and archives environment resources', async () => {
+      const { res, body } = await postJson('/v1/environments', {
+        id: 'env_contract_runner',
+        name: 'Contract runner',
+        description: 'Configuration template for sessions and code execution.',
+        config: {
+          hosting_type: 'self_hosted',
+          sandbox_provider: 'self_hosted',
+          network: {
+            type: 'limited',
+            allow_mcp_server_network_access: false,
+            allow_package_manager_network_access: false,
+            allowed_hosts: ['api.example.com'],
+          },
+          packages: [{ manager: 'pip', package: 'pytest==8.3.4' }],
+        },
+        metadata: { tier: 'qa' },
+      });
+
+      expect(res.status).toBe(201);
+      expect(body.id).toBe('env_contract_runner');
+      expect(body.type).toBe('environment');
+      expect(body.status).toBe('active');
+      expect(body.hosting_type).toBe('self_hosted');
+      expect(body.sandbox_provider).toBe('self_hosted');
+      expect(body.network.allowed_hosts).toEqual(['api.example.com']);
+      expect(body.packages[0].package).toBe('pytest==8.3.4');
+      expect(body.config.network.allowed_hosts).toEqual(['api.example.com']);
+
+      const getRes = await app.request('/v1/environments/env_contract_runner');
+      expect(getRes.status).toBe(200);
+      expect((await getRes.json()).metadata.tier).toBe('qa');
+
+      const archiveRes = await app.request('/v1/environments/env_contract_runner/archive', { method: 'POST' });
+      expect(archiveRes.status).toBe(200);
+      expect((await archiveRes.json()).status).toBe('archived');
+    });
+
+    it('rejects duplicate environment ids with a conflict', async () => {
+      await postJson('/v1/environments', { id: 'env_duplicate_contract', name: 'Duplicate contract' });
+      const { res, body } = await postJson('/v1/environments', { id: 'env_duplicate_contract', name: 'Duplicate contract' });
+      expect(res.status).toBe(409);
+      expect(body.error.type).toBe('conflict');
+    });
+
+    it('updates environment fields', async () => {
       const res = await app.request('/v1/environments/env_default', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -371,10 +835,39 @@ describe('CMA-compatible API', () => {
       const body = await res.json();
       expect(body.name).toBe('Cloud runner');
       expect(body.description).toBe('Container template for console sessions.');
+      expect(body.hosting_type).toBe('cloud');
+      expect(body.sandbox_provider).toBe('cloud');
+      expect(body.network.allowed_hosts).toEqual(['api.github.com']);
+      expect(body.packages[0].package).toBe('ruff==0.5.0');
       expect(body.config.hosting_type).toBe('cloud');
       expect(body.config.network.allowed_hosts).toEqual(['api.github.com']);
       expect(body.config.packages[0].package).toBe('ruff==0.5.0');
       expect(body.metadata.owner).toBe('platform');
+    });
+
+    it('accepts standard top-level environment fields', async () => {
+      const { res, body } = await postJson('/v1/environments', {
+        id: 'env_standard_top_level',
+        name: 'Standard top level',
+        description: 'Uses the same shape as the Console create form.',
+        hosting_type: 'cloud',
+        sandbox_provider: 'cloud',
+        network: {
+          type: 'limited',
+          allow_mcp_server_network_access: false,
+          allow_package_manager_network_access: true,
+          allowed_hosts: ['docs.anthropic.com'],
+        },
+        packages: [{ manager: 'npm', package: 'tsx@latest' }],
+      });
+
+      expect(res.status).toBe(201);
+      expect(body.hosting_type).toBe('cloud');
+      expect(body.sandbox_provider).toBe('cloud');
+      expect(body.network.allowed_hosts).toEqual(['docs.anthropic.com']);
+      expect(body.packages[0].package).toBe('tsx@latest');
+      expect(body.config.hosting_type).toBe('cloud');
+      expect(body.config.packages[0].manager).toBe('npm');
     });
 
     it('returns 404 for non-existent environments', async () => {
@@ -388,6 +881,72 @@ describe('CMA-compatible API', () => {
   });
 
   describe('Credential vaults', () => {
+    it('supports detail, all standard credential auth types, active filtering, and vault archive', async () => {
+      const { res: vaultRes, body: vault } = await postJson('/v1/credential-vaults', {
+        name: 'Contract vault',
+        description: 'Shared credentials for contract tests.',
+        metadata: { owner: 'qa' },
+      });
+      expect(vaultRes.status).toBe(201);
+      expect(vault.type).toBe('credential_vault');
+
+      const credentialInputs = [
+        {
+          name: 'OAuth MCP',
+          auth_type: 'mcp_oauth',
+          mcp_server_url: 'https://mcp.example.com/mcp',
+          injection_locations: ['request_headers'],
+        },
+        {
+          name: 'Bearer MCP',
+          auth_type: 'bearer_token',
+          value: 'secret-bearer-token',
+          network: { type: 'unrestricted', allowed_hosts: ['api.example.com'] },
+          injection_locations: ['request_headers', 'request_headers', 'request_body'],
+        },
+        {
+          name: 'Env credential',
+          auth_type: 'environment_variable',
+          variable_name: 'MY_API_KEY',
+          value: 'secret-env-token',
+        },
+      ];
+
+      const createdCredentials = [];
+      for (const input of credentialInputs) {
+        const { res, body } = await postJson(`/v1/credential-vaults/${vault.id}/credentials`, input);
+        expect(res.status).toBe(201);
+        expect(body.type).toBe('credential');
+        expect(body.value).toBeUndefined();
+        expect(JSON.stringify(body)).not.toContain('secret-');
+        createdCredentials.push(body);
+      }
+
+      const bearer = createdCredentials.find((item: any) => item.auth_type === 'bearer_token');
+      expect(bearer.network.type).toBe('unrestricted');
+      expect(bearer.injection_locations).toEqual(['request_headers', 'request_body']);
+
+      const detailRes = await app.request(`/v1/credential-vaults/${vault.id}`);
+      expect(detailRes.status).toBe(200);
+      const detail = await detailRes.json();
+      expect(detail.credential_count).toBe(3);
+      expect(detail.credentials).toHaveLength(3);
+
+      const archiveRes = await app.request(`/v1/credential-vaults/${vault.id}/credentials/${createdCredentials[0].id}/archive`, { method: 'POST' });
+      expect(archiveRes.status).toBe(200);
+      const deleteRes = await app.request(`/v1/credential-vaults/${vault.id}/credentials/${createdCredentials[1].id}`, { method: 'DELETE' });
+      expect(deleteRes.status).toBe(200);
+
+      const activeRes = await app.request(`/v1/credential-vaults/${vault.id}/credentials`);
+      const active = await activeRes.json();
+      expectPage(active);
+      expect(active.data.map((item: any) => item.id)).toEqual([createdCredentials[2].id]);
+
+      const archiveVaultRes = await app.request(`/v1/credential-vaults/${vault.id}/archive`, { method: 'POST' });
+      expect(archiveVaultRes.status).toBe(200);
+      expect((await archiveVaultRes.json()).status).toBe('archived');
+    });
+
     it('creates a vault and stores credential metadata without returning the secret value', async () => {
       const vaultRes = await app.request('/v1/credential-vaults', {
         method: 'POST',
@@ -487,6 +1046,50 @@ describe('CMA-compatible API', () => {
   });
 
   describe('Memory stores', () => {
+    it('supports detail, normalized path conflicts, active memory filtering, and store archive', async () => {
+      const { res: storeRes, body: store } = await postJson('/v1/memory-stores', {
+        name: 'Contract memory store',
+        description: 'Persistent memory for contract tests.',
+        metadata: { owner: 'qa' },
+      });
+      expect(storeRes.status).toBe(201);
+      expect(store.type).toBe('memory_store');
+      expect(store.memory_count).toBe(0);
+
+      const { res: memoryRes, body: memory } = await postJson(`/v1/memory-stores/${store.id}/memories`, {
+        path: '/folder/a',
+        content: 'alpha',
+        metadata: { kind: 'note' },
+      });
+      expect(memoryRes.status).toBe(201);
+      expect(memory.path).toBe('/folder/a');
+
+      const duplicate = await postJson(`/v1/memory-stores/${store.id}/memories`, {
+        path: '/folder//a',
+        content: 'duplicate',
+      });
+      expect(duplicate.res.status).toBe(409);
+      expect(duplicate.body.error.type).toBe('conflict');
+
+      const detailRes = await app.request(`/v1/memory-stores/${store.id}`);
+      expect(detailRes.status).toBe(200);
+      const detail = await detailRes.json();
+      expect(detail.memory_count).toBe(1);
+      expect(detail.memories[0].content).toBe('alpha');
+
+      const deleteRes = await app.request(`/v1/memory-stores/${store.id}/memories/${memory.id}`, { method: 'DELETE' });
+      expect(deleteRes.status).toBe(200);
+
+      const memoriesRes = await app.request(`/v1/memory-stores/${store.id}/memories`);
+      const memories = await memoriesRes.json();
+      expectPage(memories);
+      expect(memories.data).toEqual([]);
+
+      const archiveStoreRes = await app.request(`/v1/memory-stores/${store.id}/archive`, { method: 'POST' });
+      expect(archiveStoreRes.status).toBe(200);
+      expect((await archiveStoreRes.json()).status).toBe('archived');
+    });
+
     it('creates a memory store and manages memories by path', async () => {
       const storeRes = await app.request('/v1/memory-stores', {
         method: 'POST',
@@ -647,3 +1250,61 @@ describe('CMA-compatible API', () => {
     });
   });
 });
+
+function makeStoredZip(entries: Array<{ path: string; content: string; declaredSize?: number }>): Buffer {
+  const localParts: Buffer[] = [];
+  const centralParts: Buffer[] = [];
+  let localOffset = 0;
+
+  for (const entry of entries) {
+    const name = Buffer.from(entry.path, 'utf8');
+    const content = Buffer.from(entry.content, 'utf8');
+    const declaredSize = entry.declaredSize ?? content.length;
+    const localHeader = Buffer.alloc(30);
+    localHeader.writeUInt32LE(0x04034b50, 0);
+    localHeader.writeUInt16LE(20, 4);
+    localHeader.writeUInt16LE(0, 6);
+    localHeader.writeUInt16LE(0, 8);
+    localHeader.writeUInt32LE(0, 10);
+    localHeader.writeUInt32LE(0, 14);
+    localHeader.writeUInt32LE(content.length, 18);
+    localHeader.writeUInt32LE(content.length, 22);
+    localHeader.writeUInt16LE(name.length, 26);
+    localHeader.writeUInt16LE(0, 28);
+    localParts.push(localHeader, name, content);
+
+    const centralHeader = Buffer.alloc(46);
+    centralHeader.writeUInt32LE(0x02014b50, 0);
+    centralHeader.writeUInt16LE(20, 4);
+    centralHeader.writeUInt16LE(20, 6);
+    centralHeader.writeUInt16LE(0, 8);
+    centralHeader.writeUInt16LE(0, 10);
+    centralHeader.writeUInt32LE(0, 12);
+    centralHeader.writeUInt32LE(0, 16);
+    centralHeader.writeUInt32LE(content.length, 20);
+    centralHeader.writeUInt32LE(declaredSize, 24);
+    centralHeader.writeUInt16LE(name.length, 28);
+    centralHeader.writeUInt16LE(0, 30);
+    centralHeader.writeUInt16LE(0, 32);
+    centralHeader.writeUInt16LE(0, 34);
+    centralHeader.writeUInt16LE(0, 36);
+    centralHeader.writeUInt32LE(0, 38);
+    centralHeader.writeUInt32LE(localOffset, 42);
+    centralParts.push(centralHeader, name);
+
+    localOffset += localHeader.length + name.length + content.length;
+  }
+
+  const local = Buffer.concat(localParts);
+  const central = Buffer.concat(centralParts);
+  const eocd = Buffer.alloc(22);
+  eocd.writeUInt32LE(0x06054b50, 0);
+  eocd.writeUInt16LE(0, 4);
+  eocd.writeUInt16LE(0, 6);
+  eocd.writeUInt16LE(entries.length, 8);
+  eocd.writeUInt16LE(entries.length, 10);
+  eocd.writeUInt32LE(central.length, 12);
+  eocd.writeUInt32LE(local.length, 16);
+  eocd.writeUInt16LE(0, 20);
+  return Buffer.concat([local, central, eocd]);
+}

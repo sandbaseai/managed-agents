@@ -2,7 +2,7 @@
  * Local Sandbox Provider
  *
  * Default execution backend: runs commands as local subprocesses.
- * Working directory: .managed-agents/sandbox/<session_id>/
+ * Working directory: <runtime-data-dir>/sandbox/<session_id>/
  *
  * Zero isolation — suitable for development mode only.
  * Reference: OMA local-subprocess.ts

@@ -58,7 +58,7 @@ const agentToolsetSchema = z.discriminatedUnion('type', [
 ]);
 
 const skillRefSchema = z.object({
-  type: z.literal('custom'),
+  type: z.enum(['custom', 'anthropic']),
   skill_id: z.string().min(1, 'Skill id is required'),
   version: z.string().optional(),
 });

@@ -3,6 +3,14 @@
   "version": "0.1.0",
   "description": "Open-source managed-agent runtime and local Console. Run standard agent sessions locally with any model.",
   "type": "module",
+  "homepage": "https://github.com/sandbaseai/managed-agents#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sandbaseai/managed-agents.git"
+  },
+  "bugs": {
+    "url": "https://github.com/sandbaseai/managed-agents/issues"
+  },
   "engines": {
     "node": ">=22"
   },
@@ -46,13 +54,14 @@
   },
   "keywords": [
     "agent",
-    "claude",
     "managed-agents",
-    "cma",
     "mcp",
     "ai",
     "llm",
-    "local-first"
+    "local-first",
+    "agent-runtime",
+    "agent-console",
+    "skills"
   ],
   "license": "Apache-2.0",
   "dependencies": {

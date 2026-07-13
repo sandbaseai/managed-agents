@@ -1,7 +1,7 @@
 /**
- * managed-agents — Entry Point
+ * managed-agents - Entry Point
  *
- * CMA-compatible agent runtime.
+ * Managed Agents runtime.
  * CLI commands: start (default), init, list, reload
  */
 
@@ -13,10 +13,12 @@ import { parse as parseYaml } from 'yaml';
 
 import { Database } from './core/db/database.js';
 import { SessionManager } from './core/session/session-manager.js';
-import { EventLogger } from './core/session/event-logger.js';
 import { DefaultSessionExecutor } from './core/session/executor.js';
 import { loadAgents } from './core/agent/loader.js';
+import { importAgentSeeds, loadActiveAgentsFromDb, refreshAgentsFromDb } from './core/agent/store.js';
 import { loadSkills } from './core/skills/loader.js';
+import { BUILTIN_SKILLS } from './core/skills/catalog.js';
+import { importSkillSeeds, loadCustomSkillsFromDb } from './core/skills/store.js';
 import { installTemplate, createTemplate, listTemplates, resolveTemplateSource } from './core/templates/templates.js';
 import { ModelRegistry } from './model/registry.js';
 import { LocalSandboxProvider } from './sandbox/local-provider.js';
@@ -29,8 +31,8 @@ import { SqliteMemoryProvider } from './core/memory/sqlite-memory-provider.js';
 import type { MemoryProvider } from './core/memory/memory-provider.js';
 import { SnapshotManager } from './core/session/snapshot-manager.js';
 import { createServer } from './api/server.js';
-import { agentId as standardAgentId } from './api/standard.js';
 import { resolveEnvVars } from './core/config/env-resolver.js';
+import { defaultTemplateCacheDir, resolveDataDir, resolveUserPath } from './core/config/paths.js';
 import { resolveApiKeys } from './api/auth.js';
 import { createLogger } from './core/observability/logger.js';
 import { Metrics } from './core/observability/metrics.js';
@@ -46,7 +48,7 @@ const VERSION = '0.1.0';
 const program = new Command();
 program
   .name('managed-agents')
-  .description('CMA-compatible agent runtime — run multi-agent systems locally with any model')
+  .description('Managed Agents runtime - run multi-agent systems locally with any model')
   .version(VERSION);
 
 // Default command: start
@@ -55,7 +57,7 @@ program
   .description('Start the managed-agents server')
   .option('-p, --port <port>', 'Server port', '3000')
   .option('--host <host>', 'Server host', '127.0.0.1')
-  .option('-d, --data-dir <dir>', 'Data directory', '.managed-agents')
+  .option('-d, --data-dir <dir>', 'Data directory (default: ~/.managed-agents/<workspace>)')
   .option('--agents-dir <dir>', 'Agents directory', 'agents')
   .option('--skills-dir <dir>', 'Skills directory', 'skills')
   .option('-c, --config <file>', 'Config file path', 'managed-agents.config.yaml')
@@ -102,7 +104,7 @@ program
   .description('Show cloud deployment guidance (v1 placeholder)')
   .action(() => {
     console.log('managed-agents deploy\n');
-    console.log('Agent definitions are portable — the same agents/ and skills/');
+    console.log('Agent definitions are portable - the same agents/ and skills/');
     console.log('run locally and in the cloud with no changes (Requirement 13).\n');
     console.log('v1 does not push to a hosted service yet. To deploy today:');
     console.log('  1. Build:   npm run build');
@@ -125,7 +127,7 @@ template
       return;
     }
     for (const t of items) {
-      console.log(`  ${t.name}  — ${t.description ?? ''}`);
+      console.log(`  ${t.name}  - ${t.description ?? ''}`);
     }
   });
 
@@ -139,7 +141,7 @@ template
       // Local path if it exists; otherwise fetch from the (default/official) repo
       const source = await resolveTemplateSource(nameOrPath, {
         repo: opts.repo,
-        cacheDir: resolve('.managed-agents/templates-cache'),
+        cacheDir: defaultTemplateCacheDir(),
       });
       const result = installTemplate(source, process.cwd(), { force: opts.force });
       console.log(`Installed ${result.installed.length} file(s).`);
@@ -176,19 +178,20 @@ program.parse();
 // Start Server
 // ============================================================
 
-async function startServer(opts: { port: string; host: string; dataDir: string; agentsDir: string; skillsDir: string; config: string; target?: string }) {
+async function startServer(opts: { port: string; host: string; dataDir?: string; agentsDir: string; skillsDir: string; config: string; target?: string }) {
   const port = parseInt(opts.port, 10);
   const host = opts.host;
-  const dataDir = resolve(opts.dataDir);
-  const agentsDir = resolve(opts.agentsDir);
-  const skillsDir = resolve(opts.skillsDir);
-  const configPath = resolve(opts.config);
+  const workspaceRoot = process.cwd();
+  const dataDir = resolveDataDir(opts.dataDir, workspaceRoot);
+  const agentsDir = resolveUserPath(opts.agentsDir, workspaceRoot);
+  const skillsDir = resolveUserPath(opts.skillsDir, workspaceRoot);
+  const configPath = resolveUserPath(opts.config, workspaceRoot);
   const target = opts.target ?? 'local';
 
   // Initialize data directory
   mkdirSync(dataDir, { recursive: true });
 
-  // Initialize database (migrations are embedded — bundle-safe)
+  // Initialize database (migrations are embedded and bundle-safe)
   const dbPath = join(dataDir, 'data.db');
   const db = new Database(dbPath);
   db.runMigrations();
@@ -259,38 +262,29 @@ async function startServer(opts: { port: string; host: string; dataDir: string; 
   const loadResult = loadAgents(agentsDir);
   if (loadResult.errors.length > 0) {
     for (const err of loadResult.errors) {
-      console.error(`[AGENT_LOAD] ${err.file} — ${err.reason}${err.field ? ` (field: ${err.field})` : ''}`);
+      console.error(`[AGENT_LOAD] ${err.file} - ${err.reason}${err.field ? ` (field: ${err.field})` : ''}`);
     }
   }
 
-  // Insert loaded agents into DB
-  const agents: AgentDefinition[] = loadResult.agents;
-  for (const agent of agents) {
-    const agentId = standardAgentId(agent.name);
-    const existing = db.prepare('SELECT id FROM agents WHERE name = ?').get(agent.name);
-    if (!existing) {
-      db.prepare('INSERT INTO agents (id, name, definition) VALUES (?, ?, ?)').run(
-        agentId,
-        agent.name,
-        JSON.stringify(agent),
-      );
-    } else {
-      db.prepare('UPDATE agents SET definition = ?, updated_at = datetime(\'now\') WHERE name = ?').run(
-        JSON.stringify(agent),
-        agent.name,
-      );
-    }
+  // Seed portable YAML agents into SQLite. Runtime state is SQLite-backed.
+  const seedErrors = importAgentSeeds(db, loadResult.agents);
+  for (const err of seedErrors) {
+    console.error(`[AGENT_SEED] ${err.file} - ${err.reason}${err.field ? ` (field: ${err.field})` : ''}`);
   }
+  const agents: AgentDefinition[] = loadActiveAgentsFromDb(db);
 
-  // Load skills (SKILL.md files); warn on agents referencing unknown skills
+  // Load skill directories (skills/*/SKILL.md); warn on agents referencing unknown skills
   const skillResult = loadSkills(skillsDir);
   for (const err of skillResult.errors) {
-    console.error(`[SKILL_LOAD] ${err.file} — ${err.reason}`);
+    console.error(`[SKILL_LOAD] ${err.file} - ${err.reason}`);
   }
-  const skillNames = new Set(skillResult.skills.map((s) => s.name));
+  importSkillSeeds(db, skillResult.skills);
+  const skills = loadCustomSkillsFromDb(db);
+  const knownSkills = [...skills, ...BUILTIN_SKILLS];
+  const skillNames = new Set(knownSkills.map((s) => s.name));
   for (const agent of agents) {
     for (const ref of agent.skills ?? []) {
-      if (!skillNames.has(ref.skill_id)) {
+      if (!skillNames.has(ref.skill_id) && !knownSkills.some((skill) => skill.id === ref.skill_id)) {
         console.error(`[SKILL_REF] agent "${agent.name}" references unknown skill "${ref.skill_id}" (ignored)`);
       }
     }
@@ -302,7 +296,7 @@ async function startServer(opts: { port: string; host: string; dataDir: string; 
   const sandboxProvider = new LocalSandboxProvider(dataDir);
   const strategy = new DefaultStrategy();
 
-  // Sandbox provider registry — local always; docker if the CLI is present
+  // Sandbox provider registry: local always; docker if the CLI is present
   const sandboxRegistry = new SandboxProviderRegistry();
   sandboxRegistry.register(sandboxProvider);
   const dockerAvailable = isDockerAvailable();
@@ -313,7 +307,7 @@ async function startServer(opts: { port: string; host: string; dataDir: string; 
   const workQueue = new WorkQueue(db);
   sandboxRegistry.register(new SelfHostedSandboxProvider(workQueue));
 
-  // Resolve an environment name → its configured sandbox_provider type
+  // Resolve an environment name to its configured sandbox_provider type
   const resolveEnvProviderType = (envName: string) => {
     const row = db.prepare('SELECT config FROM environments WHERE name = ?').get(envName) as
       | { config: string } | undefined;
@@ -326,7 +320,7 @@ async function startServer(opts: { port: string; host: string; dataDir: string; 
     }
   };
 
-  // Resolve an environment name → whether workspace snapshots are enabled
+  // Resolve an environment name to whether workspace snapshots are enabled
   const resolveEnvSnapshot = (envName: string) => {
     const row = db.prepare('SELECT config FROM environments WHERE name = ?').get(envName) as
       | { config: string } | undefined;
@@ -351,7 +345,7 @@ async function startServer(opts: { port: string; host: string; dataDir: string; 
     strategy,
     eventLogger,
     compactor: new ContextCompactor(),
-    skills: skillResult.skills,
+    skills,
     memory,
     snapshots,
   });
@@ -380,7 +374,7 @@ async function startServer(opts: { port: string; host: string; dataDir: string; 
     metrics,
     workQueue,
     workspace: {
-      root: process.cwd(),
+      root: workspaceRoot,
       dataDir,
       agentsDir,
       skillsDir,
@@ -393,14 +387,13 @@ async function startServer(opts: { port: string; host: string; dataDir: string; 
       memory: memory ? memory.name : 'disabled',
       authEnabled: apiKeys.length > 0,
     },
-    skills: skillResult.skills,
+    skills,
     getMcpStatus: (sessionId) => executor.getMcpStatus(sessionId),
     reloadAgents: () => {
       const result = loadAgents(agentsDir);
-      // Update agents array in place
-      agents.length = 0;
-      agents.push(...result.agents);
-      return result;
+      importAgentSeeds(db, result.agents);
+      const activeAgents = refreshAgentsFromDb(db, agents);
+      return { agents: activeAgents, errors: result.errors };
     },
   });
 
@@ -415,11 +408,12 @@ async function startServer(opts: { port: string; host: string; dataDir: string; 
     console.log(`  Console:   http://${host}:${info.port}/ui`);
     console.log(`  Health:    http://${host}:${info.port}/v1/x/health`);
     console.log(`  Agents:    ${agents.length} loaded`);
-    console.log(`  Skills:    ${skillResult.skills.length} loaded`);
+    console.log(`  Skills:    ${skills.length} loaded`);
     console.log(`  Sandbox:   ${sandboxRegistry.listTypes().join(', ')}`);
     console.log(`  Memory:    ${memory ? memory.name : 'disabled'}`);
     console.log(`  Target:    ${target}`);
-    console.log(`  Auth:      ${apiKeys.length > 0 ? 'enabled (Bearer token required)' : 'DISABLED (open — localhost only)'}`);
+    console.log(`  Data:      ${dataDir}`);
+    console.log(`  Auth:      ${apiKeys.length > 0 ? 'enabled (Bearer token required)' : 'DISABLED (open - localhost only)'}`);
     if (loadResult.errors.length > 0) {
       console.log(`  Warnings:  ${loadResult.errors.length} agent load errors`);
     }
@@ -431,7 +425,7 @@ async function startServer(opts: { port: string; host: string; dataDir: string; 
   server.on('error', (err: NodeJS.ErrnoException) => {
     if (err.code === 'EADDRINUSE') {
       console.error(`Error: [PORT_IN_USE] Port ${port} is already in use.`);
-      console.error(`  \u2192 Stop the process using it, or start with --port <other>`);
+      console.error(`  -> Stop the process using it, or start with --port <other>`);
     } else {
       console.error(`Error: [SERVER] ${err.message}`);
     }
@@ -476,16 +470,16 @@ function initProject() {
 
   // Create example agent
   writeFileSync(
-	    join(cwd, 'agents', 'assistant.yaml'),
-	    `name: assistant
-	model:
-	  id: gpt-4o
-	  speed: standard
-	system: |
+    join(cwd, 'agents', 'assistant.yaml'),
+    `name: assistant
+model:
+  id: gpt-4o
+  speed: standard
+system: |
   You are a helpful assistant. Answer questions clearly and concisely.
 skills:
   - type: custom
-    skill_id: example-skill
+    skill_id: skill_example-skill
 tools:
   - type: agent_toolset_20260401
     default_config:
@@ -507,8 +501,9 @@ temperature: 0.7
   );
 
   // Create example skill
+  mkdirSync(join(cwd, 'skills', 'example-skill'), { recursive: true });
   writeFileSync(
-    join(cwd, 'skills', 'example-skill.md'),
+    join(cwd, 'skills', 'example-skill', 'SKILL.md'),
     `---
 name: example-skill
 description: An example skill showing the SKILL.md format
@@ -572,7 +567,7 @@ async function chatCommand(
     }
   } catch {
     console.error(`Error: [CHAT] Cannot connect to server on port ${opts.port}`);
-    console.error(`  \u2192 Start it with: managed-agents start --port ${opts.port}`);
+    console.error(`  -> Start it with: managed-agents start --port ${opts.port}`);
     process.exit(1);
   }
 
@@ -584,7 +579,7 @@ async function chatCommand(
       if (ev.type === 'agent.message_chunk') process.stdout.write(ev.delta ?? '');
       else if (ev.type === 'agent.tool_use' || ev.type === 'agent.mcp_tool_use') {
         const b = (ev.content ?? [])[0] as any;
-        process.stdout.write(`\n  \u2192 tool: ${b?.name ?? '?'}\n`);
+        process.stdout.write(`\n  -> tool: ${b?.name ?? '?'}\n`);
       }
     }
     process.stdout.write('\n');
@@ -636,7 +631,7 @@ async function listAgents(opts: { port: string }) {
     }
   } catch (err: any) {
     console.error(`Error: [LIST] Cannot connect to server on port ${opts.port}`);
-    console.error(`  → Is the server running? Start with: managed-agents start --port ${opts.port}`);
+    console.error(`  -> Is the server running? Start with: managed-agents start --port ${opts.port}`);
     process.exit(1);
   }
 }
@@ -662,7 +657,7 @@ async function reloadAgents(opts: { port: string }) {
     }
   } catch (err: any) {
     console.error(`Error: [RELOAD] Cannot connect to server on port ${opts.port}`);
-    console.error(`  → Is the server running? Start with: managed-agents start --port ${opts.port}`);
+    console.error(`  -> Is the server running? Start with: managed-agents start --port ${opts.port}`);
     process.exit(1);
   }
 }

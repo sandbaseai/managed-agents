@@ -1,7 +1,7 @@
 /**
  * managed-agents Client SDK
  *
- * A small typed wrapper over the CMA-compatible HTTP API. Works in Node 22+
+ * A small typed wrapper over the managed-agents HTTP API. Works in Node 22+
  * (uses the global fetch). Provides ergonomic session/agent operations plus
  * SSE streaming (`tail`) and a convenience `chat` (send + stream the reply).
  */
@@ -103,7 +103,7 @@ export class ManagedAgentsClient {
     return (await res.json()) as T;
   }
 
-  /** @internal — opens an SSE stream and yields parsed events. */
+  /** @internal - opens an SSE stream and yields parsed events. */
   async *stream(
     path: string,
     opts?: { lastEventId?: string; method?: string; body?: unknown },
@@ -169,7 +169,7 @@ class SessionsResource {
   constructor(private readonly client: ManagedAgentsClient) {}
 
   create(input: {
-    agent: string;
+    agent: string | { id: string; type?: 'agent'; version?: number };
     environment_id?: string;
     title?: string;
     resources?: Array<Record<string, unknown>>;
@@ -198,7 +198,7 @@ class SessionsResource {
   }
 
   /**
-   * Send a user message through the CMA-style convenience endpoint.
+   * Send a user message through the session message convenience endpoint.
    *
    * Defaults to streaming the turn. Pass `{ stream: false }` for an immediate
    * `{ accepted: true }` acknowledgment.

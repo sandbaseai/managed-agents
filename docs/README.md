@@ -8,6 +8,10 @@ open-source runtime.
 
 | Document | Audience | Contents |
 | --- | --- | --- |
+| [Installation](installation.md) | Users and operators | Install options, model configuration, startup flags, and health checks. |
+| [Usage Guide](usage.md) | Users and integrators | Workspace layout, Console workflows, sessions, resources, credentials, memory, and SDK usage. |
+| [API Reference](api.md) | API and SDK integrators | HTTP endpoints, request shapes, response shapes, errors, and examples. |
+| [Skills](skills.md) | Agent builders | Skill package format, upload flow, validation rules, and agent references. |
 | [Requirements](spec/requirements.md) | Users and maintainers | Product scope, runtime guarantees, and release-facing requirements. |
 | [Technical Design](spec/design.md) | Contributors | Core concepts, data model, extension contracts, and API groups. |
 | [Architecture](spec/architecture.md) | Contributors and operators | System diagrams, data boundaries, session flow, and deployment modes. |
@@ -16,8 +20,7 @@ open-source runtime.
 ## Documentation Rules
 
 - Public docs describe this project only.
-- Public docs avoid internal planning notes and third-party comparison material.
+- Public docs avoid internal planning notes and external comparison material.
 - Requirements describe observable behavior.
 - Design docs describe stable architecture and extension points.
 - Implementation status tracks current state without replacing issue tracking.
-

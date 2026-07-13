@@ -21,7 +21,7 @@ export interface ApiAgent {
   tools: AgentToolset[];
   mcp_servers: ApiMcpServer[];
   skills: Array<{
-    type: 'custom';
+    type: 'custom' | 'anthropic';
     skill_id: string;
     version?: string;
   }>;
@@ -58,9 +58,9 @@ export interface ApiSession {
 }
 
 export type ApiSessionResource =
-  | { type: 'file'; file_id: string }
-  | { type: 'github_repository'; repository_id: string }
-  | { type: 'memory_store'; memory_store_id: string };
+  | { type: 'file'; file_id: string; mount_path: string }
+  | { type: 'github_repository'; url?: string; repository_id?: string; checkout?: unknown; mount_path?: string }
+  | { type: 'memory_store'; memory_store_id: string; access?: 'read_write' | 'read_only'; instructions?: string; mount_path?: string };
 
 export interface ApiEvent {
   id: string;
@@ -129,7 +129,7 @@ export function toApiSession(session: Session, agent?: AgentDefinition): ApiSess
       : { id: session.agentId, type: 'agent', name: session.agentName },
     environment_id: session.environmentId,
     status: toApiSessionStatus(session.status),
-    resources: parseJsonArray(session.resources),
+    resources: parseJsonArray<Record<string, unknown>>(session.resources).map(toApiSessionResource),
     vault_ids: parseJsonArray(session.vaultIds),
     usage: {
       input_tokens: session.usage?.tokensIn ?? 0,
@@ -168,6 +168,15 @@ export function toApiSessionStatus(status: string): ApiSession['status'] {
     default:
       return 'idle';
   }
+}
+
+function toApiSessionResource(resource: Record<string, unknown>): ApiSessionResource {
+  if (resource.type === 'github_repository') {
+    const safeResource = { ...resource };
+    delete safeResource.authorization_token;
+    return safeResource as ApiSessionResource;
+  }
+  return resource as ApiSessionResource;
 }
 
 function toApiMcpServers(servers: McpServerConfig[]): ApiMcpServer[] {

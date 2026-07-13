@@ -6,13 +6,9 @@
  */
 
 import { Hono } from 'hono';
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { stringify as stringifyYaml } from 'yaml';
 import type { ServerDeps } from '../server.js';
 import { agentId, pageOf, toApiAgent } from '../standard.js';
 import { validateAgentDefinition } from '@/core/agent/schema.js';
-import type { AgentDefinition } from '@/types/agent.js';
 
 export function agentsRoutes(deps: ServerDeps) {
   const app = new Hono();
@@ -22,12 +18,8 @@ export function agentsRoutes(deps: ServerDeps) {
     return c.json(pageOf(deps.agents.map((agent) => toApiAgent(agent, agentRowMeta(deps, agentId(agent.name))))));
   });
 
-  // POST / — Create a standard agent definition in agents/
+  // POST / — Create a standard agent definition in SQLite.
   app.post('/', async (c) => {
-    if (!deps.workspace?.agentsDir) {
-      return c.json({ error: { type: 'not_available', message: 'agentsDir is not configured' } }, 503);
-    }
-
     let body: unknown;
     try {
       body = await c.req.json();
@@ -42,21 +34,17 @@ export function agentsRoutes(deps: ServerDeps) {
 
     const agent = result.data;
     const id = agentId(agent.name);
-    mkdirSync(deps.workspace.agentsDir, { recursive: true });
-    const filePath = join(deps.workspace.agentsDir, `${agent.name}.yaml`);
-    if (existsSync(filePath) || deps.agents.some((item) => agentId(item.name) === id)) {
+    const existing = deps.db.prepare('SELECT id FROM agents WHERE id = ? OR name = ?').get(id, agent.name);
+    if (existing || deps.agents.some((item) => agentId(item.name) === id)) {
       return c.json({ error: { type: 'conflict', message: `Agent already exists: ${agent.name}` } }, 409);
     }
 
-    writeAgentFile(filePath, agent);
     deps.db.prepare('INSERT INTO agents (id, name, definition) VALUES (?, ?, ?)').run(
       id,
       agent.name,
       JSON.stringify(agent),
     );
-    const reload = deps.reloadAgents();
-    deps.agents.length = 0;
-    deps.agents.push(...reload.agents);
+    deps.agents.push(agent);
 
     return c.json(toApiAgent(agent, agentRowMeta(deps, id)), 201);
   });
@@ -71,10 +59,6 @@ export function agentsRoutes(deps: ServerDeps) {
   });
 
   app.put('/:id', async (c) => {
-    if (!deps.workspace?.agentsDir) {
-      return c.json({ error: { type: 'not_available', message: 'agentsDir is not configured' } }, 503);
-    }
-
     let body: unknown;
     try {
       body = await c.req.json();
@@ -90,7 +74,7 @@ export function agentsRoutes(deps: ServerDeps) {
 
     const agent = result.data;
     if (agentId(agent.name) !== id) {
-      return c.json({ error: { type: 'invalid_request', message: 'Agent rename is not supported by this local file-backed store yet' } }, 400);
+      return c.json({ error: { type: 'invalid_request', message: 'Agent rename is not supported yet' } }, 400);
     }
 
     const existing = deps.db.prepare('SELECT id FROM agents WHERE id = ?').get(id);
@@ -98,8 +82,6 @@ export function agentsRoutes(deps: ServerDeps) {
       return c.json({ error: { type: 'not_found', message: `Agent not found: ${id}` } }, 404);
     }
 
-    mkdirSync(deps.workspace.agentsDir, { recursive: true });
-    writeAgentFile(join(deps.workspace.agentsDir, `${agent.name}.yaml`), agent);
     deps.db.prepare(`
       UPDATE agents
       SET name = ?,
@@ -112,9 +94,12 @@ export function agentsRoutes(deps: ServerDeps) {
       WHERE id = ?
     `).run(agent.name, JSON.stringify(agent), id);
 
-    const reload = deps.reloadAgents();
-    deps.agents.length = 0;
-    deps.agents.push(...reload.agents);
+    const index = deps.agents.findIndex((item) => agentId(item.name) === id);
+    if (index >= 0) {
+      deps.agents[index] = agent;
+    } else {
+      deps.agents.push(agent);
+    }
 
     return c.json(toApiAgent(agent, agentRowMeta(deps, id)));
   });
@@ -133,6 +118,10 @@ export function agentsRoutes(deps: ServerDeps) {
       WHERE id = ?
     `).run(id);
     const agent = deps.agents.find((a) => agentId(a.name) === id);
+    if (agent) {
+      const index = deps.agents.indexOf(agent);
+      if (index >= 0) deps.agents.splice(index, 1);
+    }
     return c.json(agent ? toApiAgent(agent, agentRowMeta(deps, id)) : { id, status: 'archived' });
   });
 
@@ -147,10 +136,6 @@ export function agentsRoutes(deps: ServerDeps) {
   });
 
   return app;
-}
-
-function writeAgentFile(filePath: string, agent: AgentDefinition): void {
-  writeFileSync(filePath, stringifyYaml(agent));
 }
 
 function agentRowMeta(deps: ServerDeps, id: string) {

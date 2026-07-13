@@ -1,8 +1,8 @@
 /**
  * HTTP API Server
  *
- * Hono-based REST API exposing CMA-compatible endpoints.
- * Factory function pattern — creates server with injected dependencies.
+ * Hono-based REST API exposing Managed Agents endpoints.
+ * Factory function pattern - creates server with injected dependencies.
  */
 
 import { Hono } from 'hono';
@@ -13,6 +13,7 @@ import { fileURLToPath } from 'node:url';
 import { sessionsRoutes } from './routes/sessions.js';
 import { agentsRoutes } from './routes/agents.js';
 import { resourceRoutes } from './routes/resources.js';
+import { skillsRoutes } from './routes/skills.js';
 import { extendedRoutes } from './routes/extended.js';
 import { streamRoutes } from './routes/stream.js';
 import { createAuthMiddleware } from './auth.js';
@@ -95,15 +96,16 @@ export function createServer(deps: ServerDeps) {
 
   app.use('*', createAuthMiddleware({ apiKeys: deps.apiKeys }));
 
-  // CMA-compatible endpoints
+  // Managed Agents API endpoints
   app.route('/v1/sessions', sessionsRoutes(deps));
   app.route('/v1/agents', agentsRoutes(deps));
   app.route('/v1', resourceRoutes(deps));
+  app.route('/v1/skills', skillsRoutes(deps));
 
   // SSE streaming
   app.route('/v1/sessions', streamRoutes(deps));
 
-  // Extension endpoints (non-CMA)
+  // Local runtime extension endpoints
   app.route('/v1/x', extendedRoutes(deps));
 
   // Self-hosted sandbox worker endpoints (R9.14)
@@ -111,7 +113,7 @@ export function createServer(deps: ServerDeps) {
     app.route('/v1/x/worker', workerRoutes(deps.workQueue));
   }
 
-  // Root health check (JSON — used by SDK/clients)
+  // Root health check (JSON - used by SDK/clients)
   app.get('/', (c) => c.json({ status: 'ok', name: 'managed-agents', version: '0.1.0' }));
 
   // Web dashboard (R10)

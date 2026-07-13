@@ -1,29 +1,54 @@
 /**
  * Skills Loader (Requirement 4)
  *
- * Loads SKILL.md files from a project's skills/ directory. Compatible with the
- * Claude Code SKILL.md convention: YAML frontmatter (name, description, ...)
- * followed by a markdown body of instructions.
+ * Loads skill directories from a project's skills/ directory. Each skill uses
+ * a SKILL.md file with YAML frontmatter (name, description, ...) followed by a
+ * markdown body of instructions.
  *
  * Skills are injected into an agent's system prompt so the model knows the
  * available capabilities up-front (no read-tool round-trip needed).
  */
 
-import { readFileSync, readdirSync, existsSync } from 'node:fs';
-import { join, extname, basename } from 'node:path';
+import { randomBytes } from 'node:crypto';
+import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
+import { join } from 'node:path';
 import { parse as parseYaml } from 'yaml';
 
+export type SkillSource = 'custom' | 'anthropic';
+
+export interface SkillVersion {
+  id: string;
+  created_at: string | null;
+  latest: boolean;
+}
+
 export interface Skill {
-  /** Unique skill name (from frontmatter `name`, else filename). */
+  /** Public skill identifier. Custom skills use the `skill_` prefix. */
+  id: string;
+  /** Object type. */
+  type: 'skill';
+  /** Unique skill name from frontmatter. */
   name: string;
+  /** Human-readable label not injected into the model prompt. */
+  display_title: string | null;
   /** Short description (from frontmatter `description`). */
   description: string;
-  /** Markdown body — the instructions the model should follow. */
+  /** Markdown body - the instructions the model should follow. */
   instructions: string;
   /** Original frontmatter (preserved for round-trip). */
   frontmatter: Record<string, unknown>;
-  /** Source filename. */
+  /** Source file path relative to the skills directory. */
   file: string;
+  /** Skill provenance. */
+  source: SkillSource;
+  /** Latest version identifier for this skill. */
+  latest_version: string | null;
+  /** Version history known to this runtime. */
+  versions: SkillVersion[];
+  /** ISO timestamp of when the skill was created. */
+  created_at: string | null;
+  /** ISO timestamp of when the skill was last updated. */
+  updated_at: string | null;
 }
 
 export interface SkillLoadError {
@@ -36,38 +61,60 @@ export interface SkillLoadResult {
   errors: SkillLoadError[];
 }
 
-const FRONTMATTER_RE = /^---\n([\s\S]*?)\n---\n?([\s\S]*)$/;
+const FRONTMATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/;
+export const SKILL_METADATA_FILE = '.managed-agent-skill.json';
+
+type SkillMetadata = Partial<Pick<Skill, 'id' | 'display_title' | 'created_at' | 'updated_at' | 'latest_version' | 'versions'>>;
+
+export function createSkillId(): string {
+  return `skill_${randomBytes(18).toString('base64url')}`;
+}
+
+export function customSkillId(name: string): string {
+  return `skill_${name}`;
+}
 
 /**
  * Parse a SKILL.md string into a structured Skill.
  * Returns null if required fields are missing.
  */
-export function parseSkill(content: string, fallbackName: string): Skill | null {
+export function parseSkill(content: string, packageName: string, file = `${packageName}/SKILL.md`, id = customSkillId(packageName)): Skill | null {
   const match = FRONTMATTER_RE.exec(content);
-
-  let frontmatter: Record<string, unknown> = {};
-  let body = content;
-
-  if (match) {
-    try {
-      frontmatter = (parseYaml(match[1]) as Record<string, unknown>) ?? {};
-    } catch {
-      frontmatter = {};
-    }
-    body = match[2] ?? '';
+  if (!match) {
+    return null;
   }
 
-  const name = typeof frontmatter.name === 'string' && frontmatter.name.length > 0
-    ? frontmatter.name
-    : fallbackName;
-  const description = typeof frontmatter.description === 'string' ? frontmatter.description : '';
+  let frontmatter: Record<string, unknown>;
+  try {
+    frontmatter = (parseYaml(match[1]) as Record<string, unknown>) ?? {};
+  } catch {
+    return null;
+  }
+
+  const name = typeof frontmatter.name === 'string' ? frontmatter.name.trim() : '';
+  const description = typeof frontmatter.description === 'string' ? frontmatter.description.trim() : '';
+  if (!name || !description) {
+    return null;
+  }
+
+  const displayTitle = typeof frontmatter.display_title === 'string' && frontmatter.display_title.trim()
+    ? frontmatter.display_title.trim()
+    : name;
 
   return {
+    id,
+    type: 'skill',
     name,
+    display_title: displayTitle,
     description,
-    instructions: body.trim(),
+    instructions: (match[2] ?? '').trim(),
     frontmatter,
-    file: `${fallbackName}.md`,
+    file,
+    source: 'custom',
+    latest_version: null,
+    versions: [],
+    created_at: null,
+    updated_at: null,
   };
 }
 
@@ -86,7 +133,9 @@ export function serializeSkill(skill: Skill): string {
 }
 
 /**
- * Load all skills from a directory. Malformed files are skipped with an error.
+ * Load all skills from a directory. Each custom skill is a top-level directory
+ * containing a SKILL.md file.
+ * Malformed skills are skipped with an error.
  */
 export function loadSkills(skillsDir: string): SkillLoadResult {
   const skills: Skill[] = [];
@@ -96,21 +145,37 @@ export function loadSkills(skillsDir: string): SkillLoadResult {
     return { skills, errors };
   }
 
-  const files = readdirSync(skillsDir).filter((f) => extname(f).toLowerCase() === '.md');
+  const entries = readdirSync(skillsDir, { withFileTypes: true }).filter((entry) => entry.isDirectory());
 
-  for (const file of files) {
+  for (const entry of entries) {
     try {
-      const content = readFileSync(join(skillsDir, file), 'utf-8');
-      const fallbackName = basename(file, extname(file));
-      const skill = parseSkill(content, fallbackName);
+      const skillFile = join(skillsDir, entry.name, 'SKILL.md');
+      if (!existsSync(skillFile)) {
+        errors.push({ file: `${entry.name}/SKILL.md`, reason: 'Missing SKILL.md' });
+        continue;
+      }
+
+      const content = readFileSync(skillFile, 'utf-8');
+      const metadata = readSkillMetadata(join(skillsDir, entry.name));
+      const skill = parseSkill(content, entry.name, `${entry.name}/SKILL.md`, metadata?.id);
       if (skill) {
-        skill.file = file;
+        const stat = statSync(skillFile);
+        const updatedAt = stat.mtime.toISOString();
+        const createdAt = stat.birthtime.toISOString();
+        const version = String(Math.trunc(stat.mtimeMs));
+        skill.created_at = metadata?.created_at ?? createdAt;
+        skill.updated_at = metadata?.updated_at ?? updatedAt;
+        skill.latest_version = metadata?.latest_version ?? version;
+        skill.display_title = metadata?.display_title ?? skill.display_title;
+        skill.versions = metadata?.versions?.length
+          ? metadata.versions
+          : [{ id: skill.latest_version, created_at: skill.updated_at, latest: true }];
         skills.push(skill);
       } else {
-        errors.push({ file, reason: 'Could not parse skill (missing name)' });
+        errors.push({ file: `${entry.name}/SKILL.md`, reason: 'SKILL.md must include YAML frontmatter with name and description' });
       }
     } catch (err) {
-      errors.push({ file, reason: err instanceof Error ? err.message : String(err) });
+      errors.push({ file: `${entry.name}/SKILL.md`, reason: err instanceof Error ? err.message : String(err) });
     }
   }
 
@@ -131,7 +196,7 @@ export function composeSystemPrompt(
     return basePrompt;
   }
 
-  const assigned = allSkills.filter((s) => assignedSkillNames.includes(s.name));
+  const assigned = allSkills.filter((s) => assignedSkillNames.includes(s.id) || assignedSkillNames.includes(s.name));
   if (assigned.length === 0) {
     return basePrompt;
   }
@@ -141,4 +206,44 @@ export function composeSystemPrompt(
     .join('\n\n');
 
   return `${basePrompt}\n\n# Available Skills\n\nYou have the following skills available. Use them when relevant:\n\n${skillSections}`;
+}
+
+function readSkillMetadata(skillDir: string): SkillMetadata | null {
+  const metadataPath = join(skillDir, SKILL_METADATA_FILE);
+  if (!existsSync(metadataPath)) return null;
+
+  try {
+    const raw = JSON.parse(readFileSync(metadataPath, 'utf-8')) as Record<string, unknown>;
+    const id = readString(raw.id);
+    if (!id?.startsWith('skill_')) return null;
+
+    const versions = Array.isArray(raw.versions)
+      ? raw.versions.flatMap((item): SkillVersion[] => {
+        if (!item || typeof item !== 'object') return [];
+        const value = item as Record<string, unknown>;
+        const versionId = readString(value.id);
+        if (!versionId) return [];
+        return [{
+          id: versionId,
+          created_at: readString(value.created_at),
+          latest: value.latest === true,
+        }];
+      })
+      : undefined;
+
+    return {
+      id,
+      display_title: readString(raw.display_title),
+      created_at: readString(raw.created_at),
+      updated_at: readString(raw.updated_at),
+      latest_version: readString(raw.latest_version),
+      versions,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function readString(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
 }
