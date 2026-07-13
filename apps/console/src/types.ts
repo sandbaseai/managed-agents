@@ -111,7 +111,7 @@ export type ApiKeyCreateResponse = ApiKey & {
   secret_key: string;
 };
 
-export type EnvironmentHostingType = 'cloud' | 'self_hosted';
+export type EnvironmentHostingType = 'cloud' | 'local' | 'self_hosted';
 export type EnvironmentNetworkType = 'limited' | 'unrestricted';
 export type EnvironmentPackageDraft = { id: string; manager: string; package: string };
 export type MetadataDraft = { id: string; key: string; value: string };

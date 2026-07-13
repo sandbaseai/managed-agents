@@ -82,7 +82,16 @@ git clone git@github.com:sandbaseai/managed-agents.git
 cd managed-agents
 npm ci
 npm run build
-npm start
+```
+
+Then create and run an agent workspace outside the source checkout:
+
+```bash
+mkdir ../my-agents
+cd ../my-agents
+node ../managed-agents/dist/index.js init
+# edit managed-agents.config.yaml and set your provider API key
+node ../managed-agents/dist/index.js start
 ```
 
 ## Quick Start
@@ -95,11 +104,14 @@ cd my-agents
 npx managed-agents init
 ```
 
+If you are running from a source checkout, replace `npx managed-agents` with
+`node /path/to/managed-agents/dist/index.js`.
+
 Configure a model in `managed-agents.config.yaml`. For Anthropic:
 
 ```yaml
 models:
-  - name: claude-opus-4-8
+  - name: default
     provider: anthropic
     model: claude-opus-4-8
     api_key: ${ANTHROPIC_API_KEY}
@@ -118,6 +130,8 @@ Start the runtime:
 ```bash
 export ANTHROPIC_API_KEY=...
 npx managed-agents start
+# source checkout:
+# node /path/to/managed-agents/dist/index.js start
 ```
 
 Open the Console:
@@ -166,7 +180,7 @@ or uniqueness key.
 ```yaml
 name: Incident commander
 description: Triages alerts, opens incident tickets, and coordinates status updates.
-model: claude-opus-4-8
+model: default
 system: |-
   You are an on-call incident commander. Be decisive, cite the evidence you used,
   and recommend rollback when confidence is high.
@@ -209,8 +223,11 @@ metadata:
   template: incident-commander
 ```
 
-Use `model: <model-id>` for the common path. API clients may also send a model
-configuration object when they need additional controls such as `speed`.
+Use `model: default` for the common path. The value is the configured model
+registry name in `managed-agents.config.yaml`; that registry entry maps to the
+provider model id such as `claude-opus-4-8`, `gpt-4o`, or an OpenAI-compatible
+model name. API clients may also send a model configuration object when they
+need additional controls such as `speed`.
 
 ## Console
 
@@ -250,7 +267,7 @@ curl -X POST http://127.0.0.1:3000/v1/agents \
   -d '{
     "name": "Incident commander",
     "description": "Triages alerts and coordinates incident response.",
-    "model": "claude-opus-4-8",
+    "model": "default",
     "system": "You are an on-call incident commander.",
     "tools": [{ "type": "agent_toolset_20260401" }],
     "metadata": { "template": "incident-commander" }
@@ -302,6 +319,32 @@ curl -X POST http://127.0.0.1:3000/v1/memory_stores \
 
 Memory store names are labels for humans and prompts; they do not need to be
 unique. Use the returned `memstore_...` id when mounting a store into a session.
+
+Create a credential vault and add a credential:
+
+```bash
+curl -X POST http://127.0.0.1:3000/v1/credential-vaults \
+  -H "Content-Type: application/json" \
+  -d '{ "name": "production-tools" }'
+
+curl -X POST http://127.0.0.1:3000/v1/credential-vaults/vlt_.../credentials \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "github-token",
+    "auth_type": "environment_variable",
+    "variable_name": "GITHUB_TOKEN",
+    "value": "ghp_example",
+    "network": {
+      "type": "limited",
+      "allowed_hosts": ["api.github.com"]
+    },
+    "injection_locations": ["request_headers"]
+  }'
+```
+
+Credential records use `auth_type` values `mcp_oauth`, `bearer_token`, or
+`environment_variable`. Secret values are encrypted at rest and never returned
+by list or retrieve responses.
 
 Create a session:
 

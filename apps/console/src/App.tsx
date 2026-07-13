@@ -1445,10 +1445,10 @@ function EnvironmentEditor({ environment, onCancel, onSaved }: { environment: En
         <textarea value={draft.description} onChange={(event) => setDraft({ ...draft, description: event.target.value })} placeholder="Add a description for this environment (optional)" />
       </label>
 
-      {draft.hostingType === 'cloud' ? (
-        <EnvironmentNetworkEditor draft={draft} onDraft={setDraft} />
-      ) : (
+      {draft.hostingType === 'self_hosted' ? (
         <SelfHostedEnvironment environment={environment} sessions={[]} />
+      ) : (
+        <EnvironmentNetworkEditor draft={draft} onDraft={setDraft} />
       )}
     </section>
   );
@@ -2337,6 +2337,12 @@ function Observability({ data }: { data: ConsoleData }) {
   const averageDuration = metrics.disabled ? 'disabled' : (averageRequestMs === null ? 'No samples yet' : `${averageRequestMs} ms`);
   return (
     <section className="stack">
+      <div className="pageIntro">
+        <div>
+          <h1>Observability</h1>
+          <p>Inspect live runtime counters and session activity for this workspace.</p>
+        </div>
+      </div>
       <SummaryStrip items={[
         { label: 'Sessions', value: data.sessions.length, icon: <MessageSquare size={18} /> },
         { label: 'Running', value: data.sessions.filter((session) => session.status === 'running').length, icon: <CirclePlay size={18} /> },
@@ -2926,7 +2932,7 @@ function ResourceEditorHeader({ title, onRemove }: { title: string; onRemove: ()
 function ResourceModal({ kind, onClose, onSaved }: { kind: 'environment' | 'credential_vault' | 'memory_store'; onClose: () => void; onSaved: () => void }) {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
-  const [hostingType, setHostingType] = useState<EnvironmentHostingType>('cloud');
+  const [hostingType, setHostingType] = useState<EnvironmentHostingType>('local');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const submit = async (event: FormEvent) => {
@@ -2941,7 +2947,7 @@ function ResourceModal({ kind, onClose, onSaved }: { kind: 'environment' | 'cred
         ...(kind === 'environment' ? {
           config: {
             hosting_type: hostingType,
-            sandbox_provider: hostingType === 'self_hosted' ? 'self_hosted' : 'cloud',
+            sandbox_provider: sandboxProviderForHostingType(hostingType),
             network: {
               type: 'limited',
               allow_mcp_server_network_access: false,
@@ -2973,6 +2979,7 @@ function ResourceModal({ kind, onClose, onSaved }: { kind: 'environment' | 'cred
           <label className="editField">
             Hosting type
             <select value={hostingType} onChange={(event) => setHostingType(event.target.value as EnvironmentHostingType)}>
+              <option value="local">Local</option>
               <option value="cloud">Cloud</option>
               <option value="self_hosted">Self-hosted</option>
             </select>
@@ -3310,13 +3317,16 @@ function environmentKind(environment: Environment) {
 }
 
 function hostingLabel(type: EnvironmentHostingType) {
-  return type === 'self_hosted' ? 'Self-hosted' : 'Cloud';
+  if (type === 'self_hosted') return 'Self-hosted';
+  if (type === 'local') return 'Local';
+  return 'Cloud';
 }
 
 function environmentHostingType(environment: Environment): EnvironmentHostingType {
-  const hostingType = environment.config.hosting_type;
+  const hostingType = environment.hosting_type ?? environment.config.hosting_type;
   const provider = environment.config.sandbox_provider;
-  if (hostingType === 'self_hosted' || provider === 'self_hosted' || provider === 'local') return 'self_hosted';
+  if (hostingType === 'self_hosted' || provider === 'self_hosted') return 'self_hosted';
+  if (hostingType === 'local' || provider === 'local') return 'local';
   return 'cloud';
 }
 
@@ -3401,7 +3411,7 @@ function environmentPayloadFromDraft(draft: EnvironmentDraft) {
     description: draft.description,
     config: {
       hosting_type: draft.hostingType,
-      sandbox_provider: draft.hostingType === 'self_hosted' ? 'self_hosted' : 'cloud',
+      sandbox_provider: sandboxProviderForHostingType(draft.hostingType),
       network: {
         type: draft.networkType,
         allow_mcp_server_network_access: draft.allowMcpServerNetworkAccess,
@@ -3414,6 +3424,12 @@ function environmentPayloadFromDraft(draft: EnvironmentDraft) {
     },
     metadata,
   };
+}
+
+function sandboxProviderForHostingType(hostingType: EnvironmentHostingType) {
+  if (hostingType === 'self_hosted') return 'self_hosted';
+  if (hostingType === 'local') return 'local';
+  return 'cloud';
 }
 
 function objectValue(value: unknown): Record<string, unknown> {

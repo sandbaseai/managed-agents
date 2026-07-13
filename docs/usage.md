@@ -48,7 +48,7 @@ Console/API. Once loaded, the runtime source of truth is SQLite.
 ```yaml
 name: assistant
 description: Helps with development tasks.
-model: gpt-4o
+model: default
 system: |
   You are a helpful assistant. Answer clearly and use tools when needed.
 mcp_servers: []
@@ -113,7 +113,7 @@ curl -X POST http://127.0.0.1:3000/v1/agents \
   -d '{
     "name": "assistant",
     "description": "Helps with development tasks.",
-    "model": "gpt-4o",
+    "model": "default",
     "system": "You are a helpful assistant.",
     "tools": [{ "type": "agent_toolset_20260401" }],
     "skills": [],
