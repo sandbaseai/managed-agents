@@ -1,27 +1,54 @@
 # managed-agents
 
-Open-source managed-agent runtime with a local Console, Claude Managed
-Agents-style resource APIs, skills, files, credential vaults, memory stores,
-environments, and resumable session events.
+**SandBase managed-agents is the safe, local-first runtime layer for enterprise
+AI agents.**
 
-`managed-agents` is designed for teams that want a local-first control plane for
-agent development, desktop apps, and self-hosted workflows. Runtime metadata is
-stored in SQLite outside your project by default. Optional YAML and skill folders
-can seed a workspace, while agents created from the Console or API are managed
-as runtime records.
+`managed-agents` helps teams move AI agents from demos to production with
+runtime infrastructure for sessions, tools, approvals, sandboxed execution,
+memory, credential vaults, audit trails, replayable events, and operational
+visibility. It exposes a Claude Managed Agents-compatible Console and `/v1`
+resource API while keeping runtime metadata in SQLite outside your project by
+default.
+
+Use it to build and operate self-hosted AI agents, local developer agents,
+desktop agent runtimes, MCP-enabled workflows, and enterprise proofs of concept
+without locking your runtime layer to a single model provider.
+
+## Why managed-agents?
+
+Agent SDKs are great for writing an agent loop. Production agents need more:
+state, session history, tool governance, sandbox boundaries, credential handling,
+memory, auditability, and a Console for humans to inspect what happened.
+
+`managed-agents` focuses on that runtime layer. It is not a visual workflow
+builder and it is not another model SDK. It is an open-source control plane for
+running, observing, and governing AI agents locally or in self-hosted
+environments.
 
 ## Features
 
-- SQLite-backed agents, skills, sessions, environments, vaults, memory stores,
-  API keys, and file metadata
-- Local Console at `/ui`
-- HTTP APIs under `/v1` for managed-agent resources
-- Resumable Server-Sent Events for session timelines
+- Claude Managed Agents-style Console and `/v1` resource APIs
+- SQLite-backed agents, skills, sessions, environments, credential vaults,
+  memory stores, API keys, and file metadata
+- Resumable Server-Sent Events for session timelines, debugging, audit, and
+  replay
 - File resources, memory stores, credential vaults, and environment templates
+- Local API keys and bearer-token authentication for shared local runtimes
 - Optional seed/import folders for `agents/*.yaml` and `skills/*/SKILL.md`
 - Local, Docker, and self-hosted sandbox provider support
+- MCP toolsets, built-in tools, permission policies, and skill packages
 - OpenAI-compatible, Ollama-compatible, and Anthropic model adapters
-- TypeScript SDK export at `managed-agents/sdk`
+- Optional TypeScript convenience SDK at `managed-agents/sdk`
+
+## Common Use Cases
+
+- Run a local Claude Managed Agents-style Console for agent development
+- Build self-hosted enterprise AI agents with auditable sessions and tool calls
+- Prototype customer support, incident response, research, data analysis, and
+  software engineering agents
+- Package reusable agent templates, MCP connectors, permission policies, and
+  skills for field deployments
+- Embed an agent runtime in a future desktop app or private internal platform
 
 ## Requirements
 
@@ -308,10 +335,38 @@ curl -N http://127.0.0.1:3000/v1/sessions/SESSION_ID/events/stream \
   -H "Last-Event-ID: 42"
 ```
 
-## TypeScript SDK
+## SDK Usage
 
-The SDK wraps the same local API. Use generated resource IDs from the Console or
-from the create responses above.
+The public API is designed to follow Claude Managed Agents resource shapes. When
+your SDK supports the managed-agent beta resources, point the official Anthropic
+SDK at the local runtime with `baseURL`:
+
+```typescript
+import Anthropic from '@anthropic-ai/sdk';
+
+const client = new Anthropic({
+  apiKey: process.env.MANAGED_AGENTS_API_KEY ?? 'local-dev-key',
+  baseURL: 'http://127.0.0.1:3000',
+});
+
+const session = await client.beta.sessions.create({
+  agent: 'agent_...',
+  environment_id: 'env_...',
+  title: 'SDK smoke test',
+});
+
+await client.beta.sessions.events.send(session.id, {
+  events: [
+    {
+      type: 'user.message',
+      content: [{ type: 'text', text: 'Hello' }],
+    },
+  ],
+});
+```
+
+For local-only helpers such as message streaming convenience methods, the package
+also exports a small TypeScript wrapper over the same HTTP API:
 
 ```typescript
 import { ManagedAgentsClient } from 'managed-agents/sdk';
@@ -373,6 +428,13 @@ Authorization: Bearer sk-local-example
 - [Architecture](docs/spec/architecture.md)
 - [Technical Design](docs/spec/design.md)
 - [Contributing](CONTRIBUTING.md)
+
+## Project Keywords
+
+`enterprise-ai-agents`, `ai-agent-runtime`, `managed-agents`,
+`claude-managed-agents`, `self-hosted-ai`, `local-first`, `mcp`,
+`sandboxed-execution`, `agent-memory`, `credential-vaults`, `audit-log`,
+`session-replay`, `typescript`, `sqlite`
 
 ## Development
 
