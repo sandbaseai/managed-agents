@@ -10,10 +10,10 @@ export function getEnabledToolNames(agent: AgentDefinition): string[] {
   const names = new Set<string>();
   for (const toolset of getAgentToolsets(agent)) {
     const defaultEnabled = toolset.default_config?.enabled !== false;
-    for (const [name, config] of Object.entries(toolset.configs ?? {})) {
+    for (const config of toolset.configs ?? []) {
       const enabled = config.enabled ?? defaultEnabled;
       if (enabled && getPermissionPolicy(config, toolset.default_config) !== 'never_allow') {
-        names.add(name);
+        names.add(config.name);
       }
     }
   }
@@ -22,7 +22,7 @@ export function getEnabledToolNames(agent: AgentDefinition): string[] {
 
 export function getToolPermission(agent: AgentDefinition, toolName: string): PermissionPolicyType {
   for (const toolset of getAgentToolsets(agent)) {
-    const config = toolset.configs?.[toolName];
+    const config = toolset.configs?.find((item) => item.name === toolName);
     if (!config) continue;
     return getPermissionPolicy(config, toolset.default_config);
   }

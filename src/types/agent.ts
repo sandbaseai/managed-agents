@@ -84,18 +84,22 @@ export interface AgentToolConfig {
   };
 }
 
+export interface NamedAgentToolConfig extends AgentToolConfig {
+  name: string;
+}
+
 export type AgentToolset = BuiltinAgentToolset | McpToolset;
 
 export interface BuiltinAgentToolset {
   type: 'agent_toolset_20260401';
-  configs?: Record<string, AgentToolConfig>;
+  configs?: NamedAgentToolConfig[];
   default_config?: AgentToolConfig;
 }
 
 export interface McpToolset {
   type: 'mcp_toolset';
   mcp_server_name: string;
-  configs?: Record<string, AgentToolConfig>;
+  configs?: NamedAgentToolConfig[];
   default_config?: AgentToolConfig;
 }
 

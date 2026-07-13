@@ -33,7 +33,7 @@ export function resourceRoutes(deps: ServerDeps) {
     const config = normalizeEnvironmentConfig(body.value);
     const id = typeof body.value.id === 'string' && body.value.id.startsWith('env_')
       ? body.value.id
-      : `env_${slug(name)}`;
+      : `env_${nanoid(18)}`;
     try {
       deps.db.prepare(
         'INSERT INTO environments (id, name, description, config, metadata, updated_at) VALUES (?, ?, ?, ?, ?, datetime(\'now\'))',
@@ -221,12 +221,12 @@ export function resourceRoutes(deps: ServerDeps) {
 
   app.post('/credential-vaults/:id/archive', (c) => archiveResource(c, deps, 'credential_vaults', (row) => toVault(row, deps)));
 
-  app.get('/memory-stores', (c) => {
+  app.get('/memory_stores', (c) => {
     const rows = deps.db.prepare(`${memoryStoreSelect()} ORDER BY m.created_at DESC`).all() as unknown as MemoryStoreRow[];
     return c.json(pageOf(rows.map((row) => toMemoryStore(row, deps))));
   });
 
-  app.post('/memory-stores', async (c) => {
+  app.post('/memory_stores', async (c) => {
     const body = await readObjectBody(c);
     if (!body.ok) return body.response;
     const name = stringField(body.value.name);
@@ -253,18 +253,18 @@ export function resourceRoutes(deps: ServerDeps) {
     }
   });
 
-  app.get('/memory-stores/:id', (c) => {
+  app.get('/memory_stores/:id', (c) => {
     const row = deps.db.prepare(memoryStoreSelect('WHERE m.id = ?')).get(c.req.param('id')) as MemoryStoreRow | undefined;
     return row ? c.json(toMemoryStore(row, deps)) : notFound(c, 'Memory store not found');
   });
 
-  app.get('/memory-stores/:id/memories', (c) => {
+  app.get('/memory_stores/:id/memories', (c) => {
     const store = deps.db.prepare('SELECT id FROM memory_stores WHERE id = ?').get(c.req.param('id'));
     if (!store) return notFound(c, 'Memory store not found');
     return c.json(pageOf(listMemories(deps, c.req.param('id'))));
   });
 
-  app.post('/memory-stores/:id/memories', async (c) => {
+  app.post('/memory_stores/:id/memories', async (c) => {
     const body = await readObjectBody(c);
     if (!body.ok) return body.response;
     const storeId = c.req.param('id');
@@ -291,7 +291,7 @@ export function resourceRoutes(deps: ServerDeps) {
     }
   });
 
-  app.put('/memory-stores/:id/memories/:memoryId', async (c) => {
+  app.put('/memory_stores/:id/memories/:memoryId', async (c) => {
     const body = await readObjectBody(c);
     if (!body.ok) return body.response;
     const storeId = c.req.param('id');
@@ -320,7 +320,7 @@ export function resourceRoutes(deps: ServerDeps) {
     }
   });
 
-  app.delete('/memory-stores/:id/memories/:memoryId', (c) => {
+  app.delete('/memory_stores/:id/memories/:memoryId', (c) => {
     const storeId = c.req.param('id');
     const memoryId = c.req.param('memoryId');
     const existing = deps.db.prepare('SELECT * FROM memory_records WHERE id = ? AND store_id = ?').get(memoryId, storeId) as MemoryRecordRow | undefined;
@@ -330,7 +330,7 @@ export function resourceRoutes(deps: ServerDeps) {
     return c.json({ deleted: true, id: memoryId });
   });
 
-  app.post('/memory-stores/:id/archive', (c) => archiveResource(c, deps, 'memory_stores', (row) => toMemoryStore(row, deps)));
+  app.post('/memory_stores/:id/archive', (c) => archiveResource(c, deps, 'memory_stores', (row) => toMemoryStore(row, deps)));
 
   return app;
 }
@@ -834,10 +834,6 @@ function updateCredentialState(c: any, deps: ServerDeps, status: 'archived' | 'd
   deps.db.prepare('UPDATE credential_vaults SET updated_at = datetime(\'now\') WHERE id = ?').run(vaultId);
   const row = deps.db.prepare('SELECT * FROM credential_records WHERE id = ? AND vault_id = ?').get(credentialId, vaultId) as unknown as CredentialRow;
   return c.json(toCredential(row));
-}
-
-function slug(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || nanoid(8);
 }
 
 function invalid(c: any, message: string): Response {

@@ -38,21 +38,24 @@ const agentToolConfigSchema = z.object({
   permission_policy: permissionPolicySchema.optional(),
 });
 
-const toolConfigsSchema = z.preprocess(
-  (value) => Array.isArray(value) ? {} : value,
-  z.record(agentToolConfigSchema).default({}),
-);
+const builtinToolConfigSchema = agentToolConfigSchema.extend({
+  name: z.enum(['bash', 'edit', 'read', 'write', 'glob', 'grep', 'web_fetch', 'web_search']),
+});
+
+const mcpToolConfigSchema = agentToolConfigSchema.extend({
+  name: z.string().min(1, 'Tool config name is required').max(128),
+});
 
 const agentToolsetSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('agent_toolset_20260401'),
-    configs: toolConfigsSchema,
+    configs: z.array(builtinToolConfigSchema).default([]),
     default_config: agentToolConfigSchema.optional(),
   }),
   z.object({
     type: z.literal('mcp_toolset'),
     mcp_server_name: z.string().min(1, 'MCP toolset server name is required'),
-    configs: toolConfigsSchema,
+    configs: z.array(mcpToolConfigSchema).default([]),
     default_config: agentToolConfigSchema.optional(),
   }),
 ]);
@@ -63,9 +66,20 @@ const skillRefSchema = z.object({
   version: z.string().optional(),
 });
 
+const modelSpeedSchema = z.enum(['fast', 'standard', 'extended']);
+
 const agentModelConfigSchema = z.object({
-  speed: z.enum(['fast', 'standard', 'extended']).default('standard'),
+  id: z.string().min(1, 'Model id is required').optional(),
+  speed: modelSpeedSchema.default('standard'),
 });
+
+const agentModelInputSchema = z.union([
+  z.string().min(1, 'Model id is required'),
+  z.object({
+    id: z.string().min(1, 'Model id is required'),
+    speed: modelSpeedSchema.default('standard'),
+  }),
+]);
 
 // ============================================================
 // Agent Definition Schema
@@ -76,7 +90,7 @@ export const agentDefinitionSchema = z.object({
     .string()
     .min(1, 'Agent name is required')
     .regex(/^[a-zA-Z0-9][a-zA-Z0-9 _-]*$/, 'Agent name must be alphanumeric with spaces, hyphens, or underscores'),
-  model: z.string().min(1, 'Model id is required'),
+  model: agentModelInputSchema,
   model_config: agentModelConfigSchema.optional(),
   system: z.string().min(1, 'System instructions are required'),
   description: z.string().optional(),
@@ -119,7 +133,7 @@ export function validateAgentDefinition(input: unknown): ValidationResult {
   const result = agentDefinitionSchema.safeParse(input);
 
   if (result.success) {
-    return { valid: true, data: result.data as AgentDefinition };
+    return { valid: true, data: normalizeAgentDefinition(result.data) };
   }
 
   const errors: ValidationError[] = result.error.issues.map((issue) => ({
@@ -128,4 +142,23 @@ export function validateAgentDefinition(input: unknown): ValidationResult {
   }));
 
   return { valid: false, errors };
+}
+
+function normalizeAgentDefinition(data: z.infer<typeof agentDefinitionSchema>): AgentDefinition {
+  if (typeof data.model === 'string') {
+    return {
+      ...data,
+      model: data.model,
+      ...(data.model_config ? { model_config: { id: data.model_config.id ?? data.model, speed: data.model_config.speed } } : {}),
+    } as AgentDefinition;
+  }
+
+  return {
+    ...data,
+    model: data.model.id,
+    model_config: {
+      id: data.model.id,
+      speed: data.model.speed,
+    },
+  } as AgentDefinition;
 }

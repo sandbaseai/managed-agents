@@ -6,16 +6,27 @@
  */
 
 import { Hono } from 'hono';
+import { nanoid } from 'nanoid';
 import type { ServerDeps } from '../server.js';
-import { agentId, pageOf, toApiAgent } from '../standard.js';
+import { pageOf, toApiAgent } from '../standard.js';
 import { validateAgentDefinition } from '@/core/agent/schema.js';
+import {
+  loadActiveAgentRows,
+  loadAgentRowById,
+  parseAgentDefinitionFromRow,
+  refreshAgentsFromDb,
+} from '@/core/agent/store.js';
 
 export function agentsRoutes(deps: ServerDeps) {
   const app = new Hono();
 
   // GET / — List agents
   app.get('/', (c) => {
-    return c.json(pageOf(deps.agents.map((agent) => toApiAgent(agent, agentRowMeta(deps, agentId(agent.name))))));
+    const agents = loadActiveAgentRows(deps.db).flatMap((row) => {
+      const agent = parseAgentDefinitionFromRow(row);
+      return agent ? [toApiAgent(agent, agentRowMetaFromRow(row))] : [];
+    });
+    return c.json(pageOf(agents));
   });
 
   // POST / — Create a standard agent definition in SQLite.
@@ -33,29 +44,26 @@ export function agentsRoutes(deps: ServerDeps) {
     }
 
     const agent = result.data;
-    const id = agentId(agent.name);
-    const existing = deps.db.prepare('SELECT id FROM agents WHERE id = ? OR name = ?').get(id, agent.name);
-    if (existing || deps.agents.some((item) => agentId(item.name) === id)) {
-      return c.json({ error: { type: 'conflict', message: `Agent already exists: ${agent.name}` } }, 409);
-    }
+    const id = createAgentId(deps);
 
     deps.db.prepare('INSERT INTO agents (id, name, definition) VALUES (?, ?, ?)').run(
       id,
       agent.name,
       JSON.stringify(agent),
     );
-    deps.agents.push(agent);
+    refreshAgentsFromDb(deps.db, deps.agents);
 
     return c.json(toApiAgent(agent, agentRowMeta(deps, id)), 201);
   });
 
   app.get('/:id/versions', (c) => {
     const id = c.req.param('id');
-    const agent = deps.agents.find((a) => agentId(a.name) === id);
-    if (!agent) {
+    const row = activeAgentRow(deps, id);
+    const agent = row ? parseAgentDefinitionFromRow(row) : undefined;
+    if (!row || !agent) {
       return c.json({ error: { type: 'not_found', message: `Agent not found: ${id}` } }, 404);
     }
-    return c.json(pageOf([toApiAgent(agent, agentRowMeta(deps, id))]));
+    return c.json(pageOf([toApiAgent(agent, agentRowMetaFromRow(row))]));
   });
 
   app.put('/:id', async (c) => {
@@ -73,11 +81,7 @@ export function agentsRoutes(deps: ServerDeps) {
     }
 
     const agent = result.data;
-    if (agentId(agent.name) !== id) {
-      return c.json({ error: { type: 'invalid_request', message: 'Agent rename is not supported yet' } }, 400);
-    }
-
-    const existing = deps.db.prepare('SELECT id FROM agents WHERE id = ?').get(id);
+    const existing = activeAgentRow(deps, id);
     if (!existing) {
       return c.json({ error: { type: 'not_found', message: `Agent not found: ${id}` } }, 404);
     }
@@ -94,22 +98,18 @@ export function agentsRoutes(deps: ServerDeps) {
       WHERE id = ?
     `).run(agent.name, JSON.stringify(agent), id);
 
-    const index = deps.agents.findIndex((item) => agentId(item.name) === id);
-    if (index >= 0) {
-      deps.agents[index] = agent;
-    } else {
-      deps.agents.push(agent);
-    }
+    refreshAgentsFromDb(deps.db, deps.agents);
 
     return c.json(toApiAgent(agent, agentRowMeta(deps, id)));
   });
 
   app.post('/:id/archive', (c) => {
     const id = c.req.param('id');
-    const existing = deps.db.prepare('SELECT id FROM agents WHERE id = ?').get(id);
+    const existing = activeAgentRow(deps, id);
     if (!existing) {
       return c.json({ error: { type: 'not_found', message: `Agent not found: ${id}` } }, 404);
     }
+    const agent = parseAgentDefinitionFromRow(existing);
     deps.db.prepare(`
       UPDATE agents
       SET status = 'archived',
@@ -117,37 +117,59 @@ export function agentsRoutes(deps: ServerDeps) {
           updated_at = datetime('now')
       WHERE id = ?
     `).run(id);
-    const agent = deps.agents.find((a) => agentId(a.name) === id);
-    if (agent) {
-      const index = deps.agents.indexOf(agent);
-      if (index >= 0) deps.agents.splice(index, 1);
-    }
+    refreshAgentsFromDb(deps.db, deps.agents);
     return c.json(agent ? toApiAgent(agent, agentRowMeta(deps, id)) : { id, status: 'archived' });
   });
 
   // GET /:id — Get agent detail
   app.get('/:id', (c) => {
     const id = c.req.param('id');
-    const agent = deps.agents.find((a) => agentId(a.name) === id);
-    if (!agent) {
+    const row = activeAgentRow(deps, id);
+    const agent = row ? parseAgentDefinitionFromRow(row) : undefined;
+    if (!row || !agent) {
       return c.json({ error: { type: 'not_found', message: `Agent not found: ${id}` } }, 404);
     }
-    return c.json(toApiAgent(agent, agentRowMeta(deps, id)));
+    return c.json(toApiAgent(agent, agentRowMetaFromRow(row)));
   });
 
   return app;
 }
 
 function agentRowMeta(deps: ServerDeps, id: string) {
-  const row = deps.db.prepare('SELECT loaded_at, updated_at, status, version, archived_at FROM agents WHERE id = ?').get(id) as
-    | { loaded_at: string; updated_at: string; status: string; version?: number; archived_at?: string | null }
-    | undefined;
+  const row = loadAgentRowById(deps.db, id);
   if (!row) return undefined;
+  return agentRowMetaFromRow(row);
+}
+
+function agentRowMetaFromRow(row: {
+  id: string;
+  loaded_at?: string;
+  updated_at?: string;
+  status?: string;
+  version?: number;
+  archived_at?: string | null;
+}) {
   return {
+    id: row.id,
     createdAt: row.loaded_at,
     updatedAt: row.updated_at,
     archivedAt: row.archived_at ?? null,
     status: row.status === 'archived' || row.archived_at ? 'archived' as const : 'active' as const,
     version: row.version ?? 1,
   };
+}
+
+function activeAgentRow(deps: ServerDeps, id: string) {
+  const row = loadAgentRowById(deps.db, id);
+  if (!row || row.status === 'archived' || row.archived_at) return undefined;
+  return row;
+}
+
+function createAgentId(deps: ServerDeps): string {
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const id = `agent_${nanoid(24)}`;
+    const existing = deps.db.prepare('SELECT id FROM agents WHERE id = ?').get(id);
+    if (!existing) return id;
+  }
+  throw new Error('Unable to allocate unique agent id');
 }

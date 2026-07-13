@@ -15,7 +15,7 @@ import { Database } from './core/db/database.js';
 import { SessionManager } from './core/session/session-manager.js';
 import { DefaultSessionExecutor } from './core/session/executor.js';
 import { loadAgents } from './core/agent/loader.js';
-import { importAgentSeeds, loadActiveAgentsFromDb, refreshAgentsFromDb } from './core/agent/store.js';
+import { importAgentSeeds, loadActiveAgentsFromDb, loadAgentDefinitionById, refreshAgentsFromDb } from './core/agent/store.js';
 import { loadSkills } from './core/skills/loader.js';
 import { BUILTIN_SKILLS } from './core/skills/catalog.js';
 import { importSkillSeeds, loadCustomSkillsFromDb } from './core/skills/store.js';
@@ -342,6 +342,7 @@ async function startServer(opts: { port: string; host: string; dataDir?: string;
     sandboxProvider,
     sandboxRegistry,
     resolveEnvProviderType,
+    resolveAgent: (agentId) => loadAgentDefinitionById(db, agentId),
     resolveEnvSnapshot,
     strategy,
     eventLogger,
@@ -490,11 +491,11 @@ tools:
       permission_policy:
         type: always_allow
     configs:
-      read:
+      - name: read
         enabled: true
-      write:
+      - name: write
         enabled: true
-      bash:
+      - name: bash
         enabled: true
         permission_policy:
           type: always_ask

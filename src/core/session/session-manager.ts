@@ -96,7 +96,13 @@ export class SessionManager {
     const id = `sess_${nanoid(16)}`;
     const now = new Date();
 
-    const agentRow = this.db.prepare('SELECT id, name FROM agents WHERE id = ?').get(
+    const agentRow = this.db.prepare(`
+      SELECT id, name
+      FROM agents
+      WHERE id = ?
+        AND archived_at IS NULL
+        AND status != 'archived'
+    `).get(
       params.agent,
     ) as { id: string; name: string } | undefined;
     if (!agentRow) {

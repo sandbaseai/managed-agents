@@ -40,6 +40,8 @@ export interface ExecutorDeps {
   sandboxRegistry?: SandboxProviderRegistry;
   /** Resolve an environment name → its sandbox_provider type. */
   resolveEnvProviderType?: (envName: string) => SandboxProviderType | undefined;
+  /** Resolve an agent id from durable storage. */
+  resolveAgent?: (agentId: string) => AgentDefinition | undefined;
   strategy: AgentStrategy;
   eventLogger: EventLogger;
   /** Optional context compactor. If provided, long histories are summarized. */
@@ -87,9 +89,9 @@ export class DefaultSessionExecutor implements SessionExecutor {
     const { agents, modelRegistry, strategy, eventLogger } = this.deps;
 
     // 1. Load agent definition
-    const agent = agents.find((a) => a.name === session.agentName);
+    const agent = this.deps.resolveAgent?.(session.agentId) ?? agents.find((a) => a.name === session.agentName);
     if (!agent) {
-      throw new Error(`Agent not found: ${session.agentName}`);
+      throw new Error(`Agent not found: ${session.agentId}`);
     }
 
     // 2. Create model

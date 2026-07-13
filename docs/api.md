@@ -121,10 +121,14 @@ Agents are SQLite-backed runtime resources. Optional YAML files in the configure
 agents directory can seed a workspace, but creates and updates are persisted in
 the local database.
 
+Agent ids are object identifiers. Seeded YAML agents use deterministic ids on
+import; API and Console-created agents receive server-generated `agent_...` ids.
+Names are display fields and do not need to be unique.
+
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `GET` | `/v1/agents` | List loaded agents. |
-| `POST` | `/v1/agents` | Create an agent YAML file. |
+| `POST` | `/v1/agents` | Create an agent resource. |
 | `GET` | `/v1/agents/{agent_id}` | Retrieve an agent. |
 | `PUT` | `/v1/agents/{agent_id}` | Save a new agent version. |
 | `GET` | `/v1/agents/{agent_id}/versions` | List versions known to the local store. |
@@ -151,7 +155,7 @@ Agent response:
 
 ```json
 {
-  "id": "agent_assistant",
+  "id": "agent_01JAbcdefghijklmnopqrstuvw",
   "type": "agent",
   "name": "assistant",
   "description": "Helps with development tasks.",
@@ -318,6 +322,8 @@ Skill list responses include `next_page` in addition to the common page fields.
 ## Environments
 
 Environments describe where sessions run.
+Environment names are human-readable labels and do not need to be unique. Use
+the returned `env_...` id when creating sessions or updating an environment.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
@@ -350,6 +356,8 @@ curl -X POST http://127.0.0.1:3000/v1/environments \
 ## Credential Vaults
 
 Credential vaults group secrets that sessions can attach by id.
+Vault names are human-readable labels and do not need to be unique. Use the
+returned `vlt_...` id when attaching a vault to a session.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
@@ -392,22 +400,23 @@ secret.
 ## Memory Stores
 
 Memory stores persist named memory entries that can be mounted into sessions.
+Memory store names are human-readable labels and do not need to be unique.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| `GET` | `/v1/memory-stores` | List memory stores. |
-| `POST` | `/v1/memory-stores` | Create a memory store. |
-| `GET` | `/v1/memory-stores/{store_id}` | Retrieve a memory store. |
-| `POST` | `/v1/memory-stores/{store_id}/archive` | Archive a memory store. |
-| `GET` | `/v1/memory-stores/{store_id}/memories` | List memories. |
-| `POST` | `/v1/memory-stores/{store_id}/memories` | Add a memory. |
-| `PUT` | `/v1/memory-stores/{store_id}/memories/{memory_id}` | Update a memory. |
-| `DELETE` | `/v1/memory-stores/{store_id}/memories/{memory_id}` | Delete a memory. |
+| `GET` | `/v1/memory_stores` | List memory stores. |
+| `POST` | `/v1/memory_stores` | Create a memory store. |
+| `GET` | `/v1/memory_stores/{store_id}` | Retrieve a memory store. |
+| `POST` | `/v1/memory_stores/{store_id}/archive` | Archive a memory store. |
+| `GET` | `/v1/memory_stores/{store_id}/memories` | List memories. |
+| `POST` | `/v1/memory_stores/{store_id}/memories` | Add a memory. |
+| `PUT` | `/v1/memory_stores/{store_id}/memories/{memory_id}` | Update a memory. |
+| `DELETE` | `/v1/memory_stores/{store_id}/memories/{memory_id}` | Delete a memory. |
 
 Create a memory:
 
 ```bash
-curl -X POST http://127.0.0.1:3000/v1/memory-stores/STORE_ID/memories \
+curl -X POST http://127.0.0.1:3000/v1/memory_stores/STORE_ID/memories \
   -H "Content-Type: application/json" \
   -d '{
     "path": "/notes/release",

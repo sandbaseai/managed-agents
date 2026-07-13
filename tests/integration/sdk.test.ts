@@ -24,7 +24,11 @@ describe('Client SDK', () => {
     db = new Database(join(tmpDir, 'test.db'));
     db.runMigrations();
     db.exec(`INSERT INTO environments (id, name, config) VALUES ('env_default', 'local', '{}')`);
-    db.exec(`INSERT INTO agents (id, name, definition) VALUES ('agent_echo', 'echo', '{}')`);
+    db.prepare('INSERT INTO agents (id, name, definition) VALUES (?, ?, ?)').run(
+      'agent_echo',
+      'echo',
+      JSON.stringify({ name: 'echo', model: 'm', system: 'p' }),
+    );
 
     const sessionManager = new SessionManager(db);
     // Executor that emits one agent.message then lets the session go idle
