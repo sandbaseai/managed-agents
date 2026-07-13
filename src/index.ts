@@ -389,7 +389,7 @@ async function startServer(opts: { port: string; host: string; dataDir?: string;
         const child = spawn(process.execPath, process.argv.slice(1), {
           cwd: process.cwd(),
           env: process.env,
-          stdio: 'inherit',
+          stdio: 'ignore',
           detached: true,
         });
         child.unref();
