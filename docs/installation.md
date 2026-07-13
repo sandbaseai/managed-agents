@@ -65,7 +65,16 @@ git clone git@github.com:sandbaseai/managed-agents.git
 cd managed-agents
 npm ci
 npm run build
-npm start
+```
+
+Then create a runtime workspace outside the source checkout:
+
+```bash
+mkdir ../my-agents
+cd ../my-agents
+node ../managed-agents/dist/index.js init
+# edit managed-agents.config.yaml and set your provider API key
+node ../managed-agents/dist/index.js start
 ```
 
 During development, run the TypeScript entry point directly:
@@ -88,6 +97,12 @@ Create a workspace with the default seed directories and example files:
 managed-agents init
 ```
 
+When running from a source checkout without a global install, use:
+
+```bash
+node /path/to/managed-agents/dist/index.js init
+```
+
 This creates:
 
 ```text
@@ -108,7 +123,7 @@ OpenAI-compatible hosted provider:
 
 ```yaml
 models:
-  - name: gpt-4o
+  - name: default
     provider: openai
     model: gpt-4o
     api_key: ${OPENAI_API_KEY}
@@ -118,7 +133,7 @@ OpenAI-compatible local endpoint:
 
 ```yaml
 models:
-  - name: local-llama
+  - name: default
     provider: openai
     model: llama3.1
     base_url: http://127.0.0.1:11434/v1
@@ -129,7 +144,7 @@ Anthropic model provider:
 
 ```yaml
 models:
-  - name: claude-sonnet
+  - name: default
     provider: anthropic
     model: claude-sonnet-4-5
     api_key: ${ANTHROPIC_API_KEY}
@@ -236,6 +251,12 @@ If the Console loads but agents are missing, run:
 
 ```bash
 managed-agents reload
+```
+
+For a source checkout, run the same command through the built entry point:
+
+```bash
+node /path/to/managed-agents/dist/index.js reload
 ```
 
 If sessions fail to start, check:

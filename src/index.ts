@@ -493,7 +493,7 @@ function initProject() {
   writeFileSync(
     join(cwd, 'agents', 'assistant.yaml'),
     `name: assistant
-model: gpt-4o
+model: default
 system: |
   You are a helpful assistant. Answer questions clearly and concisely.
 skills:
@@ -540,7 +540,7 @@ system instructions so the model knows the capability up-front.
     join(cwd, 'managed-agents.config.yaml'),
     `# managed-agents configuration
 models:
-  - name: gpt-4o
+  - name: default
     provider: openai
     model: gpt-4o
     api_key: \${OPENAI_API_KEY}
@@ -556,7 +556,11 @@ environments:
   console.log('  agents/assistant.yaml');
   console.log('  skills/');
   console.log('  managed-agents.config.yaml');
-  console.log('\nNext: set OPENAI_API_KEY and run `managed-agents start`');
+  console.log('\nNext: configure your model provider key, then start the runtime:');
+  console.log('  managed-agents start');
+  if (process.argv[1]) {
+    console.log(`  # source checkout: node ${process.argv[1]} start`);
+  }
 }
 
 // ============================================================

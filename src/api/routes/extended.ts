@@ -96,7 +96,7 @@ export function extendedRoutes(deps: ServerDeps) {
   });
 
   app.get('/templates', (c) => {
-    const templates = builtInTemplates();
+    const templates = builtInTemplates(defaultTemplateModel(deps));
     return c.json({
       data: templates,
       has_more: false,
@@ -108,7 +108,11 @@ export function extendedRoutes(deps: ServerDeps) {
   return app;
 }
 
-function builtInTemplates() {
+function defaultTemplateModel(deps: ServerDeps) {
+  return deps.runtime?.models.find((model) => model.name.trim().length > 0)?.name ?? 'default';
+}
+
+function builtInTemplates(defaultModelName: string) {
   return [
     {
       id: 'template_blank_agent',
@@ -118,7 +122,7 @@ function builtInTemplates() {
       tags: ['starter'],
       agent: {
         name: 'Untitled agent',
-        model: 'claude-sonnet-5',
+        model: defaultModelName,
         description: 'A blank starting point with the core toolset.',
         system: 'You are a general-purpose agent that can research, write code, run commands, and use connected tools to complete the user\'s task end to end.',
         mcp_servers: [],
@@ -135,7 +139,7 @@ function builtInTemplates() {
       tags: ['research', 'web'],
       agent: {
         name: 'deep-researcher',
-        model: 'claude-sonnet-4-5',
+        model: defaultModelName,
         description: 'Conducts multi-step web research with source synthesis and citations.',
         system: 'You are a deep research agent. Break the task into questions, gather sources, compare evidence, and produce a concise cited report.',
         tools: [{
@@ -164,7 +168,7 @@ function builtInTemplates() {
       tags: ['data'],
       agent: {
         name: 'structured-extractor',
-        model: 'gpt-4o',
+        model: defaultModelName,
         description: 'Parses unstructured text into a typed JSON schema.',
         system: 'Extract structured data exactly matching the requested schema. Return valid JSON and note uncertain fields.',
         tools: [{
@@ -190,7 +194,7 @@ function builtInTemplates() {
       tags: ['monitoring', 'recurring'],
       agent: {
         name: 'Field monitor',
-        model: 'claude-sonnet-5',
+        model: defaultModelName,
         description: 'Scans software blogs for a topic and writes a weekly what-changed brief.',
         system: 'You are a field monitor. Track the assigned topic, scan relevant product and engineering updates, compare changes week over week, and write a concise brief with links and impact notes.',
         mcp_servers: [
@@ -216,7 +220,7 @@ function builtInTemplates() {
       tags: ['support'],
       agent: {
         name: 'support-agent',
-        model: 'claude-sonnet-4-5',
+        model: defaultModelName,
         description: 'Answers customer questions from your docs and knowledge base, and escalates when needed.',
         system: 'You are a support agent. Use the available docs first, answer with clear steps, and escalate when confidence is low.',
         tools: [{
@@ -244,7 +248,7 @@ function builtInTemplates() {
       agent: {
         name: 'Incident commander',
         description: 'Triages a Sentry alert, opens a Linear incident ticket, and runs the Slack war room.',
-        model: 'claude-opus-4-8',
+        model: defaultModelName,
         system: `You are an on-call incident commander. When handed a Sentry issue ID or an error fingerprint:
 
 1. Pull the full event payload, stack trace, release tag, and affected-user count from Sentry.

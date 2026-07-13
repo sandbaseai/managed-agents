@@ -601,7 +601,8 @@ describe('Managed Agents API', () => {
       const templates = await templatesRes.json();
       const incidentCommander = templates.data.find((item: any) => item.name === 'Incident commander');
       expect(incidentCommander).toBeDefined();
-      expect(incidentCommander.agent.model).toBe('claude-opus-4-8');
+      expect(incidentCommander.agent.model).toBe('local');
+      expect(templates.data.every((item: any) => item.agent.model === 'local')).toBe(true);
       expect(incidentCommander.agent.tools.some((tool: any) => tool.type === 'mcp_toolset' && tool.mcp_server_name === 'sentry')).toBe(true);
       expect(templates.data.every((item: any) => item.type === 'template')).toBe(true);
 
@@ -878,6 +879,23 @@ description: Uploaded from a compressed package.
       expect(first.body.id).not.toBe(second.body.id);
       expect(first.body.name).toBe('Reusable environment');
       expect(second.body.name).toBe('Reusable environment');
+    });
+
+    it('preserves local hosting for desktop runtimes', async () => {
+      const { res, body } = await postJson('/v1/environments', {
+        name: 'Local desktop',
+        description: 'Runs sessions on the local machine.',
+        config: {
+          hosting_type: 'local',
+          sandbox_provider: 'local',
+        },
+      });
+
+      expect(res.status).toBe(201);
+      expect(body.hosting_type).toBe('local');
+      expect(body.sandbox_provider).toBe('local');
+      expect(body.config.hosting_type).toBe('local');
+      expect(body.config.sandbox_provider).toBe('local');
     });
 
     it('updates environment fields', async () => {

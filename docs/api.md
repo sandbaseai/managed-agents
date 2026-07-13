@@ -142,7 +142,7 @@ curl -X POST http://127.0.0.1:3000/v1/agents \
   -d '{
     "name": "assistant",
     "description": "Helps with development tasks.",
-    "model": "gpt-4o",
+    "model": "default",
     "system": "You are a helpful assistant.",
     "mcp_servers": [],
     "tools": [{ "type": "agent_toolset_20260401" }],
@@ -159,7 +159,7 @@ Agent response:
   "type": "agent",
   "name": "assistant",
   "description": "Helps with development tasks.",
-  "model": "gpt-4o",
+  "model": "default",
   "status": "active",
   "version": 1,
   "created_at": "2026-07-12T00:00:00.000Z",
