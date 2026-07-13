@@ -1,22 +1,24 @@
 # managed-agents
 
-Open-source managed-agent runtime with a local Console, standard resource APIs,
-skills, files, credential vaults, memory stores, environments, and resumable
-session events.
+Open-source managed-agent runtime with a local Console, Claude Managed
+Agents-style resource APIs, skills, files, credential vaults, memory stores,
+environments, and resumable session events.
 
 `managed-agents` is designed for teams that want a local-first control plane for
-agent development, evaluation, and desktop or self-hosted workflows. Runtime
-metadata is stored in a local SQLite database, optional YAML and skill folders
-can seed a workspace, and the web Console is served by the same Node.js process.
+agent development, desktop apps, and self-hosted workflows. Runtime metadata is
+stored in SQLite outside your project by default. Optional YAML and skill folders
+can seed a workspace, while agents created from the Console or API are managed
+as runtime records.
 
 ## Features
 
-- SQLite-backed agents, skills, sessions, environments, vaults, memory stores, and file metadata
-- Optional seed/import folders for `agents/*.yaml` and `skills/*/SKILL.md`
+- SQLite-backed agents, skills, sessions, environments, vaults, memory stores,
+  API keys, and file metadata
 - Local Console at `/ui`
-- Standard HTTP API under `/v1`
+- HTTP APIs under `/v1` for managed-agent resources
 - Resumable Server-Sent Events for session timelines
-- File resources, memory stores, credential vaults, and environments
+- File resources, memory stores, credential vaults, and environment templates
+- Optional seed/import folders for `agents/*.yaml` and `skills/*/SKILL.md`
 - Local, Docker, and self-hosted sandbox provider support
 - OpenAI-compatible, Ollama-compatible, and Anthropic model adapters
 - TypeScript SDK export at `managed-agents/sdk`
@@ -66,14 +68,14 @@ cd my-agents
 npx managed-agents init
 ```
 
-Configure a model in `managed-agents.config.yaml`:
+Configure a model in `managed-agents.config.yaml`. For Anthropic:
 
 ```yaml
 models:
-  - name: gpt-4o
-    provider: openai
-    model: gpt-4o
-    api_key: ${OPENAI_API_KEY}
+  - name: claude-opus-4-8
+    provider: anthropic
+    model: claude-opus-4-8
+    api_key: ${ANTHROPIC_API_KEY}
 
 environments:
   local:
@@ -81,10 +83,13 @@ environments:
     timeout: 300
 ```
 
+For an OpenAI-compatible endpoint, use `provider: openai`, set `model` to the
+provider model name, and optionally set `base_url`.
+
 Start the runtime:
 
 ```bash
-export OPENAI_API_KEY=...
+export ANTHROPIC_API_KEY=...
 npx managed-agents start
 ```
 
@@ -127,35 +132,58 @@ Set `MANAGED_AGENTS_HOME` or pass `--data-dir` to override this location.
 
 ## Agent Definition
 
-Agents use the standard runtime shape below. You can import them from YAML seed
-files or create them through the Console/API; runtime records are stored in
-SQLite.
+Agents use the Claude Managed Agents-style shape below. The Console/API generate
+stable `agent_...` IDs. `name` is a human-readable label, not a filesystem path
+or uniqueness key.
 
 ```yaml
-name: assistant
-description: Helps with development tasks.
-model:
-  id: gpt-4o
-  speed: standard
-system: |
-  You are a helpful assistant. Answer clearly and use tools when needed.
+name: Incident commander
+description: Triages alerts, opens incident tickets, and coordinates status updates.
+model: claude-opus-4-8
+system: |-
+  You are an on-call incident commander. Be decisive, cite the evidence you used,
+  and recommend rollback when confidence is high.
+mcp_servers:
+  - name: sentry
+    type: url
+    url: https://mcp.sentry.dev/mcp
+  - name: linear
+    type: url
+    url: https://mcp.linear.app/mcp
 tools:
   - type: agent_toolset_20260401
     default_config:
       enabled: true
       permission_policy:
-        type: always_allow
+        type: always_ask
     configs:
-      bash:
+      - name: read
+        enabled: true
+      - name: grep
+        enabled: true
+      - name: bash
         enabled: true
         permission_policy:
           type: always_ask
+  - type: mcp_toolset
+    mcp_server_name: sentry
+    default_config:
+      permission_policy:
+        type: always_allow
+  - type: mcp_toolset
+    mcp_server_name: linear
+    default_config:
+      permission_policy:
+        type: always_allow
 skills:
-  - type: custom
-    skill_id: skill_example-skill
+  - type: anthropic
+    skill_id: pdf
 metadata:
-  owner: local
+  template: incident-commander
 ```
+
+Use `model: <model-id>` for the common path. API clients may also send a model
+configuration object when they need additional controls such as `speed`.
 
 ## Console
 
@@ -169,6 +197,7 @@ The Console provides a local dashboard for:
 - Uploading files
 - Creating and editing memory stores
 - Uploading skills
+- Creating and archiving local API keys
 - Reviewing local runtime and workspace configuration
 
 ## CLI
@@ -186,24 +215,90 @@ managed-agents template create <name>
 
 ## API Example
 
+Create an agent:
+
+```bash
+curl -X POST http://127.0.0.1:3000/v1/agents \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Incident commander",
+    "description": "Triages alerts and coordinates incident response.",
+    "model": "claude-opus-4-8",
+    "system": "You are an on-call incident commander.",
+    "tools": [{ "type": "agent_toolset_20260401" }],
+    "metadata": { "template": "incident-commander" }
+  }'
+```
+
+Create an environment:
+
+```bash
+curl -X POST http://127.0.0.1:3000/v1/environments \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Default cloud",
+    "config": {
+      "type": "cloud",
+      "networking": {
+        "type": "limited",
+        "allow_mcp_servers": true,
+        "allow_package_managers": true,
+        "allowed_hosts": ["api.github.com"]
+      },
+      "packages": {
+        "type": "packages",
+        "pip": ["pytest"],
+        "npm": ["typescript"]
+      }
+    }
+  }'
+```
+
+Create a memory store:
+
+```bash
+curl -X POST http://127.0.0.1:3000/v1/memory_stores \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Incident notes",
+    "description": "Long-lived incident context and follow-up notes.",
+    "metadata": { "team": "platform" }
+  }'
+```
+
 Create a session:
 
 ```bash
 curl -X POST http://127.0.0.1:3000/v1/sessions \
   -H "Content-Type: application/json" \
   -d '{
-    "agent": "agent_assistant",
-    "environment_id": "env_default",
-    "title": "Local test"
+    "agent": "agent_...",
+    "environment_id": "env_...",
+    "title": "Sentry alert triage",
+    "resources": [
+      {
+        "type": "memory_store",
+        "memory_store_id": "memstore_...",
+        "access": "read_write",
+        "instructions": "Use this store for incident timelines and decisions."
+      }
+    ]
   }'
 ```
 
-Send a message and stream the turn:
+Send a user event:
 
 ```bash
-curl -N -X POST http://127.0.0.1:3000/v1/sessions/SESSION_ID/messages \
+curl -X POST http://127.0.0.1:3000/v1/sessions/SESSION_ID/events \
   -H "Content-Type: application/json" \
-  -d '{"content": "Hello", "stream": true}'
+  -d '{
+    "events": [
+      {
+        "type": "user.message",
+        "content": [{ "type": "text", "text": "Investigate SENTRY-123." }]
+      }
+    ]
+  }'
 ```
 
 Resume the event stream:
@@ -215,6 +310,9 @@ curl -N http://127.0.0.1:3000/v1/sessions/SESSION_ID/events/stream \
 
 ## TypeScript SDK
 
+The SDK wraps the same local API. Use generated resource IDs from the Console or
+from the create responses above.
+
 ```typescript
 import { ManagedAgentsClient } from 'managed-agents/sdk';
 
@@ -223,8 +321,9 @@ const client = new ManagedAgentsClient({
 });
 
 const session = await client.sessions.create({
-  agent: 'agent_assistant',
-  environment_id: 'env_default',
+  agent: 'agent_...',
+  environment_id: 'env_...',
+  title: 'SDK smoke test',
 });
 
 for await (const event of client.sessions.message(session.id, 'Hello')) {
@@ -236,17 +335,27 @@ for await (const event of client.sessions.message(session.id, 'Hello')) {
 
 ## Authentication
 
-Local development is open by default. To require bearer tokens, set either:
+Local development is open by default. Authentication turns on when at least one
+API key exists. You can create managed keys from the Console/API, or configure a
+static key:
 
 ```bash
 export MANAGED_AGENTS_API_KEY=sk-local-example
 ```
 
-Or configure keys in `managed-agents.config.yaml`:
+Static keys can also be configured in `managed-agents.config.yaml`:
 
 ```yaml
 api_keys:
   - ${MANAGED_AGENTS_API_KEY}
+```
+
+Create a managed key through the API:
+
+```bash
+curl -X POST http://127.0.0.1:3000/v1/api-keys \
+  -H "Content-Type: application/json" \
+  -d '{ "name": "Local Console" }'
 ```
 
 Clients then send:

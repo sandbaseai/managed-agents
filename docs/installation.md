@@ -185,14 +185,16 @@ pass `--data-dir` for a single workspace override.
 
 ## Enable API Authentication
 
-Local development is open by default. To require bearer tokens, set:
+Local development is open by default. Authentication turns on when at least one
+API key exists. You can create managed keys from the Console/API, or set a
+static key before starting the runtime:
 
 ```bash
 export MANAGED_AGENTS_API_KEY=sk-local-example
 managed-agents start
 ```
 
-Or configure API keys in `managed-agents.config.yaml`:
+Static keys can also be configured in `managed-agents.config.yaml`:
 
 ```yaml
 api_keys:
@@ -204,6 +206,9 @@ Clients must then send:
 ```text
 Authorization: Bearer sk-local-example
 ```
+
+Managed keys created through `/v1/api-keys` are stored in SQLite as hashes. The
+raw `secret_key` is returned only once when the key is created.
 
 ## Verify The Install
 
@@ -235,7 +240,7 @@ managed-agents reload
 
 If sessions fail to start, check:
 
-- The agent `model.id` matches a configured model name.
+- The agent `model` value matches a configured model name.
 - Required provider API keys are set in the shell that started the runtime.
 - The requested `environment_id` exists and is active.
 - Uploaded file resources use mount paths under `/uploads/`.

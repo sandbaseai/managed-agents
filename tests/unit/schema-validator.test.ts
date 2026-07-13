@@ -9,7 +9,7 @@ import { validateAgentDefinition } from '@/core/agent/schema.js';
 describe('Agent Definition Schema Validation', () => {
   const validMinimal = {
     name: 'test-agent',
-    model: { id: 'gpt-4o', speed: 'standard' },
+    model: 'gpt-4o',
     system: 'You are a helpful assistant.',
   };
 
@@ -64,7 +64,7 @@ describe('Agent Definition Schema Validation', () => {
 
   describe('invalid definitions', () => {
     it('rejects missing name', () => {
-      const result = validateAgentDefinition({ model: { id: 'gpt-4o', speed: 'standard' }, system: 'hi' });
+      const result = validateAgentDefinition({ model: 'gpt-4o', system: 'hi' });
       expect(result.valid).toBe(false);
       expect(result.errors).toContainEqual(expect.objectContaining({ path: 'name' }));
     });
@@ -76,9 +76,15 @@ describe('Agent Definition Schema Validation', () => {
     });
 
     it('rejects missing system', () => {
-      const result = validateAgentDefinition({ name: 'test', model: { id: 'gpt-4o', speed: 'standard' } });
+      const result = validateAgentDefinition({ name: 'test', model: 'gpt-4o' });
       expect(result.valid).toBe(false);
       expect(result.errors).toContainEqual(expect.objectContaining({ path: 'system' }));
+    });
+
+    it('rejects empty model ids', () => {
+      const result = validateAgentDefinition({ ...validMinimal, model: '' });
+      expect(result.valid).toBe(false);
+      expect(result.errors).toContainEqual(expect.objectContaining({ path: 'model' }));
     });
 
     it('rejects empty name', () => {
@@ -132,7 +138,7 @@ describe('Agent Definition Schema Validation', () => {
 
   describe('error structure', () => {
     it('provides field path in errors', () => {
-      const result = validateAgentDefinition({ name: 123, model: { id: 'gpt-4o', speed: 'standard' }, system: 'y' });
+      const result = validateAgentDefinition({ name: 123, model: 'gpt-4o', system: 'y' });
       expect(result.valid).toBe(false);
       expect(result.errors![0].path).toBe('name');
       expect(result.errors![0].message).toBeTruthy();

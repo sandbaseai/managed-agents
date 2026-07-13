@@ -44,7 +44,7 @@ describe('Client SDK', () => {
     const app = createServer({
       db,
       sessionManager,
-      agents: [{ name: 'echo', model: { id: 'm', speed: 'standard' }, system: 'p' }],
+      agents: [{ name: 'echo', model: 'm', system: 'p' }],
       reloadAgents: () => ({ agents: [], errors: [] }),
     });
 

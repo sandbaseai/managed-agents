@@ -178,9 +178,7 @@ Template preview fields:
 ```yaml
 name: Untitled agent
 description: A blank starting point with the core toolset.
-model:
-  id: claude-sonnet-5
-  speed: standard
+model: claude-sonnet-5
 system: You are a general-purpose agent that can research, write code, run commands, and use connected tools to complete the user's task end to end.
 mcp_servers: []
 tools:
@@ -268,9 +266,7 @@ Observed Claude edit modal:
 
 ```yaml
 name: Untitled agent
-model:
-  id: claude-sonnet-4-6
-  speed: standard
+model: claude-sonnet-4-6
 description: A blank starting point with the core toolset.
 system: You are a general-purpose agent that can research, write code, run commands, and use connected tools to complete the user's task end to end.
 mcp_servers: []
@@ -301,7 +297,8 @@ interface ConsoleAgent {
   name: string;
   description: string | null;
   system: string | null;
-  model: { id: string; speed?: "standard" | "fast" };
+  model: string;
+  model_config?: { speed?: "standard" | "fast" | "extended" };
   tools: ToolConfig[];
   mcp_servers: MCPServerDefinition[];
   skills: SkillRef[];

@@ -14,8 +14,8 @@ export interface ApiAgent {
   name: string;
   description: string;
   system: string;
-  model: {
-    id: string;
+  model: string;
+  model_config?: {
     speed: 'fast' | 'standard' | 'extended';
   };
   tools: AgentToolset[];
@@ -103,10 +103,8 @@ export function toApiAgent(
     name: agent.name,
     description: agent.description ?? '',
     system: agent.system,
-    model: {
-      id: agent.model.id,
-      speed: agent.model.speed,
-    },
+    model: agent.model,
+    ...(agent.model_config && agent.model_config.speed !== 'standard' ? { model_config: agent.model_config } : {}),
     tools: agent.tools ?? [],
     mcp_servers: toApiMcpServers(agent.mcp_servers ?? []),
     skills: agent.skills ?? [],

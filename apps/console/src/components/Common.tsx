@@ -42,11 +42,13 @@ export function KeyValuePanel({ rows }: { rows: Array<[string, ReactNode]> }) {
   );
 }
 
-export function EmptyState({ icon, title }: { icon: ReactNode; title: string }) {
+export function EmptyState({ icon, title, body, action }: { icon: ReactNode; title: string; body?: ReactNode; action?: ReactNode }) {
   return (
     <div className="emptyState">
       {icon}
       <strong>{title}</strong>
+      {body ? <span>{body}</span> : null}
+      {action ? <div className="emptyStateAction">{action}</div> : null}
     </div>
   );
 }
@@ -63,11 +65,11 @@ export function RequiredMark() {
   return <span className="requiredMark">*</span>;
 }
 
-export function ResourceBadge({ icon, label }: { icon: ReactNode; label: ReactNode }) {
+export function ResourceBadge({ icon, label, children }: { icon?: ReactNode; label?: ReactNode; children?: ReactNode }) {
   return (
     <span className="resourceBadge">
-      {icon}
-      <span>{label}</span>
+      {icon ? icon : null}
+      <span>{label ?? children}</span>
     </span>
   );
 }

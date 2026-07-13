@@ -66,7 +66,7 @@ describe('Snapshot wiring', () => {
     sandboxProvider = new LocalSandboxProvider(tmpDir);
 
     const executor = new DefaultSessionExecutor({
-      agents: [{ name: 'f', model: { id: 'm', speed: 'standard' }, system: 'p', environment: 'snapenv' }],
+      agents: [{ name: 'f', model: 'm', system: 'p', environment: 'snapenv' }],
       modelRegistry,
       sandboxProvider,
       strategy,
@@ -108,7 +108,7 @@ describe('Snapshot wiring', () => {
     const modelRegistry = new ModelRegistry();
     (modelRegistry as any).createModel = () => fakeModel();
     const noSnapExec = new DefaultSessionExecutor({
-      agents: [{ name: 'f', model: { id: 'm', speed: 'standard' }, system: 'p', environment: 'snapenv' }],
+      agents: [{ name: 'f', model: 'm', system: 'p', environment: 'snapenv' }],
       modelRegistry,
       sandboxProvider: new LocalSandboxProvider(tmpDir),
       strategy: new FileStrategy(),

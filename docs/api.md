@@ -22,12 +22,19 @@ anthropic-beta: agent-memory-2026-07-22
 
 ## Authentication
 
-Authentication is disabled by default for local development. If API keys are
-configured, send a bearer token with every request:
+Authentication is disabled by default for local development. It is enabled when
+at least one API key exists. Keys can be configured in
+`managed-agents.config.yaml`, supplied through `MANAGED_AGENTS_API_KEY`, or
+created through `/v1/api-keys`.
+
+Send a bearer token with every request once authentication is enabled:
 
 ```text
-Authorization: Bearer sk-local-example
+Authorization: Bearer ma_local_example
 ```
+
+Raw API keys are never returned from list or retrieve responses. A newly created
+managed key returns `secret_key` once; store it before discarding the response.
 
 ## Common Shapes
 
@@ -56,9 +63,63 @@ Error responses:
 Common error types are `invalid_request`, `not_found`, `conflict`,
 `not_available`, and `internal_error`.
 
+## API Keys
+
+API keys control bearer-token authentication for the local runtime. Managed keys
+are stored in SQLite as SHA-256 hashes. Keys from config or environment variables
+are shown as read-only `config_env` records.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/v1/api-keys` | List managed and configured API keys. |
+| `POST` | `/v1/api-keys` | Create a managed API key. |
+| `DELETE` | `/v1/api-keys/{key_id}` | Delete a managed API key. |
+
+Create a key:
+
+```bash
+curl -X POST http://127.0.0.1:3000/v1/api-keys \
+  -H "Content-Type: application/json" \
+  -d '{ "name": "Local Console" }'
+```
+
+Create response:
+
+```json
+{
+  "id": "key_abc123",
+  "type": "api_key",
+  "name": "Local Console",
+  "source": "managed",
+  "key_prefix": "ma_abc123...wxyz",
+  "status": "active",
+  "created_at": "2026-07-12T00:00:00.000Z",
+  "updated_at": "2026-07-12T00:00:00.000Z",
+  "last_used_at": null,
+  "archived_at": null,
+  "secret_key": "ma_full_secret_returned_once"
+}
+```
+
+List response entries omit `secret_key`:
+
+```json
+{
+  "id": "key_abc123",
+  "type": "api_key",
+  "name": "Local Console",
+  "source": "managed",
+  "key_prefix": "ma_abc123...wxyz",
+  "status": "active",
+  "last_used_at": "2026-07-12T00:01:00.000Z"
+}
+```
+
 ## Agents
 
-Agents are file-backed YAML definitions exposed as standard API resources.
+Agents are SQLite-backed runtime resources. Optional YAML files in the configured
+agents directory can seed a workspace, but creates and updates are persisted in
+the local database.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
@@ -77,7 +138,7 @@ curl -X POST http://127.0.0.1:3000/v1/agents \
   -d '{
     "name": "assistant",
     "description": "Helps with development tasks.",
-    "model": { "id": "gpt-4o", "speed": "standard" },
+    "model": "gpt-4o",
     "system": "You are a helpful assistant.",
     "mcp_servers": [],
     "tools": [{ "type": "agent_toolset_20260401" }],
@@ -94,7 +155,7 @@ Agent response:
   "type": "agent",
   "name": "assistant",
   "description": "Helps with development tasks.",
-  "model": { "id": "gpt-4o", "speed": "standard" },
+  "model": "gpt-4o",
   "status": "active",
   "version": 1,
   "created_at": "2026-07-12T00:00:00.000Z",
@@ -369,3 +430,25 @@ Extension endpoints expose local runtime operations.
 | `POST` | `/v1/x/reload` | Reload file-backed agents. |
 | `GET` | `/v1/x/metrics` | Prometheus metrics, when enabled. |
 | `GET` | `/v1/x/mcp/status?session_id=...` | MCP connection status for a session. |
+
+`GET /v1/x/runtime` returns runtime-safe introspection data. Model entries expose
+configuration metadata only:
+
+```json
+{
+  "type": "runtime",
+  "status": "running",
+  "models": [
+    {
+      "name": "local",
+      "provider": "openai",
+      "model": "gpt-4o",
+      "api_key_state": "configured",
+      "base_url_state": "not_set"
+    }
+  ],
+  "auth_enabled": true
+}
+```
+
+The runtime never returns raw API keys or resolved secret values to the Console.

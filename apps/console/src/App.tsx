@@ -36,13 +36,12 @@ import {
   Sparkles,
   Terminal,
   Trash2,
-  Upload,
   X,
   Zap,
 } from 'lucide-react';
 import { Dispatch, FormEvent, ReactNode, SetStateAction, useEffect, useMemo, useState } from 'react';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
-import { deleteJson, getJson, getPage, postJson, putJson } from './api';
+import { clearStoredApiKey, deleteJson, getJson, getPage, getStoredApiKey, getText, postJson, putJson, setStoredApiKey } from './api';
 import { EmptyState, KeyValuePanel, LoadingState, RequiredMark, ResourceBadge, StatusPill, SummaryStrip, Toolbar } from './components/Common';
 import { Modal } from './components/Modal';
 import { Files, Skills } from './components/pages/BuildPages';
@@ -52,6 +51,8 @@ import type {
   Agent,
   AgentTab,
   AgentToolset,
+  ApiKey,
+  ApiKeyCreateResponse,
   ConsoleData,
   CredentialAuthType,
   Environment,
@@ -64,6 +65,7 @@ import type {
   MetadataDraft,
   McpToolset,
   Runtime,
+  RuntimeConfigState,
   Session,
   SessionEvent,
   SessionResourceDraft,
@@ -119,6 +121,7 @@ function emptyData(): ConsoleData {
     vaults: [],
     memoryStores: [],
     files: [],
+    apiKeys: [],
     skills: [],
     templates: [],
     runtime: null,
@@ -156,6 +159,7 @@ export function App() {
         vaults,
         memoryStores,
         files,
+        apiKeys,
         skills,
         templates,
         runtime,
@@ -167,6 +171,7 @@ export function App() {
         getPage<Vault>('/v1/credential-vaults'),
         getPage<MemoryStore>('/v1/memory-stores'),
         getPage<WorkspaceFile>('/v1/files'),
+        getPage<ApiKey>('/v1/api-keys'),
         getPage<Skill>('/v1/skills'),
         getPage<Template>('/v1/x/templates'),
         getJson<Runtime>('/v1/x/runtime'),
@@ -179,6 +184,7 @@ export function App() {
         vaults: vaults.data,
         memoryStores: memoryStores.data,
         files: files.data,
+        apiKeys: apiKeys.data,
         skills: skills.data,
         templates: templates.data,
         runtime,
@@ -500,7 +506,7 @@ function View(props: {
     case 'runtime':
       return <RuntimeView data={props.data} />;
     case 'api-keys':
-      return <ApiKeys data={props.data} />;
+      return <ApiKeys data={props.data} onRefresh={props.onRefresh} />;
     case 'observability':
       return <Observability data={props.data} />;
     case 'settings':
@@ -538,12 +544,7 @@ function Quickstart({ data, onNewAgent }: { data: ConsoleData; onNewAgent: (temp
         <div className="buildPrompt">
           <Sparkles size={22} />
           <h2>What do you want to build?</h2>
-          <textarea placeholder="Describe your agent or start with a template." />
           <div className="promptActions">
-            <button className="secondaryButton" type="button">
-              <Upload size={16} />
-              Import agent
-            </button>
             <button className="primaryButton" type="button" onClick={() => onNewAgent(selected ?? 'blank')}>
               <Plus size={16} />
               Create agent
@@ -595,7 +596,7 @@ function Agents({ data, onNewAgent, onOpenAgent }: { data: ConsoleData; onNewAge
   const [query, setQuery] = useState('');
   const agents = data.agents.filter((agent) => {
     const q = query.toLowerCase();
-    return agent.id.toLowerCase().includes(q) || agent.name.toLowerCase().includes(q) || agent.description.toLowerCase().includes(q) || agent.model.id.toLowerCase().includes(q);
+    return agent.id.toLowerCase().includes(q) || agent.name.toLowerCase().includes(q) || agent.description.toLowerCase().includes(q) || agent.model.toLowerCase().includes(q);
   });
   return (
     <section className="stack">
@@ -642,7 +643,7 @@ function Agents({ data, onNewAgent, onOpenAgent }: { data: ConsoleData; onNewAge
                   <strong>{agent.name}</strong>
                   <span>{agent.description || agent.id}</span>
                 </td>
-                <td>{agent.model.id}</td>
+                <td>{agent.model}</td>
                 <td><StatusPill status={agent.status} /></td>
                 <td>{formatDate(agent.created_at)}</td>
                 <td>{formatDate(agent.updated_at)}</td>
@@ -660,7 +661,7 @@ function Agents({ data, onNewAgent, onOpenAgent }: { data: ConsoleData; onNewAge
               <small className="monoText">{agent.id}</small>
             </span>
             <span className="mobileAgentMeta">
-              <span>{agent.model.id}</span>
+              <span>{agent.model}</span>
               <StatusPill status={agent.status} />
             </span>
           </button>
@@ -733,7 +734,6 @@ function AgentDetail({
               <div className="agentMenu">
                 <button type="button" onClick={onNewSession}><Play size={18} />Start session</button>
                 <button type="button" onClick={onEdit}><Sparkles size={18} />Guided edit</button>
-                <button type="button" disabled title="Deployments are not implemented yet"><Plus size={18} />Create deployment</button>
                 <button type="button" className="dangerMenuItem" onClick={() => void archive()}><Lock size={18} />Archive</button>
               </div>
             ) : null}
@@ -757,7 +757,7 @@ function AgentDetail({
 
       {tab === 'agent' ? <AgentConfigTab agent={agent} /> : null}
       {tab === 'sessions' ? <AgentSessionsTab sessions={agentSessions} onOpenSession={onOpenSession} /> : null}
-      {tab === 'deployments' ? <EmptyState icon={<Server size={22} />} title="No deployments" /> : null}
+      {tab === 'deployments' ? <EmptyState icon={<Server size={22} />} title="Deployments are not configured for this local runtime" /> : null}
       {tab === 'observability' ? (
         <AgentObservability sessions={agentSessions} tokenIn={tokenIn} tokenOut={tokenOut} />
       ) : null}
@@ -766,7 +766,7 @@ function AgentDetail({
 }
 
 function AgentConfigTab({ agent }: { agent: Agent }) {
-  const builtinToolCount = toolNames(agent).length || 8;
+  const builtinToolCount = toolNames(agent).length;
   const mcpToolsets = agent.tools.filter((toolset): toolset is McpToolset => toolset.type === 'mcp_toolset');
   return (
     <div className="detailStack">
@@ -1071,15 +1071,10 @@ function SessionDetail({
             {actionsOpen ? (
               <div className="agentMenu sessionActionsMenu">
                 <button type="button" onClick={() => void interrupt()}><Square size={18} />Send interrupt</button>
-                <button type="button" disabled title="Custom event composer is not implemented yet"><Keyboard size={18} />Send event...</button>
                 <button type="button" className="dangerMenuItem" onClick={() => void archive()}><Archive size={18} />Archive session</button>
               </div>
             ) : null}
           </div>
-          <button className="darkButton" type="button" disabled title="Message composer will be wired into the session detail next">
-            <Sparkles size={18} />
-            Ask agent
-          </button>
         </div>
       </div>
 
@@ -1361,16 +1356,20 @@ function CloudEnvironment({ environment }: { environment: Environment }) {
 
 function SelfHostedEnvironment({ environment, sessions }: { environment: Environment; sessions: Session[] }) {
   const keys = environmentKeys(environment);
+  const idleSessions = sessions.filter((session) => session.status === 'idle');
+  const runningSessions = sessions.filter((session) => session.status === 'running');
+  const completedSessions = sessions.filter((session) => session.status === 'terminated');
+  const oldestActiveSession = [...idleSessions, ...runningSessions].sort((a, b) => a.created_at.localeCompare(b.created_at))[0];
   return (
     <div className="environmentBody">
       <section className="environmentSection">
         <h2>Overview</h2>
-        <p>Live statistics for this environment's work queue. Updates every few seconds.</p>
+        <p>Live session activity for this self-hosted environment. Updates every few seconds.</p>
         <div className="metricGrid compactMetrics">
-          <MetricCard title="Queued" value={sessions.filter((session) => session.status === 'idle').length} />
-          <MetricCard title="Processing" value={sessions.filter((session) => session.status === 'running').length} />
-          <MetricCard title="Idle workers" value="-" />
-          <MetricCard title="Oldest item" value="-" />
+          <MetricCard title="Idle sessions" value={idleSessions.length} />
+          <MetricCard title="Running sessions" value={runningSessions.length} />
+          <MetricCard title="Completed sessions" value={completedSessions.length} />
+          <MetricCard title="Oldest active session" value={oldestActiveSession ? relativeDate(oldestActiveSession.created_at) : 'None'} />
         </div>
       </section>
       <div className="selfHostedGrid">
@@ -1382,10 +1381,6 @@ function SelfHostedEnvironment({ environment, sessions }: { environment: Environ
             rows={keys.map((key) => [key.name, shortId(key.id), formatDateShort(key.created_at), formatDateShort(key.expires_at)])}
             columns={['Name', 'ID', 'Created', 'Expires at']}
           />
-          <button className="secondaryButton fitButton" type="button" disabled title="Environment key generation will be backed by the desktop/runtime key store">
-            <KeyRound size={18} />
-            Generate environment key
-          </button>
         </section>
         <section className="setupCard">
           <div className="setupHeader">
@@ -2011,22 +2006,12 @@ function WorkspaceView({ data }: { data: ConsoleData }) {
           <h1>Workspace</h1>
           <p>Manage the local workspace that backs this console.</p>
         </div>
-        <div className="toolbarActions">
-          <button className="secondaryButton" type="button" disabled title="Workspace switching is not wired yet">
-            <Layers size={16} />
-            Switch workspace
-          </button>
-          <button className="secondaryButton" type="button" disabled title="Workspace creation is planned for the desktop shell">
-            <Plus size={16} />
-            Create workspace
-          </button>
-        </div>
       </div>
       <div className="workspaceNotice">
         <Info size={18} />
         <div>
           <strong>Single local workspace mode</strong>
-          <span>Workspace switching is not exposed by the API yet. Start the server with another root/config to run a different workspace.</span>
+          <span>Start the server with another root or config directory to run a different workspace.</span>
         </div>
       </div>
       <SummaryStrip
@@ -2088,17 +2073,20 @@ function RuntimeView({ data }: { data: ConsoleData }) {
       </div>
       <div className="tablePanel">
         <table>
-          <thead><tr><th>Model</th><th>Provider</th><th>Status</th></tr></thead>
+          <thead><tr><th>Name</th><th>Provider</th><th>Model ID</th><th>API key</th><th>Base URL</th></tr></thead>
           <tbody>
             {(data.runtime?.models ?? []).map((model) => (
-              <tr key={model}>
-                <td><strong>{model}</strong></td>
-                <td>configured</td>
-                <td><StatusPill status="active" /></td>
+              <tr key={model.name}>
+                <td><strong>{model.name}</strong></td>
+                <td>{model.provider}</td>
+                <td><code>{model.model}</code></td>
+                <td><RuntimeConfigStatePill state={model.api_key_state} /></td>
+                <td><RuntimeConfigStatePill state={model.base_url_state} /></td>
               </tr>
             ))}
           </tbody>
         </table>
+        {(data.runtime?.models.length ?? 0) === 0 ? <div className="emptyValue">No models configured</div> : null}
       </div>
       <div className="sectionHeaderRow">
         <div>
@@ -2111,31 +2099,267 @@ function RuntimeView({ data }: { data: ConsoleData }) {
   );
 }
 
-function ApiKeys({ data }: { data: ConsoleData }) {
+function RuntimeConfigStatePill({ state }: { state: RuntimeConfigState }) {
+  const status = state === 'configured' ? 'active' : state === 'missing_env' ? 'failed' : 'idle';
+  const label = state === 'missing_env' ? 'missing env' : state === 'not_set' ? 'not set' : 'configured';
+  return <span className={`status ${status}`}>{label}</span>;
+}
+
+function ApiKeys({ data, onRefresh }: { data: ConsoleData; onRefresh: () => void }) {
+  const [modalOpen, setModalOpen] = useState(false);
+  const [storedKey, setStoredKey] = useState(() => getStoredApiKey());
+  const activeKeys = data.apiKeys.filter((key) => key.status === 'active');
+  const managedKeys = data.apiKeys.filter((key) => key.source === 'managed');
+  const configuredKeys = data.apiKeys.filter((key) => key.source === 'config_env');
+
+  const saveStoredKey = () => {
+    setStoredApiKey(storedKey);
+    onRefresh();
+  };
+
+  const clearBrowserKey = () => {
+    clearStoredApiKey();
+    setStoredKey('');
+  };
+
+  const deleteKey = async (key: ApiKey) => {
+    if (key.source !== 'managed') return;
+    if (!window.confirm(`Delete API key "${key.name}"? This cannot be undone.`)) return;
+    await deleteJson(`/v1/api-keys/${encodeURIComponent(key.id)}`);
+    onRefresh();
+  };
+
   return (
     <section className="stack">
       <SummaryStrip items={[
         { label: 'Auth', value: data.runtime?.auth_enabled ? 'enabled' : 'disabled', icon: <KeyRound size={18} /> },
-        { label: 'Mode', value: 'local', icon: <Shield size={18} /> },
+        { label: 'Active keys', value: String(activeKeys.length), icon: <Shield size={18} /> },
+        { label: 'Managed keys', value: String(managedKeys.length), icon: <Lock size={18} /> },
+        { label: 'Configured keys', value: String(configuredKeys.length), icon: <Settings size={18} /> },
       ]} />
-      <div className="panel subtlePanel">
-        <h2>API Keys</h2>
-        <p>Managed through `managed-agents.config.yaml` and `MANAGED_AGENTS_API_KEY`.</p>
+      <div className="sectionHeaderRow">
+        <div>
+          <h1>API Keys</h1>
+          <p>Create and manage bearer tokens for the local Managed Agents API.</p>
+        </div>
+        <button className="primaryButton" type="button" onClick={() => setModalOpen(true)}>
+          <Plus size={18} />Create key
+        </button>
       </div>
+      <div className="tablePanel">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Name</th>
+              <th>Source</th>
+              <th>Status</th>
+              <th>Key prefix</th>
+              <th>Last used</th>
+              <th>Created</th>
+              <th />
+            </tr>
+          </thead>
+          <tbody>
+            {data.apiKeys.map((key) => (
+              <tr key={key.id}>
+                <td><code>{truncateMiddle(key.id, 18)}</code></td>
+                <td><strong>{key.name}</strong></td>
+                <td><ResourceBadge>{key.source === 'managed' ? 'Managed' : 'Config / env'}</ResourceBadge></td>
+                <td><StatusPill status={key.status} /></td>
+                <td><code>{key.key_prefix}</code></td>
+                <td>{key.last_used_at ? relativeDate(key.last_used_at) : 'Never'}</td>
+                <td>{formatDateShort(key.created_at)}</td>
+                <td className="rowActionsCell">
+                  <button className="iconButton quiet" type="button" title="Copy key prefix" onClick={() => void copyText(key.key_prefix)}>
+                    <Copy size={16} />
+                  </button>
+                  {key.source === 'managed' ? (
+                    <button className="iconButton danger" type="button" title="Delete API key" onClick={() => void deleteKey(key)}>
+                      <Trash2 size={16} />
+                    </button>
+                  ) : null}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {data.apiKeys.length === 0 ? (
+          <EmptyState
+            icon={<KeyRound size={22} />}
+            title="No API keys"
+            body="Create a key to require bearer-token authentication for the API."
+            action={<button className="primaryButton" type="button" onClick={() => setModalOpen(true)}><Plus size={18} />Create key</button>}
+          />
+        ) : null}
+      </div>
+      <div className="panel subtlePanel">
+        <h2>Browser token</h2>
+        <p>Store a key locally in this browser so Console requests can authenticate when API auth is enabled.</p>
+        <div className="inlineForm">
+          <input
+            value={storedKey}
+            onChange={(event) => setStoredKey(event.target.value)}
+            placeholder="ma_..."
+            type="password"
+          />
+          <button type="button" onClick={saveStoredKey}>Save token</button>
+          <button type="button" className="ghostButton" onClick={clearBrowserKey}>Clear</button>
+        </div>
+      </div>
+      {modalOpen ? (
+        <ApiKeyModal
+          onClose={() => setModalOpen(false)}
+          onSaved={(secret) => {
+            setStoredApiKey(secret);
+            setStoredKey(secret);
+            onRefresh();
+          }}
+        />
+      ) : null}
     </section>
   );
 }
 
+function ApiKeyModal({ onClose, onSaved }: { onClose: () => void; onSaved: (secret: string) => void }) {
+  const [name, setName] = useState('Default API key');
+  const [created, setCreated] = useState<ApiKeyCreateResponse | null>(null);
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    if (created) {
+      onClose();
+      return;
+    }
+    setSaving(true);
+    setError('');
+    try {
+      const response = await postJson<ApiKeyCreateResponse>('/v1/api-keys', { name });
+      setCreated(response);
+      onSaved(response.secret_key);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal title="Create API key" onClose={onClose}>
+      <form className="modalForm" onSubmit={submit}>
+        {error ? <div className="banner error">{error}</div> : null}
+        {!created ? (
+          <>
+            <label>
+              <span>Name <RequiredMark /></span>
+              <input value={name} onChange={(event) => setName(event.target.value.slice(0, 80))} placeholder="Production key" required />
+            </label>
+            <p className="formHint">The generated key will be shown once. Store it before closing this dialog.</p>
+          </>
+        ) : (
+          <div className="secretReveal">
+            <div>
+              <strong>{created.name}</strong>
+              <span>{created.key_prefix}</span>
+            </div>
+            <code>{created.secret_key}</code>
+            <button type="button" onClick={() => void copyText(created.secret_key)}>
+              <Copy size={16} />Copy key
+            </button>
+          </div>
+        )}
+        <div className="modalActions">
+          <button type="button" onClick={onClose}>{created ? 'Done' : 'Cancel'}</button>
+          {!created ? <button className="primaryButton" type="submit" disabled={saving}>{saving ? 'Creating...' : 'Create key'}</button> : null}
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+type ParsedMetrics = {
+  disabled: boolean;
+  httpRequests?: number;
+  httpErrors?: number;
+  httpRequestDurationCount?: number;
+  httpRequestDurationSum: number;
+};
+
+function parsePrometheusMetrics(text: string): ParsedMetrics {
+  const disabled = text.trim() === '# metrics disabled';
+  return {
+    disabled,
+    httpRequests: readPrometheusMetric(text, 'http_requests_total'),
+    httpErrors: readPrometheusMetric(text, 'http_errors_total'),
+    httpRequestDurationCount: readPrometheusMetric(text, 'http_request_duration_ms_count'),
+    httpRequestDurationSum: readPrometheusMetric(text, 'http_request_duration_ms_sum') ?? 0,
+  };
+}
+
+function readPrometheusMetric(text: string, name: string): number | undefined {
+  const line = text.split('\n').find((item) => item.startsWith(`${name} `));
+  if (!line) return undefined;
+  const value = Number(line.split(/\s+/)[1]);
+  return Number.isFinite(value) ? value : undefined;
+}
+
 function Observability({ data }: { data: ConsoleData }) {
+  const [metricsText, setMetricsText] = useState('');
+  const [metricsError, setMetricsError] = useState('');
+  useEffect(() => {
+    let mounted = true;
+    getText('/v1/x/metrics')
+      .then((text) => {
+        if (!mounted) return;
+        setMetricsText(text);
+        setMetricsError('');
+      })
+      .catch((error: Error) => {
+        if (!mounted) return;
+        setMetricsText('');
+        setMetricsError(error.message);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
   const tokenTotal = data.sessions.reduce((sum, session) => sum + session.usage.input_tokens + session.usage.output_tokens, 0);
+  const metrics = parsePrometheusMetrics(metricsText);
+  const averageRequestMs = metrics.httpRequestDurationCount
+    ? Math.round(metrics.httpRequestDurationSum / metrics.httpRequestDurationCount)
+    : null;
+  const metricsStatus = metricsError || (metricsText ? (metrics.disabled ? 'disabled' : 'enabled') : 'loading');
+  const requestCount = metrics.disabled ? 'disabled' : (metrics.httpRequests ?? 0);
+  const errorCount = metrics.disabled ? 'disabled' : (metrics.httpErrors ?? 0);
+  const requestSamples = metrics.disabled ? 'disabled' : (metrics.httpRequestDurationCount ?? 0);
+  const averageDuration = metrics.disabled ? 'disabled' : (averageRequestMs === null ? 'No samples yet' : `${averageRequestMs} ms`);
   return (
     <section className="stack">
       <SummaryStrip items={[
         { label: 'Sessions', value: data.sessions.length, icon: <MessageSquare size={18} /> },
         { label: 'Running', value: data.sessions.filter((session) => session.status === 'running').length, icon: <CirclePlay size={18} /> },
-        { label: 'Tokens', value: tokenTotal, icon: <Gauge size={18} /> },
-        { label: 'Metrics', value: '/v1/x/metrics', icon: <Activity size={18} /> },
+        { label: 'HTTP requests', value: requestCount, icon: <Activity size={18} /> },
+        { label: 'HTTP errors', value: errorCount, icon: <Gauge size={18} /> },
       ]} />
+      <div className="workspaceGrid">
+        <div className="panel subtlePanel">
+          <h2>Runtime metrics</h2>
+          <p>Live process counters from <code>/v1/x/metrics</code>.</p>
+          <KeyValuePanel rows={[
+            ['Metrics status', metricsStatus],
+            ['Request samples', requestSamples],
+            ['Average request duration', averageDuration],
+            ['Session tokens', tokenTotal],
+          ]} />
+        </div>
+        <div className="panel subtlePanel">
+          <h2>Prometheus endpoint</h2>
+          <p>Raw text returned by the local runtime.</p>
+          <pre className="metricsPreview">{metricsError || metricsText || '# metrics not loaded yet'}</pre>
+        </div>
+      </div>
     </section>
   );
 }
@@ -2151,9 +2375,7 @@ function SettingsView({ data }: { data: ConsoleData }) {
 
 function AgentModal({ template, data, onClose, onSaved }: { template?: Template; data: ConsoleData; onClose: () => void; onSaved: () => void }) {
   const initialTemplate = template ?? data.templates[0];
-  const [mode, setMode] = useState<'describe' | 'template'>(template ? 'template' : 'describe');
   const [selected, setSelected] = useState<Template | undefined>(initialTemplate);
-  const [prompt, setPrompt] = useState('Summarizes new GitHub PRs and posts a digest to Slack.');
   const [yaml, setYaml] = useState(agentDefinitionYaml(initialTemplate?.agent ?? defaultAgentDraft(data)));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -2178,36 +2400,25 @@ function AgentModal({ template, data, onClose, onSaved }: { template?: Template;
   };
 
   return (
-    <Modal title="Create agent" subtitle="Start from a template or describe what you need." onClose={onClose} size="wide">
+    <Modal title="Create agent" subtitle="Start from a template and edit the YAML config." onClose={onClose} size="wide">
       <form className="agentComposer" onSubmit={submit}>
         {error ? <div className="banner error inlineBanner">{error}</div> : null}
         <section className="composerSection">
-          <div className="sectionTitle"><ChevronDown size={18} /><strong>Starting point</strong>{selected && mode === 'template' ? <span>· {selected.name}</span> : null}</div>
-          <div className="segment">
-            <button type="button" className={mode === 'describe' ? 'active' : ''} onClick={() => setMode('describe')}>Describe your agent</button>
-            <button type="button" className={mode === 'template' ? 'active' : ''} onClick={() => setMode('template')}>Template</button>
+          <div className="sectionTitle"><ChevronDown size={18} /><strong>Starting point</strong>{selected ? <span>· {selected.name}</span> : null}</div>
+          <div className="claudeTemplateGrid">
+            {data.templates.map((item) => (
+              <button
+                type="button"
+                key={item.id}
+                className={`claudeTemplateCard ${selected?.id === item.id ? 'selected' : ''}`}
+                onClick={() => chooseTemplate(item)}
+              >
+                <strong>{item.name}</strong>
+                <span>{item.description}</span>
+                {item.tags.length ? <small>{item.tags.slice(0, 4).join(' · ')}</small> : null}
+              </button>
+            ))}
           </div>
-          {mode === 'describe' ? (
-            <div className="describeBox">
-              <textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} />
-              <button className="secondaryButton" type="button" disabled>Generate</button>
-            </div>
-          ) : (
-            <div className="claudeTemplateGrid">
-              {data.templates.map((item) => (
-                <button
-                  type="button"
-                  key={item.id}
-                  className={`claudeTemplateCard ${selected?.id === item.id ? 'selected' : ''}`}
-                  onClick={() => chooseTemplate(item)}
-                >
-                  <strong>{item.name}</strong>
-                  <span>{item.description}</span>
-                  {item.tags.length ? <small>{item.tags.slice(0, 4).join(' · ')}</small> : null}
-                </button>
-              ))}
-            </div>
-          )}
         </section>
 
         <section className="composerSection">
@@ -2258,7 +2469,8 @@ function AgentEditModal({ agent, onClose, onSaved }: { agent: Agent; onClose: ()
 type AgentDraft = {
   name: string;
   description?: string;
-  model: { id: string; speed: string };
+  model: string;
+  model_config?: { speed: string };
   system: string;
   mcp_servers?: Array<Record<string, unknown>>;
   tools?: AgentToolset[];
@@ -2288,7 +2500,7 @@ function defaultAgentDraft(data: ConsoleData): AgentDraft {
   return {
     name: 'Untitled agent',
     description: 'A blank starting point with the core toolset.',
-    model: { id: data.runtime?.models[0] ?? 'claude-sonnet-5', speed: 'standard' },
+    model: data.runtime?.models[0]?.name ?? 'claude-sonnet-5',
     system: 'You are a general-purpose agent that can research, write code, run commands, and use connected tools to complete the user\'s task end to end.',
     mcp_servers: [],
     tools: [{ type: 'agent_toolset_20260401' }],
@@ -2300,7 +2512,8 @@ function defaultAgentDraft(data: ConsoleData): AgentDraft {
 function agentDraftFromApi(agent: Agent): AgentDraft {
   return {
     name: agent.name,
-    model: { id: agent.model.id, speed: agent.model.speed },
+    model: agent.model,
+    model_config: agent.model_config,
     description: agent.description,
     system: agent.system,
     mcp_servers: agent.mcp_servers,
@@ -2315,6 +2528,7 @@ function agentDefinitionYaml(agent: AgentDraft): string {
     name: agent.name,
     ...(agent.description ? { description: agent.description } : {}),
     model: agent.model,
+    ...(agent.model_config && agent.model_config.speed !== 'standard' ? { model_config: agent.model_config } : {}),
     system: agent.system,
     mcp_servers: agent.mcp_servers ?? [],
     tools: agent.tools ?? [{ type: 'agent_toolset_20260401' }],

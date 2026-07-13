@@ -111,7 +111,7 @@ export class DelegationService {
     task: string,
     ctx: DelegationContext,
   ): Promise<string> {
-    const model = this.deps.modelRegistry.createModel(target.model.id);
+    const model = this.deps.modelRegistry.createModel(target.model);
     const subSessionId = `subsess_${ctx.chain.join('.')}_${nanoid(8)}`;
     const sandbox = await this.deps.sandboxProvider.provision(subSessionId, {
       name: target.environment ?? 'local',

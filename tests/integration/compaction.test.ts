@@ -67,7 +67,7 @@ describe('Compaction during execution', () => {
 
     strategy = new NoopStrategy();
     const executor = new DefaultSessionExecutor({
-      agents: [{ name: 'big', model: { id: 'm', speed: 'standard' }, system: 'p' }],
+      agents: [{ name: 'big', model: 'm', system: 'p' }],
       modelRegistry,
       sandboxProvider: new LocalSandboxProvider(tmpDir),
       strategy,
