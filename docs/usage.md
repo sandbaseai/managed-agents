@@ -11,30 +11,39 @@ debugging managed agents. The usual workflow is:
 
 ## Workspace Layout
 
-A workspace is a folder that contains agent definitions, skill packages, and
-runtime configuration.
+A workspace is a folder that contains runtime configuration plus optional seed
+agent definitions and skill packages. Live metadata is stored in SQLite under
+the user-level runtime directory.
 
 ```text
 my-agents/
-+-- agents/
++-- agents/                  # Optional seed agent definitions
 |   +-- assistant.yaml
-+-- skills/
++-- skills/                  # Optional seed skill packages
 |   +-- code-review/
 |       +-- SKILL.md
-+-- .managed-agents/
-|   +-- data.db
-|   +-- files/
-|   +-- snapshots/
 +-- managed-agents.config.yaml
 ```
 
-The workspace is portable. Commit `agents/`, `skills/`, examples, and
-configuration templates to source control. Keep `.managed-agents/` local unless
-you intentionally want to preserve local runtime state.
+Runtime state is stored outside the repository by default:
+
+```text
+~/.managed-agents/<workspace-name>-<hash>/
++-- data.db                  # SQLite metadata store
++-- files/                   # Uploaded file bytes
++-- skills/                  # Uploaded custom skill package assets
++-- snapshots/               # Session workspace snapshots
++-- sandbox/                 # Local session workspaces
+```
+
+The workspace is portable. Commit examples, templates, config, and any seed
+definitions you intentionally maintain. Use `MANAGED_AGENTS_HOME` or
+`--data-dir` when you need to move runtime state.
 
 ## Agent Definitions
 
-Agents are YAML files stored in `agents/`.
+Agents can be imported from YAML files in `agents/` or created through the
+Console/API. Once loaded, the runtime source of truth is SQLite.
 
 ```yaml
 name: assistant
@@ -95,8 +104,8 @@ The Console includes:
 
 ## Create An Agent
 
-Use the Console `Create agent` action, or create a YAML file in `agents/` and
-reload:
+Use the Console `Create agent` action, or add a seed YAML file in `agents/` and
+reload to import it into SQLite:
 
 ```bash
 managed-agents reload

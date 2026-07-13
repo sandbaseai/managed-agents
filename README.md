@@ -5,14 +5,14 @@ skills, files, credential vaults, memory stores, environments, and resumable
 session events.
 
 `managed-agents` is designed for teams that want a local-first control plane for
-agent development, evaluation, and desktop or self-hosted workflows. Agent
-definitions are stored as portable YAML files, runtime state is kept in a local
-SQLite database, and the web Console is served by the same Node.js process.
+agent development, evaluation, and desktop or self-hosted workflows. Runtime
+metadata is stored in a local SQLite database, optional YAML and skill folders
+can seed a workspace, and the web Console is served by the same Node.js process.
 
 ## Features
 
-- File-backed agent definitions in `agents/*.yaml`
-- Skill packages in `skills/*/SKILL.md`
+- SQLite-backed agents, skills, sessions, environments, vaults, memory stores, and file metadata
+- Optional seed/import folders for `agents/*.yaml` and `skills/*/SKILL.md`
 - Local Console at `/ui`
 - Standard HTTP API under `/v1`
 - Resumable Server-Sent Events for session timelines
@@ -104,21 +104,32 @@ http://127.0.0.1:3000/v1
 
 ```text
 my-agents/
-+-- agents/
++-- agents/                  # Optional seed agent definitions
 |   +-- assistant.yaml
-+-- skills/
++-- skills/                  # Optional seed skill packages
 |   +-- example-skill/
 |       +-- SKILL.md
-+-- .managed-agents/
-|   +-- data.db
-|   +-- files/
-|   +-- snapshots/
 +-- managed-agents.config.yaml
 ```
 
+Runtime state is stored outside the repository by default:
+
+```text
+~/.managed-agents/<workspace-name>-<hash>/
++-- data.db                  # SQLite metadata store
++-- files/                   # Uploaded file bytes
++-- skills/                  # Uploaded custom skill package assets
++-- snapshots/               # Session workspace snapshots
++-- sandbox/                 # Local session workspaces
+```
+
+Set `MANAGED_AGENTS_HOME` or pass `--data-dir` to override this location.
+
 ## Agent Definition
 
-Agents are YAML files with a standard runtime shape:
+Agents use the standard runtime shape below. You can import them from YAML seed
+files or create them through the Console/API; runtime records are stored in
+SQLite.
 
 ```yaml
 name: assistant

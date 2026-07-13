@@ -82,7 +82,7 @@ npm run dev:console
 
 ## Initialize A Workspace
 
-Create a workspace with the default directories and example files:
+Create a workspace with the default seed directories and example files:
 
 ```bash
 managed-agents init
@@ -96,7 +96,9 @@ skills/
 managed-agents.config.yaml
 ```
 
-Runtime state is stored under `.managed-agents/` by default.
+`agents/` and `skills/` are optional seed/import folders. Runtime metadata and
+uploaded resource state are stored outside the repository under
+`~/.managed-agents/<workspace-name>-<hash>/` by default.
 
 ## Configure A Model
 
@@ -165,8 +167,7 @@ managed-agents start \
   --port 3000 \
   --config managed-agents.config.yaml \
   --agents-dir agents \
-  --skills-dir skills \
-  --data-dir .managed-agents
+  --skills-dir skills
 ```
 
 | Option | Default | Purpose |
@@ -176,8 +177,11 @@ managed-agents start \
 | `--config` | `managed-agents.config.yaml` | Runtime configuration file. |
 | `--agents-dir` | `agents` | Directory containing agent YAML files. |
 | `--skills-dir` | `skills` | Directory containing skill packages. |
-| `--data-dir` | `.managed-agents` | SQLite database, uploaded files, and runtime data. |
+| `--data-dir` | `~/.managed-agents/<workspace-name>-<hash>` | SQLite database, uploaded files, and runtime data. |
 | `--target` | unset | Optional runtime target label surfaced in the Console. |
+
+Set `MANAGED_AGENTS_HOME` to move all workspace runtime folders together, or
+pass `--data-dir` for a single workspace override.
 
 ## Enable API Authentication
 
@@ -235,4 +239,3 @@ If sessions fail to start, check:
 - Required provider API keys are set in the shell that started the runtime.
 - The requested `environment_id` exists and is active.
 - Uploaded file resources use mount paths under `/uploads/`.
-

@@ -281,6 +281,30 @@ CREATE TABLE files (
 CREATE INDEX idx_files_status_created ON files(status, created_at DESC);
 `;
 
+const M011_SKILL_RESOURCES = `
+CREATE TABLE skills (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  display_title TEXT,
+  description TEXT NOT NULL,
+  instructions TEXT NOT NULL,
+  frontmatter TEXT NOT NULL DEFAULT '{}',
+  file TEXT NOT NULL DEFAULT '',
+  source TEXT NOT NULL DEFAULT 'custom',
+  latest_version TEXT,
+  versions TEXT NOT NULL DEFAULT '[]',
+  storage_path TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  archived_at TEXT
+);
+
+CREATE INDEX idx_skills_source_updated ON skills(source, updated_at DESC);
+CREATE UNIQUE INDEX idx_skills_active_name
+  ON skills(name)
+  WHERE archived_at IS NULL;
+`;
+
 export const MIGRATIONS: Migration[] = [
   { version: 1, name: '001_initial', sql: M001_INITIAL },
   { version: 2, name: '002_memory', sql: M002_MEMORY },
@@ -292,4 +316,5 @@ export const MIGRATIONS: Migration[] = [
   { version: 8, name: '008_credential_secret_storage', sql: M008_CREDENTIAL_SECRET_STORAGE },
   { version: 9, name: '009_memory_active_path_index', sql: M009_MEMORY_ACTIVE_PATH_INDEX },
   { version: 10, name: '010_file_resources', sql: M010_FILE_RESOURCES },
+  { version: 11, name: '011_skill_resources', sql: M011_SKILL_RESOURCES },
 ];

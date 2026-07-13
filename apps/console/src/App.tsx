@@ -1971,9 +1971,9 @@ function MemoryTree({ memories, selectedId, onSelect }: { memories: MemoryRecord
 function WorkspacePathsPanel({ workspace }: { workspace: Workspace | null }) {
   const configDir = workspaceConfigDir(workspace);
   const directoryRows = [
-    { label: 'Agents', path: workspace?.directories?.agents ?? workspace?.agentsDir, defaultLabel: 'agents/', kind: 'directory' as const },
-    { label: 'Skills', path: workspace?.directories?.skills ?? workspace?.skillsDir, defaultLabel: 'skills/', kind: 'directory' as const },
-    { label: 'Data', path: workspace?.directories?.data ?? workspace?.dataDir, defaultLabel: '.managed-agents/', kind: 'directory' as const },
+    { label: 'Agent seed directory', path: workspace?.directories?.agents ?? workspace?.agentsDir, defaultLabel: 'agents/', kind: 'directory' as const },
+    { label: 'Skill seed directory', path: workspace?.directories?.skills ?? workspace?.skillsDir, defaultLabel: 'skills/', kind: 'directory' as const },
+    { label: 'Runtime data directory', path: workspace?.directories?.data ?? workspace?.dataDir, defaultLabel: '~/.managed-agents/<workspace>/', kind: 'directory' as const },
     { label: 'Config file', path: workspace?.directories?.config ?? workspace?.configPath, defaultLabel: 'managed-agents.config.yaml', kind: 'file' as const },
   ];
 

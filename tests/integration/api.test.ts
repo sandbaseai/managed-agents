@@ -19,11 +19,13 @@ describe('Managed Agents API', () => {
   let db: Database;
   let tmpDir: string;
   let dataDir: string;
+  let agentsDir: string;
+  let skillsDir: string;
 
   beforeAll(() => {
     tmpDir = mkdtempSync(join(tmpdir(), 'ma-api-test-'));
-    const agentsDir = join(tmpDir, 'agents');
-    const skillsDir = join(tmpDir, 'skills');
+    agentsDir = join(tmpDir, 'agents');
+    skillsDir = join(tmpDir, 'skills');
     dataDir = join(tmpDir, '.managed-agents');
     const configPath = join(tmpDir, 'managed-agents.config.yaml');
     mkdirSync(agentsDir, { recursive: true });
@@ -466,6 +468,33 @@ describe('Managed Agents API', () => {
     });
   });
 
+  describe('POST /v1/agents', () => {
+    it('stores created agents in SQLite without writing source YAML files', async () => {
+      const { res, body } = await postJson('/v1/agents', {
+        name: 'runtime-agent',
+        description: 'Created through the API.',
+        model: { id: 'claude-sonnet-5', speed: 'standard' },
+        system: 'Handle runtime requests.',
+        tools: [{ type: 'agent_toolset_20260401' }],
+      });
+
+      expect(res.status).toBe(201);
+      expect(body.id).toBe('agent_runtime-agent');
+      expect(body.name).toBe('runtime-agent');
+      expect(existsSync(join(agentsDir, 'runtime-agent.yaml'))).toBe(false);
+      expect(existsSync(join(agentsDir, 'Runtime agent.yaml'))).toBe(false);
+
+      const row = db.prepare('SELECT definition FROM agents WHERE id = ?').get(body.id) as
+        | { definition: string }
+        | undefined;
+      expect(row).toBeDefined();
+      expect(JSON.parse(row!.definition).name).toBe('runtime-agent');
+
+      const list = await getJson('/v1/agents');
+      expect(list.body.data.some((item: any) => item.id === body.id)).toBe(true);
+    });
+  });
+
   describe('GET /v1/agents/:id', () => {
     it('does not resolve agents by bare name', async () => {
       const res = await app.request('/v1/agents/echo-agent');
@@ -561,6 +590,17 @@ Use this in API tests.
       expect(create.body.latest_version).toBeTruthy();
 
       const skillId = create.body.id;
+      const storedSkill = db.prepare('SELECT instructions, storage_path FROM skills WHERE id = ?').get(skillId) as
+        | { instructions: string; storage_path: string | null }
+        | undefined;
+      expect(storedSkill).toBeDefined();
+      expect(storedSkill!.instructions).toContain('Use this in API tests.');
+      expect(storedSkill!.storage_path).toBe(join(dataDir, 'skills', skillId));
+      expect(existsSync(storedSkill!.storage_path!)).toBe(true);
+      expect(existsSync(join(storedSkill!.storage_path!, 'SKILL.md'))).toBe(true);
+      expect(existsSync(join(storedSkill!.storage_path!, 'resources', 'example.txt'))).toBe(true);
+      expect(existsSync(join(skillsDir, 'contract-skill'))).toBe(false);
+
       const get = await getJson(`/v1/skills/${skillId}`);
       expect(get.res.status).toBe(200);
       expect(get.body.id).toBe(skillId);
@@ -574,6 +614,11 @@ Use this in API tests.
       const del = await app.request(`/v1/skills/${skillId}`, { method: 'DELETE' });
       expect(del.status).toBe(200);
       expect(await del.json()).toEqual({ id: skillId, type: 'skill_deleted' });
+      expect(existsSync(storedSkill!.storage_path!)).toBe(false);
+      const archived = db.prepare('SELECT archived_at FROM skills WHERE id = ?').get(skillId) as
+        | { archived_at: string | null }
+        | undefined;
+      expect(archived?.archived_at).toBeTruthy();
 
       const missing = await app.request(`/v1/skills/${skillId}`);
       expect(missing.status).toBe(404);

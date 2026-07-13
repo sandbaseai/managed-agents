@@ -1,6 +1,9 @@
 node_modules/
 dist/
+# Runtime data if explicitly configured inside the repository.
 .managed-agents/
+/agents/
+/skills/
 *.tsbuildinfo
 *.db
 .env

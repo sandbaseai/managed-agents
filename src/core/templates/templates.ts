@@ -25,6 +25,7 @@ import {
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
+import { defaultTemplateCacheDir } from '@/core/config/paths.js';
 
 export interface TemplateManifest {
   name: string;
@@ -146,7 +147,7 @@ function copyTree(
  */
 export async function resolveTemplateSource(
   nameOrPath: string,
-  opts: { repo?: string; cacheDir: string } = { cacheDir: '.managed-agents/templates-cache' },
+  opts: { repo?: string; cacheDir: string } = { cacheDir: defaultTemplateCacheDir() },
 ): Promise<string> {
   // Local path takes precedence
   if (existsSync(join(nameOrPath, 'manifest.yaml'))) {

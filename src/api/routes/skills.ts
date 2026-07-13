@@ -1,10 +1,11 @@
 import { Hono } from 'hono';
-import { existsSync, mkdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, resolve, sep } from 'node:path';
 import { inflateRawSync } from 'node:zlib';
 import type { ServerDeps } from '../server.js';
 import { BUILTIN_SKILLS } from '@/core/skills/catalog.js';
-import { createSkillId, parseSkill, SKILL_METADATA_FILE, type Skill } from '@/core/skills/loader.js';
+import { createSkillId, parseSkill, type Skill } from '@/core/skills/loader.js';
+import { getSkillStoragePath, insertSkill } from '@/core/skills/store.js';
 
 type SkillSourceFilter = 'custom' | 'anthropic';
 
@@ -42,8 +43,8 @@ export function skillsRoutes(deps: ServerDeps) {
   });
 
   app.post('/', async (c) => {
-    if (!deps.workspace?.skillsDir) {
-      return c.json({ error: { type: 'invalid_request', message: 'Skills directory is not configured for this workspace' } }, 400);
+    if (!deps.workspace?.dataDir) {
+      return c.json({ error: { type: 'invalid_request', message: 'Workspace data directory is not configured' } }, 400);
     }
 
     try {
@@ -58,22 +59,19 @@ export function skillsRoutes(deps: ServerDeps) {
           : 'SKILL.md must start with YAML frontmatter (---).';
         return c.json({ error: { type: 'invalid_request', message } }, 400);
       }
-      if (existsSync(resolve(deps.workspace.skillsDir, skillPackage.topLevel))) {
-        return c.json({ error: { type: 'conflict', message: `Skill package ${skillPackage.topLevel} already exists` } }, 409);
-      }
-      if (existingSkills.some((skill) => skill.source === 'custom' && skill.name === parsed.name)) {
+      if (existingSkills.some((skill) => skill.name === parsed.name)) {
         return c.json({ error: { type: 'conflict', message: `Skill name ${parsed.name} already exists` } }, 409);
       }
 
-      const skillDir = safeJoin(deps.workspace.skillsDir, skillPackage.topLevel);
+      const skillDir = safeJoin(resolve(deps.workspace.dataDir, 'skills'), skillId);
       for (const file of skillPackage.files) {
         const outputPath = safeJoin(skillDir, file.relativePath);
         mkdirSync(dirname(outputPath), { recursive: true });
         writeFileSync(outputPath, file.content);
       }
 
-      const saved = materializeCustomSkill(parsed, safeJoin(skillDir, 'SKILL.md'), displayTitle);
-      writeSkillMetadata(skillDir, saved);
+      const saved = materializeCustomSkill(parsed, displayTitle);
+      insertSkill(deps.db, saved, skillDir);
       deps.skills ??= [];
       deps.skills.push(saved);
       return c.json(skillResource(saved), 201);
@@ -99,12 +97,17 @@ export function skillsRoutes(deps: ServerDeps) {
     if (skill.source === 'anthropic') {
       return c.json({ error: { type: 'invalid_request', message: 'Anthropic skills are built-in and cannot be deleted' } }, 400);
     }
-    if (!deps.workspace?.skillsDir) {
-      return c.json({ error: { type: 'invalid_request', message: 'Skills directory is not configured for this workspace' } }, 400);
-    }
 
-    const folder = skill.file.split('/')[0];
-    rmSync(safeJoin(deps.workspace.skillsDir, folder), { recursive: true, force: true });
+    deps.db.prepare(`
+      UPDATE skills
+      SET archived_at = COALESCE(archived_at, datetime('now')),
+          updated_at = datetime('now')
+      WHERE id = ?
+    `).run(skill.id);
+    const storagePath = getSkillStoragePath(deps.db, skill.id);
+    if (storagePath && deps.workspace?.dataDir && isManagedSkillStoragePath(storagePath, deps.workspace.dataDir)) {
+      rmSync(storagePath, { recursive: true, force: true });
+    }
     if (deps.skills) {
       const index = deps.skills.findIndex((item) => item.id === skill.id);
       if (index >= 0) deps.skills.splice(index, 1);
@@ -279,31 +282,17 @@ function normalizeSkillPackage(files: UploadedSkillFile[]): NormalizedSkillPacka
   return { topLevel, files: normalizedFiles, skillContent };
 }
 
-function materializeCustomSkill(skill: Skill, skillFile: string, displayTitle?: string): Skill {
-  const stat = statSync(skillFile);
-  const updatedAt = stat.mtime.toISOString();
-  const createdAt = stat.birthtime.toISOString();
-  const version = String(Math.trunc(stat.mtimeMs));
+function materializeCustomSkill(skill: Skill, displayTitle?: string): Skill {
+  const now = new Date().toISOString();
+  const version = String(Date.now());
   return {
     ...skill,
     display_title: displayTitle?.trim() || skill.display_title || skill.name,
-    created_at: createdAt,
-    updated_at: updatedAt,
+    created_at: now,
+    updated_at: now,
     latest_version: version,
-    versions: [{ id: version, created_at: updatedAt, latest: true }],
+    versions: [{ id: version, created_at: now, latest: true }],
   };
-}
-
-function writeSkillMetadata(skillDir: string, skill: Skill): void {
-  const metadata = {
-    id: skill.id,
-    display_title: skill.display_title,
-    created_at: skill.created_at,
-    updated_at: skill.updated_at,
-    latest_version: skill.latest_version,
-    versions: skill.versions,
-  };
-  writeFileSync(safeJoin(skillDir, SKILL_METADATA_FILE), `${JSON.stringify(metadata, null, 2)}\n`);
 }
 
 function safeJoin(root: string, relativePath: string): string {
@@ -313,6 +302,12 @@ function safeJoin(root: string, relativePath: string): string {
     throw new Error('Path escapes the skills directory.');
   }
   return targetPath;
+}
+
+function isManagedSkillStoragePath(path: string, dataDir: string): boolean {
+  const root = resolve(dataDir, 'skills');
+  const target = resolve(path);
+  return target.startsWith(root + sep);
 }
 
 function isZipPackage(filePath: string, content: Buffer): boolean {

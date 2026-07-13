@@ -15,7 +15,10 @@ import { Database } from './core/db/database.js';
 import { SessionManager } from './core/session/session-manager.js';
 import { DefaultSessionExecutor } from './core/session/executor.js';
 import { loadAgents } from './core/agent/loader.js';
+import { importAgentSeeds, loadActiveAgentsFromDb, refreshAgentsFromDb } from './core/agent/store.js';
 import { loadSkills } from './core/skills/loader.js';
+import { BUILTIN_SKILLS } from './core/skills/catalog.js';
+import { importSkillSeeds, loadCustomSkillsFromDb } from './core/skills/store.js';
 import { installTemplate, createTemplate, listTemplates, resolveTemplateSource } from './core/templates/templates.js';
 import { ModelRegistry } from './model/registry.js';
 import { LocalSandboxProvider } from './sandbox/local-provider.js';
@@ -28,8 +31,8 @@ import { SqliteMemoryProvider } from './core/memory/sqlite-memory-provider.js';
 import type { MemoryProvider } from './core/memory/memory-provider.js';
 import { SnapshotManager } from './core/session/snapshot-manager.js';
 import { createServer } from './api/server.js';
-import { agentId as standardAgentId } from './api/standard.js';
 import { resolveEnvVars } from './core/config/env-resolver.js';
+import { defaultTemplateCacheDir, resolveDataDir, resolveUserPath } from './core/config/paths.js';
 import { resolveApiKeys } from './api/auth.js';
 import { createLogger } from './core/observability/logger.js';
 import { Metrics } from './core/observability/metrics.js';
@@ -54,7 +57,7 @@ program
   .description('Start the managed-agents server')
   .option('-p, --port <port>', 'Server port', '3000')
   .option('--host <host>', 'Server host', '127.0.0.1')
-  .option('-d, --data-dir <dir>', 'Data directory', '.managed-agents')
+  .option('-d, --data-dir <dir>', 'Data directory (default: ~/.managed-agents/<workspace>)')
   .option('--agents-dir <dir>', 'Agents directory', 'agents')
   .option('--skills-dir <dir>', 'Skills directory', 'skills')
   .option('-c, --config <file>', 'Config file path', 'managed-agents.config.yaml')
@@ -138,7 +141,7 @@ template
       // Local path if it exists; otherwise fetch from the (default/official) repo
       const source = await resolveTemplateSource(nameOrPath, {
         repo: opts.repo,
-        cacheDir: resolve('.managed-agents/templates-cache'),
+        cacheDir: defaultTemplateCacheDir(),
       });
       const result = installTemplate(source, process.cwd(), { force: opts.force });
       console.log(`Installed ${result.installed.length} file(s).`);
@@ -175,13 +178,14 @@ program.parse();
 // Start Server
 // ============================================================
 
-async function startServer(opts: { port: string; host: string; dataDir: string; agentsDir: string; skillsDir: string; config: string; target?: string }) {
+async function startServer(opts: { port: string; host: string; dataDir?: string; agentsDir: string; skillsDir: string; config: string; target?: string }) {
   const port = parseInt(opts.port, 10);
   const host = opts.host;
-  const dataDir = resolve(opts.dataDir);
-  const agentsDir = resolve(opts.agentsDir);
-  const skillsDir = resolve(opts.skillsDir);
-  const configPath = resolve(opts.config);
+  const workspaceRoot = process.cwd();
+  const dataDir = resolveDataDir(opts.dataDir, workspaceRoot);
+  const agentsDir = resolveUserPath(opts.agentsDir, workspaceRoot);
+  const skillsDir = resolveUserPath(opts.skillsDir, workspaceRoot);
+  const configPath = resolveUserPath(opts.config, workspaceRoot);
   const target = opts.target ?? 'local';
 
   // Initialize data directory
@@ -262,34 +266,25 @@ async function startServer(opts: { port: string; host: string; dataDir: string; 
     }
   }
 
-  // Insert loaded agents into DB
-  const agents: AgentDefinition[] = loadResult.agents;
-  for (const agent of agents) {
-    const agentId = standardAgentId(agent.name);
-    const existing = db.prepare('SELECT id FROM agents WHERE name = ?').get(agent.name);
-    if (!existing) {
-      db.prepare('INSERT INTO agents (id, name, definition) VALUES (?, ?, ?)').run(
-        agentId,
-        agent.name,
-        JSON.stringify(agent),
-      );
-    } else {
-      db.prepare('UPDATE agents SET definition = ?, updated_at = datetime(\'now\') WHERE name = ?').run(
-        JSON.stringify(agent),
-        agent.name,
-      );
-    }
+  // Seed portable YAML agents into SQLite. Runtime state is SQLite-backed.
+  const seedErrors = importAgentSeeds(db, loadResult.agents);
+  for (const err of seedErrors) {
+    console.error(`[AGENT_SEED] ${err.file} - ${err.reason}${err.field ? ` (field: ${err.field})` : ''}`);
   }
+  const agents: AgentDefinition[] = loadActiveAgentsFromDb(db);
 
   // Load skill directories (skills/*/SKILL.md); warn on agents referencing unknown skills
   const skillResult = loadSkills(skillsDir);
   for (const err of skillResult.errors) {
     console.error(`[SKILL_LOAD] ${err.file} - ${err.reason}`);
   }
-  const skillNames = new Set(skillResult.skills.map((s) => s.name));
+  importSkillSeeds(db, skillResult.skills);
+  const skills = loadCustomSkillsFromDb(db);
+  const knownSkills = [...skills, ...BUILTIN_SKILLS];
+  const skillNames = new Set(knownSkills.map((s) => s.name));
   for (const agent of agents) {
     for (const ref of agent.skills ?? []) {
-      if (!skillNames.has(ref.skill_id)) {
+      if (!skillNames.has(ref.skill_id) && !knownSkills.some((skill) => skill.id === ref.skill_id)) {
         console.error(`[SKILL_REF] agent "${agent.name}" references unknown skill "${ref.skill_id}" (ignored)`);
       }
     }
@@ -350,7 +345,7 @@ async function startServer(opts: { port: string; host: string; dataDir: string; 
     strategy,
     eventLogger,
     compactor: new ContextCompactor(),
-    skills: skillResult.skills,
+    skills,
     memory,
     snapshots,
   });
@@ -379,7 +374,7 @@ async function startServer(opts: { port: string; host: string; dataDir: string; 
     metrics,
     workQueue,
     workspace: {
-      root: process.cwd(),
+      root: workspaceRoot,
       dataDir,
       agentsDir,
       skillsDir,
@@ -392,14 +387,13 @@ async function startServer(opts: { port: string; host: string; dataDir: string; 
       memory: memory ? memory.name : 'disabled',
       authEnabled: apiKeys.length > 0,
     },
-    skills: skillResult.skills,
+    skills,
     getMcpStatus: (sessionId) => executor.getMcpStatus(sessionId),
     reloadAgents: () => {
       const result = loadAgents(agentsDir);
-      // Update agents array in place
-      agents.length = 0;
-      agents.push(...result.agents);
-      return result;
+      importAgentSeeds(db, result.agents);
+      const activeAgents = refreshAgentsFromDb(db, agents);
+      return { agents: activeAgents, errors: result.errors };
     },
   });
 
@@ -414,10 +408,11 @@ async function startServer(opts: { port: string; host: string; dataDir: string; 
     console.log(`  Console:   http://${host}:${info.port}/ui`);
     console.log(`  Health:    http://${host}:${info.port}/v1/x/health`);
     console.log(`  Agents:    ${agents.length} loaded`);
-    console.log(`  Skills:    ${skillResult.skills.length} loaded`);
+    console.log(`  Skills:    ${skills.length} loaded`);
     console.log(`  Sandbox:   ${sandboxRegistry.listTypes().join(', ')}`);
     console.log(`  Memory:    ${memory ? memory.name : 'disabled'}`);
     console.log(`  Target:    ${target}`);
+    console.log(`  Data:      ${dataDir}`);
     console.log(`  Auth:      ${apiKeys.length > 0 ? 'enabled (Bearer token required)' : 'DISABLED (open - localhost only)'}`);
     if (loadResult.errors.length > 0) {
       console.log(`  Warnings:  ${loadResult.errors.length} agent load errors`);

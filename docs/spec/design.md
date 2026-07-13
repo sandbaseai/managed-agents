@@ -200,10 +200,12 @@ Tool results are capped before they are persisted or returned to the model.
 
 ## Skills
 
-Skills are workspace resources exposed through `/v1/skills`. A custom skill is a
-top-level directory containing `SKILL.md` at its root. `SKILL.md` must start with
-YAML frontmatter and include `name` and `description`. Optional files inside the
-same directory are packaged with the skill.
+Skills are workspace resources exposed through `/v1/skills`. A custom skill
+upload is a top-level directory containing `SKILL.md` at its root. `SKILL.md`
+must start with YAML frontmatter and include `name` and `description`. Optional
+files inside the same directory are packaged with the skill. Runtime skill
+metadata is stored in SQLite; uploaded package assets are stored under
+`~/.managed-agents/<workspace-name>-<hash>/skills/<skill_id>/` by default.
 
 The runtime also exposes the Anthropic built-in skill catalog (`xlsx`, `pptx`,
 `pdf`, `docx`) with `source: "anthropic"`. Project-defined skills use
