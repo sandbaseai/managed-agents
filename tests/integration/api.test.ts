@@ -63,7 +63,7 @@ describe('Managed Agents API', () => {
       agents: [
         {
           name: 'echo-agent',
-          model: { id: 'gpt-4o', speed: 'standard' },
+          model: 'gpt-4o',
           system: 'Echo back what the user says.',
         },
       ],
@@ -75,6 +75,18 @@ describe('Managed Agents API', () => {
         skillsDir,
         configPath,
         target: 'local',
+      },
+      runtime: {
+        models: [{
+          name: 'local',
+          provider: 'openai',
+          model: 'gpt-4o',
+          api_key_state: 'configured',
+          base_url_state: 'not_set',
+        }],
+        sandboxProviders: ['local'],
+        memory: 'disabled',
+        authEnabled: false,
       },
       skills: loadSkills(skillsDir).skills,
       reloadAgents: () => ({ agents: [], errors: [] }),
@@ -473,7 +485,7 @@ describe('Managed Agents API', () => {
       const { res, body } = await postJson('/v1/agents', {
         name: 'runtime-agent',
         description: 'Created through the API.',
-        model: { id: 'claude-sonnet-5', speed: 'standard' },
+        model: 'claude-sonnet-5',
         system: 'Handle runtime requests.',
         tools: [{ type: 'agent_toolset_20260401' }],
       });
@@ -506,7 +518,7 @@ describe('Managed Agents API', () => {
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.name).toBe('echo-agent');
-      expect(body.model.id).toBe('gpt-4o');
+      expect(body.model).toBe('gpt-4o');
     });
 
     it('returns 404 for non-existent agent', async () => {
@@ -549,10 +561,18 @@ describe('Managed Agents API', () => {
       expect(runtime.type).toBe('runtime');
       expect(runtime.status).toBe('running');
       expect(runtime.agents_loaded).toBeGreaterThanOrEqual(1);
+      expect(runtime.models[0]).toMatchObject({
+        name: 'local',
+        api_key_state: 'configured',
+      });
+      expect(runtime.models[0]).not.toHaveProperty('api_key');
 
       const templatesRes = await app.request('/v1/x/templates');
       const templates = await templatesRes.json();
-      expect(templates.data.some((item: any) => item.name === 'Incident commander')).toBe(true);
+      const incidentCommander = templates.data.find((item: any) => item.name === 'Incident commander');
+      expect(incidentCommander).toBeDefined();
+      expect(incidentCommander.agent.model).toBe('claude-opus-4-8');
+      expect(incidentCommander.agent.tools.some((tool: any) => tool.type === 'mcp_toolset' && tool.mcp_server_name === 'sentry')).toBe(true);
       expect(templates.data.every((item: any) => item.type === 'template')).toBe(true);
 
       const skillsRes = await app.request('/v1/skills');

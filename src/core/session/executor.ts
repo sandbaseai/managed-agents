@@ -93,7 +93,7 @@ export class DefaultSessionExecutor implements SessionExecutor {
     }
 
     // 2. Create model
-    const model = modelRegistry.createModel(agent.model.id);
+    const model = modelRegistry.createModel(agent.model);
 
     // 3. Provision sandbox (or reuse the one bound to this session)
     const sandbox = await this.sandboxLifecycle.getOrProvision(session, agent);

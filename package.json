@@ -1,7 +1,7 @@
 {
   "name": "managed-agents",
   "version": "0.1.0",
-  "description": "Open-source managed-agent runtime and local Console. Run standard agent sessions locally with any model.",
+  "description": "Local-first runtime layer for enterprise AI agents with Claude Managed Agents-style APIs, sandboxed sessions, memory, tools, audit, and replay.",
   "type": "module",
   "homepage": "https://github.com/sandbaseai/managed-agents#readme",
   "repository": {
@@ -53,15 +53,26 @@
     "format:check": "node -e \"console.log('No formatter configured yet.')\""
   },
   "keywords": [
-    "agent",
-    "managed-agents",
-    "mcp",
-    "ai",
-    "llm",
-    "local-first",
+    "ai-agents",
+    "enterprise-ai-agents",
+    "ai-agent-runtime",
     "agent-runtime",
+    "managed-agents",
+    "claude-managed-agents",
+    "anthropic",
+    "mcp",
+    "mcp-tools",
+    "self-hosted-ai",
+    "local-first",
+    "sandboxed-execution",
+    "agent-memory",
+    "credential-vaults",
+    "audit-log",
+    "session-replay",
     "agent-console",
-    "skills"
+    "skills",
+    "typescript",
+    "sqlite"
   ],
   "license": "Apache-2.0",
   "dependencies": {

@@ -14,6 +14,7 @@ import { sessionsRoutes } from './routes/sessions.js';
 import { agentsRoutes } from './routes/agents.js';
 import { resourceRoutes } from './routes/resources.js';
 import { skillsRoutes } from './routes/skills.js';
+import { apiKeysRoutes } from './routes/api-keys.js';
 import { extendedRoutes } from './routes/extended.js';
 import { streamRoutes } from './routes/stream.js';
 import { createAuthMiddleware } from './auth.js';
@@ -25,6 +26,7 @@ import type { Logger } from '@/core/observability/logger.js';
 import type { Metrics } from '@/core/observability/metrics.js';
 import type { Skill } from '@/core/skills/loader.js';
 import type { Database } from '@/core/db/database.js';
+import type { RuntimeModelInfo } from '@/types/model.js';
 
 export interface ServerDeps {
   db: Database;
@@ -33,6 +35,10 @@ export interface ServerDeps {
   reloadAgents: () => { agents: AgentDefinition[]; errors: any[] };
   /** Accepted API keys. Empty/undefined = auth disabled (open, local-first). */
   apiKeys?: string[];
+  /** Dynamic key presence check for database-managed API keys. */
+  hasApiKeys?: () => boolean;
+  /** Dynamic API key validator for database-managed API keys. */
+  validateApiKey?: (key: string) => boolean;
   /** MCP connection status for a session (for /v1/x/mcp/status). */
   getMcpStatus?: (sessionId: string) => Array<{
     name: string;
@@ -50,7 +56,7 @@ export interface ServerDeps {
     target: string;
   };
   runtime?: {
-    models: string[];
+    models: RuntimeModelInfo[];
     sandboxProviders: string[];
     memory: string;
     authEnabled: boolean;
@@ -94,13 +100,18 @@ export function createServer(deps: ServerDeps) {
     });
   }
 
-  app.use('*', createAuthMiddleware({ apiKeys: deps.apiKeys }));
+  app.use('*', createAuthMiddleware({
+    apiKeys: deps.apiKeys,
+    hasApiKeys: deps.hasApiKeys,
+    validateApiKey: deps.validateApiKey,
+  }));
 
   // Managed Agents API endpoints
   app.route('/v1/sessions', sessionsRoutes(deps));
   app.route('/v1/agents', agentsRoutes(deps));
   app.route('/v1', resourceRoutes(deps));
   app.route('/v1/skills', skillsRoutes(deps));
+  app.route('/v1/api-keys', apiKeysRoutes(deps));
 
   // SSE streaming
   app.route('/v1/sessions', streamRoutes(deps));

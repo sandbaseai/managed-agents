@@ -48,9 +48,7 @@ Console/API. Once loaded, the runtime source of truth is SQLite.
 ```yaml
 name: assistant
 description: Helps with development tasks.
-model:
-  id: gpt-4o
-  speed: standard
+model: gpt-4o
 system: |
   You are a helpful assistant. Answer clearly and use tools when needed.
 mcp_servers: []
@@ -119,7 +117,7 @@ curl -X POST http://127.0.0.1:3000/v1/agents \
   -d '{
     "name": "assistant",
     "description": "Helps with development tasks.",
-    "model": { "id": "gpt-4o", "speed": "standard" },
+    "model": "gpt-4o",
     "system": "You are a helpful assistant.",
     "tools": [{ "type": "agent_toolset_20260401" }],
     "skills": [],
@@ -306,5 +304,5 @@ managed-agents template create <name>
 - Keep skill uploads below 8 MB per package.
 - Use `MANAGED_AGENTS_SECRET_KEY` to provide a stable credential encryption key
   across runtime moves.
-- Use `MANAGED_AGENTS_API_KEY` when exposing the runtime beyond a trusted local
-  network.
+- Create a managed API key in the Console or set `MANAGED_AGENTS_API_KEY` before
+  exposing the runtime beyond a trusted local network.

@@ -113,7 +113,7 @@ describe('Tool confirmation — execute/deny pending tool', () => {
     const executor = new DefaultSessionExecutor({
       agents: [{
         name: 'bash-agent',
-        model: { id: 'm', speed: 'standard' },
+        model: 'm',
         system: 'p',
         tools: [{
           type: 'agent_toolset_20260401',

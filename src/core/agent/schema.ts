@@ -63,8 +63,7 @@ const skillRefSchema = z.object({
   version: z.string().optional(),
 });
 
-const agentModelSchema = z.object({
-  id: z.string().min(1, 'Model id is required'),
+const agentModelConfigSchema = z.object({
   speed: z.enum(['fast', 'standard', 'extended']).default('standard'),
 });
 
@@ -77,7 +76,8 @@ export const agentDefinitionSchema = z.object({
     .string()
     .min(1, 'Agent name is required')
     .regex(/^[a-zA-Z0-9][a-zA-Z0-9 _-]*$/, 'Agent name must be alphanumeric with spaces, hyphens, or underscores'),
-  model: agentModelSchema,
+  model: z.string().min(1, 'Model id is required'),
+  model_config: agentModelConfigSchema.optional(),
   system: z.string().min(1, 'System instructions are required'),
   description: z.string().optional(),
   skills: z.array(skillRefSchema).optional(),

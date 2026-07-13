@@ -42,7 +42,8 @@ export interface AgentSummary {
   name: string;
   description: string;
   system: string;
-  model: { id: string; speed: string };
+  model: string;
+  model_config?: { speed: string };
   tools: Array<Record<string, unknown>>;
   mcp_servers: Array<Record<string, unknown>>;
   skills: Array<Record<string, unknown>>;

@@ -356,6 +356,14 @@ h2 {
   background: var(--surface-muted);
 }
 
+.iconButton.danger {
+  color: var(--danger);
+}
+
+.iconButton.danger:hover {
+  background: var(--danger-soft);
+}
+
 .banner {
   margin: 16px 24px 0;
   border-radius: var(--radius);
@@ -1339,16 +1347,31 @@ tr[role="button"]:hover td,
   border: 1px dashed var(--border);
   border-radius: var(--radius);
   color: var(--muted);
-  display: grid;
-  place-items: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   gap: 8px;
   background: var(--surface);
+  text-align: center;
+  padding: 24px;
+}
+
+.emptyState strong {
+  color: var(--text);
+}
+
+.emptyState > span {
+  max-width: 420px;
+}
+
+.emptyStateAction {
+  margin-top: 8px;
 }
 
 .loading {
   margin: 28px;
-  display: flex;
-  justify-content: center;
+  flex-direction: row;
 }
 
 .modalBackdrop {
@@ -1385,6 +1408,75 @@ tr[role="button"]:hover td,
   flex-direction: column;
   gap: 17px;
   padding: 20px;
+}
+
+.inlineForm {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) auto auto;
+  gap: 10px;
+  align-items: center;
+  margin-top: 14px;
+}
+
+.inlineForm button,
+.ghostButton {
+  min-height: 38px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  padding: 0 14px;
+  font-weight: 690;
+  box-shadow: var(--shadow-control);
+}
+
+.ghostButton {
+  color: var(--text-soft);
+}
+
+.formHint {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.secretReveal {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 14px;
+  display: grid;
+  gap: 12px;
+  background: var(--surface-muted);
+}
+
+.secretReveal > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--muted);
+}
+
+.secretReveal code {
+  display: block;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  background: var(--surface);
+  overflow-x: auto;
+}
+
+.secretReveal button {
+  justify-self: end;
+  min-height: 36px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  padding: 0 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 690;
 }
 
 .formGrid {
@@ -2290,6 +2382,14 @@ select:focus {
   border-radius: 0;
 }
 
+.metricsPreview {
+  max-height: 260px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border-subtle);
+}
+
 .mobileResourceList {
   display: none;
   flex-direction: column;
@@ -2651,26 +2751,6 @@ select:focus {
   background: var(--surface);
   color: var(--text);
   box-shadow: 0 1px 4px rgba(21, 21, 20, 0.12);
-}
-
-.describeBox {
-  min-height: 150px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 14px;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 10px;
-}
-
-.describeBox textarea {
-  width: 100%;
-  min-height: 94px;
-  border: 0;
-  box-shadow: none;
-  resize: vertical;
-  font-size: 15px;
 }
 
 .claudeTemplateGrid {

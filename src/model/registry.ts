@@ -10,7 +10,14 @@ import { createOpenAI } from '@ai-sdk/openai';
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { wrapLanguageModel, type LanguageModelV1, type LanguageModelV1Middleware } from 'ai';
 import { resolveEnvVars } from '@/core/config/env-resolver.js';
-import { DEFAULT_RETRY_POLICY, type ModelConfig, type ModelProviderType, type RetryPolicy } from '@/types/model.js';
+import {
+  DEFAULT_RETRY_POLICY,
+  type ModelConfig,
+  type ModelProviderType,
+  type RetryPolicy,
+  type RuntimeConfigState,
+  type RuntimeModelInfo,
+} from '@/types/model.js';
 
 export class ModelRegistry {
   private models = new Map<string, ModelConfig>();
@@ -73,6 +80,28 @@ export class ModelRegistry {
   listNames(): string[] {
     return Array.from(this.models.keys());
   }
+
+  /**
+   * List model metadata that is safe to expose through runtime introspection.
+   * Never includes raw API keys or resolved base URLs.
+   */
+  listRuntimeInfo(): RuntimeModelInfo[] {
+    return Array.from(this.models.values()).map((config) => ({
+      name: config.name,
+      provider: config.provider ?? 'unknown',
+      model: config.model ?? config.name,
+      api_key_state: configState(config.api_key),
+      base_url_state: configState(config.base_url),
+    }));
+  }
+}
+
+const ENV_PLACEHOLDER = /\$\{[^}]+\}/;
+
+function configState(value?: string): RuntimeConfigState {
+  if (!value) return 'not_set';
+  const resolved = resolveEnvVars(value, false);
+  return ENV_PLACEHOLDER.test(resolved) ? 'missing_env' : 'configured';
 }
 
 // ============================================================

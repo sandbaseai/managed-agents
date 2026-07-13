@@ -46,7 +46,7 @@ describe('Model error → failed turn', () => {
     const modelRegistry = new ModelRegistry();
     (modelRegistry as any).createModel = () => throwingModel();
     const executor = new DefaultSessionExecutor({
-      agents: [{ name: 'b', model: { id: 'm', speed: 'standard' }, system: 'p' }],
+      agents: [{ name: 'b', model: 'm', system: 'p' }],
       modelRegistry,
       sandboxProvider: new LocalSandboxProvider(tmpDir),
       strategy: new DefaultStrategy(),

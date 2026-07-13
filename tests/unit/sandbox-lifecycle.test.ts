@@ -43,7 +43,7 @@ describe('SandboxLifecycle', () => {
     } satisfies Session;
     const agent = {
       name: 'a',
-      model: { id: 'm', speed: 'standard' },
+      model: 'm',
       system: 'p',
     } satisfies AgentDefinition;
 

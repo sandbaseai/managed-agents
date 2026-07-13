@@ -11,8 +11,8 @@
 export interface AgentDefinition {
   /** Unique identifier (required) */
   name: string;
-  /** Model registry reference and runtime speed policy (required) */
-  model: AgentModelConfig;
+  /** Model registry reference (required). Public/config field follows Claude's string model id shape. */
+  model: string;
   /** System instructions (required). Public/config field follows Claude's `system`. */
   system: string;
   /** Human-readable description */
@@ -23,6 +23,8 @@ export interface AgentDefinition {
   mcp_servers?: McpServerConfig[];
   /** Built-in toolsets enabled for this agent. */
   tools?: AgentToolset[];
+  /** Optional local runtime model policy. Not included in Claude's minimal template shape. */
+  model_config?: AgentModelConfig;
   /** Free-form metadata for templates, provenance, UI hints, etc. */
   metadata?: Record<string, unknown>;
   /** Maximum conversation turns before forced stop */

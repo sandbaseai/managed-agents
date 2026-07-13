@@ -45,6 +45,16 @@ export interface ModelConfig {
   max_tokens?: number;
 }
 
+export type RuntimeConfigState = 'configured' | 'missing_env' | 'not_set';
+
+export interface RuntimeModelInfo {
+  name: string;
+  provider: string;
+  model: string;
+  api_key_state: RuntimeConfigState;
+  base_url_state: RuntimeConfigState;
+}
+
 // ============================================================
 // Model Registry Types
 // ============================================================

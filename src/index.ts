@@ -34,6 +34,7 @@ import { createServer } from './api/server.js';
 import { resolveEnvVars } from './core/config/env-resolver.js';
 import { defaultTemplateCacheDir, resolveDataDir, resolveUserPath } from './core/config/paths.js';
 import { resolveApiKeys } from './api/auth.js';
+import { countActiveManagedApiKeys, validateManagedApiKey } from './core/auth/api-keys.js';
 import { createLogger } from './core/observability/logger.js';
 import { Metrics } from './core/observability/metrics.js';
 import type { AgentDefinition } from './types/agent.js';
@@ -359,6 +360,8 @@ async function startServer(opts: { port: string; host: string; dataDir?: string;
 
   // Resolve API keys (config + MANAGED_AGENTS_API_KEY env). Empty = open.
   const apiKeys = resolveApiKeys(configApiKeys);
+  const hasRuntimeApiKeys = () => apiKeys.length > 0 || countActiveManagedApiKeys(db) > 0;
+  const validateRuntimeApiKey = (key: string) => apiKeys.includes(key) || validateManagedApiKey(db, key);
 
   // Observability
   const logger = createLogger();
@@ -370,6 +373,8 @@ async function startServer(opts: { port: string; host: string; dataDir?: string;
     sessionManager,
     agents,
     apiKeys,
+    hasApiKeys: hasRuntimeApiKeys,
+    validateApiKey: validateRuntimeApiKey,
     logger,
     metrics,
     workQueue,
@@ -382,7 +387,7 @@ async function startServer(opts: { port: string; host: string; dataDir?: string;
       target,
     },
     runtime: {
-      models: modelRegistry.listNames(),
+      models: modelRegistry.listRuntimeInfo(),
       sandboxProviders: sandboxRegistry.listTypes(),
       memory: memory ? memory.name : 'disabled',
       authEnabled: apiKeys.length > 0,
@@ -413,7 +418,7 @@ async function startServer(opts: { port: string; host: string; dataDir?: string;
     console.log(`  Memory:    ${memory ? memory.name : 'disabled'}`);
     console.log(`  Target:    ${target}`);
     console.log(`  Data:      ${dataDir}`);
-    console.log(`  Auth:      ${apiKeys.length > 0 ? 'enabled (Bearer token required)' : 'DISABLED (open - localhost only)'}`);
+    console.log(`  Auth:      ${hasRuntimeApiKeys() ? 'enabled (Bearer token required)' : 'DISABLED (open - localhost only)'}`);
     if (loadResult.errors.length > 0) {
       console.log(`  Warnings:  ${loadResult.errors.length} agent load errors`);
     }
@@ -472,9 +477,7 @@ function initProject() {
   writeFileSync(
     join(cwd, 'agents', 'assistant.yaml'),
     `name: assistant
-model:
-  id: gpt-4o
-  speed: standard
+model: gpt-4o
 system: |
   You are a helpful assistant. Answer questions clearly and concisely.
 skills:
@@ -627,7 +630,7 @@ async function listAgents(opts: { port: string }) {
     }
     console.log('Loaded agents:\n');
     for (const agent of body.data) {
-      console.log(`  ${agent.id}  ${agent.name}  (model: ${agent.model?.id ?? agent.model}, status: ${agent.status})`);
+      console.log(`  ${agent.id}  ${agent.name}  (model: ${agent.model}, status: ${agent.status})`);
     }
   } catch (err: any) {
     console.error(`Error: [LIST] Cannot connect to server on port ${opts.port}`);

@@ -305,6 +305,23 @@ CREATE UNIQUE INDEX idx_skills_active_name
   WHERE archived_at IS NULL;
 `;
 
+const M012_API_KEYS = `
+CREATE TABLE api_keys (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  key_hash TEXT NOT NULL UNIQUE,
+  key_prefix TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'active',
+  metadata TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  last_used_at TEXT,
+  archived_at TEXT
+);
+
+CREATE INDEX idx_api_keys_status_created ON api_keys(status, created_at DESC);
+`;
+
 export const MIGRATIONS: Migration[] = [
   { version: 1, name: '001_initial', sql: M001_INITIAL },
   { version: 2, name: '002_memory', sql: M002_MEMORY },
@@ -317,4 +334,5 @@ export const MIGRATIONS: Migration[] = [
   { version: 9, name: '009_memory_active_path_index', sql: M009_MEMORY_ACTIVE_PATH_INDEX },
   { version: 10, name: '010_file_resources', sql: M010_FILE_RESOURCES },
   { version: 11, name: '011_skill_resources', sql: M011_SKILL_RESOURCES },
+  { version: 12, name: '012_api_keys', sql: M012_API_KEYS },
 ];

@@ -11,7 +11,8 @@ export type Agent = {
   name: string;
   description: string;
   system: string;
-  model: { id: string; speed: string };
+  model: string;
+  model_config?: { speed: string };
   tools: AgentToolset[];
   skills: SkillRef[];
   mcp_servers: Array<Record<string, unknown>>;
@@ -91,6 +92,23 @@ export type WorkspaceFile = {
   archived_at: string | null;
   preview: string | null;
   preview_truncated: boolean;
+};
+
+export type ApiKey = {
+  id: string;
+  type: 'api_key';
+  name: string;
+  source: 'managed' | 'config_env';
+  key_prefix: string;
+  status: string;
+  created_at: string | null;
+  updated_at: string | null;
+  last_used_at: string | null;
+  archived_at: string | null;
+};
+
+export type ApiKeyCreateResponse = ApiKey & {
+  secret_key: string;
 };
 
 export type EnvironmentHostingType = 'cloud' | 'self_hosted';
@@ -211,7 +229,8 @@ export type Template = {
   skill_ids: string[];
   agent: {
     name: string;
-    model: { id: string; speed: string };
+    model: string;
+    model_config?: { speed: string };
     description?: string;
     system: string;
     mcp_servers?: Array<Record<string, unknown>>;
@@ -221,11 +240,21 @@ export type Template = {
   };
 };
 
+export type RuntimeConfigState = 'configured' | 'missing_env' | 'not_set';
+
+export type RuntimeModel = {
+  name: string;
+  provider: string;
+  model: string;
+  api_key_state: RuntimeConfigState;
+  base_url_state: RuntimeConfigState;
+};
+
 export type Runtime = {
   status: string;
   agents_loaded: number;
   skills_loaded: number;
-  models: string[];
+  models: RuntimeModel[];
   sandbox_providers: string[];
   memory: string;
   auth_enabled: boolean;
@@ -257,6 +286,7 @@ export type ConsoleData = {
   vaults: Vault[];
   memoryStores: MemoryStore[];
   files: WorkspaceFile[];
+  apiKeys: ApiKey[];
   skills: Skill[];
   templates: Template[];
   runtime: Runtime | null;

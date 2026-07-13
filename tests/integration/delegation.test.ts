@@ -51,9 +51,9 @@ describe('Multi-agent delegation', () => {
   let strategy: EchoStrategy;
 
   const agents: AgentDefinition[] = [
-    { name: 'coordinator', model: { id: 'm', speed: 'standard' }, system: 'coordinate', delegations: ['researcher'] },
-    { name: 'researcher', model: { id: 'm', speed: 'standard' }, system: 'research' },
-    { name: 'loner', model: { id: 'm', speed: 'standard' }, system: 'alone' },
+    { name: 'coordinator', model: 'm', system: 'coordinate', delegations: ['researcher'] },
+    { name: 'researcher', model: 'm', system: 'research' },
+    { name: 'loner', model: 'm', system: 'alone' },
   ];
 
   beforeEach(() => {
@@ -102,7 +102,7 @@ describe('Multi-agent delegation', () => {
 
   it('exposes general_subagent when enabled', async () => {
     const agentsWithGeneral: AgentDefinition[] = [
-      { name: 'boss', model: { id: 'm', speed: 'standard' }, system: 'boss', enable_general_subagent: true },
+      { name: 'boss', model: 'm', system: 'boss', enable_general_subagent: true },
     ];
     const modelRegistry = new ModelRegistry();
     (modelRegistry as any).createModel = () => fakeModel();

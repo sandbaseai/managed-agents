@@ -56,7 +56,7 @@ describe('Memory wiring', () => {
     (modelRegistry as any).createModel = () => fakeModel();
     strategy = new CapturingStrategy();
     const executor = new DefaultSessionExecutor({
-      agents: [{ name: 'm', model: { id: 'm', speed: 'standard' }, system: 'base prompt' }],
+      agents: [{ name: 'm', model: 'm', system: 'base prompt' }],
       modelRegistry,
       sandboxProvider: new LocalSandboxProvider(tmpDir),
       strategy,

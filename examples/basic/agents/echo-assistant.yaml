@@ -1,7 +1,5 @@
 name: echo-assistant
-model:
-  id: local-echo
-  speed: standard
+model: local-echo
 system: |
   You are a helpful coding assistant. Use the available tools to
   read, write, edit, and search files in the workspace.

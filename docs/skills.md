@@ -157,9 +157,7 @@ Add the generated `skill_...` id to the agent YAML:
 
 ```yaml
 name: assistant
-model:
-  id: gpt-4o
-  speed: standard
+model: gpt-4o
 system: |
   You are a helpful assistant.
 skills:
