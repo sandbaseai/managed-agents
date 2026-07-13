@@ -18,6 +18,7 @@ import type { ContentBlock } from '@/types/cma-protocol.js';
 import type { AgentDefinition } from '@/types/agent.js';
 import { pageOf, toApiEvent, toApiSession } from '../standard.js';
 import { loadAgentDefinitionById } from '@/core/agent/store.js';
+import { encryptSecret } from '@/core/security/secrets.js';
 
 export function sessionsRoutes(deps: ServerDeps) {
   const app = new Hono();
@@ -425,7 +426,7 @@ function normalizeSessionResource(deps: ServerDeps, resource: Record<string, unk
     case 'file':
       return normalizeFileResource(deps, resource, index);
     case 'github_repository':
-      return normalizeGithubRepositoryResource(resource, index);
+      return normalizeGithubRepositoryResource(deps, resource, index);
     case 'memory_store':
       return normalizeMemoryStoreResource(deps, resource, index);
     default:
@@ -443,7 +444,7 @@ function normalizeFileResource(deps: ServerDeps, resource: Record<string, unknow
   return { ok: true, value: { type: 'file', file_id: fileId, mount_path: mountPath } };
 }
 
-function normalizeGithubRepositoryResource(resource: Record<string, unknown>, index: number): ValidationResult<Record<string, unknown>> {
+function normalizeGithubRepositoryResource(deps: ServerDeps, resource: Record<string, unknown>, index: number): ValidationResult<Record<string, unknown>> {
   const url = readString(resource.url);
   const authorizationToken = readString(resource.authorization_token);
   const mountPath = readString(resource.mount_path);
@@ -453,7 +454,10 @@ function normalizeGithubRepositoryResource(resource: Record<string, unknown>, in
   const normalized: Record<string, unknown> = {
     type: 'github_repository',
     url,
-    authorization_token: authorizationToken,
+    authorization_token: {
+      type: 'encrypted_secret',
+      ...encryptSecret(authorizationToken, deps.workspace?.dataDir),
+    },
   };
   if (resource.checkout !== undefined) {
     if (

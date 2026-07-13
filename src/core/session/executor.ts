@@ -15,7 +15,7 @@ import type { SessionExecutor, ExecuteOptions } from './session-manager.js';
 import type { Session, SessionEvent } from '@/types/session.js';
 import type { UserEvent } from '@/types/cma-protocol.js';
 import type { AgentDefinition } from '@/types/agent.js';
-import type { SandboxProvider, SandboxProviderType } from '@/types/sandbox.js';
+import type { SandboxProvider, EnvironmentConfig } from '@/types/sandbox.js';
 import type { SandboxProviderRegistry } from '@/sandbox/registry.js';
 import type { AgentStrategy, StrategyContext } from '@/types/strategy.js';
 import { ModelRegistry } from '@/model/registry.js';
@@ -38,8 +38,8 @@ export interface ExecutorDeps {
   sandboxProvider: SandboxProvider;
   /** Optional registry to select a provider by Environment sandbox_provider. */
   sandboxRegistry?: SandboxProviderRegistry;
-  /** Resolve an environment name → its sandbox_provider type. */
-  resolveEnvProviderType?: (envName: string) => SandboxProviderType | undefined;
+  /** Resolve a session environment id to its runtime configuration. */
+  resolveEnvironmentConfig?: (environmentId: string) => EnvironmentConfig | undefined;
   /** Resolve an agent id from durable storage. */
   resolveAgent?: (agentId: string) => AgentDefinition | undefined;
   strategy: AgentStrategy;
@@ -52,8 +52,6 @@ export interface ExecutorDeps {
   memory?: MemoryProvider;
   /** Optional workspace snapshot manager (R9.11). */
   snapshots?: SnapshotManager;
-  /** Resolve an environment name → whether workspace snapshots are enabled. */
-  resolveEnvSnapshot?: (envName: string) => boolean;
 }
 
 export class DefaultSessionExecutor implements SessionExecutor {
@@ -98,7 +96,7 @@ export class DefaultSessionExecutor implements SessionExecutor {
     const model = modelRegistry.createModel(agent.model);
 
     // 3. Provision sandbox (or reuse the one bound to this session)
-    const sandbox = await this.sandboxLifecycle.getOrProvision(session, agent);
+    const sandbox = await this.sandboxLifecycle.getOrProvision(session);
 
     // 3a. Handle a tool confirmation (A5): run or deny the pending tool, append
     // its result so the model turn below continues with a paired sequence.
@@ -156,7 +154,7 @@ export class DefaultSessionExecutor implements SessionExecutor {
     await this.contextBuilder.extractMemory(session, event).catch(() => {});
 
     // 8. Snapshot the workspace after the turn if enabled (R9.11).
-    this.sandboxLifecycle.snapshotAfterTurn(session, agent, sandbox);
+    this.sandboxLifecycle.snapshotAfterTurn(session, sandbox);
     // NOTE: no sandbox/MCP cleanup here — they persist for the session
     // lifetime and are destroyed via cleanupSession() on terminal states.
   }

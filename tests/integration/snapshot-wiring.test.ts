@@ -72,7 +72,10 @@ describe('Snapshot wiring', () => {
       strategy,
       eventLogger: manager.getEventLogger(),
       snapshots: new SnapshotManager(db, join(tmpDir, 'snapshots')),
-      resolveEnvSnapshot: () => true,
+      resolveEnvironmentConfig: (environmentId) => {
+        const row = db.prepare('SELECT name, config FROM environments WHERE id = ?').get(environmentId) as { name: string; config: string };
+        return { name: row.name, ...JSON.parse(row.config) };
+      },
     });
     manager.setExecutor(executor);
   });
@@ -104,7 +107,7 @@ describe('Snapshot wiring', () => {
   });
 
   it('does not snapshot when the environment has snapshots disabled', async () => {
-    // Point resolveEnvSnapshot to false via a second executor
+    // Point environment config to snapshot disabled via a second executor.
     const modelRegistry = new ModelRegistry();
     (modelRegistry as any).createModel = () => fakeModel();
     const noSnapExec = new DefaultSessionExecutor({
@@ -114,7 +117,10 @@ describe('Snapshot wiring', () => {
       strategy: new FileStrategy(),
       eventLogger: manager.getEventLogger(),
       snapshots: new SnapshotManager(db, join(tmpDir, 'snapshots2')),
-      resolveEnvSnapshot: () => false,
+      resolveEnvironmentConfig: (environmentId) => {
+        const row = db.prepare('SELECT name, config FROM environments WHERE id = ?').get(environmentId) as { name: string; config: string };
+        return { name: row.name, ...JSON.parse(row.config), snapshot: { enabled: false } };
+      },
     });
     manager.setExecutor(noSnapExec);
 

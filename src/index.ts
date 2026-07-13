@@ -9,6 +9,7 @@ import { Command } from 'commander';
 import { serve } from '@hono/node-server';
 import { existsSync, readFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { nanoid } from 'nanoid';
 import { parse as parseYaml } from 'yaml';
 
 import { Database } from './core/db/database.js';
@@ -39,6 +40,7 @@ import { createLogger } from './core/observability/logger.js';
 import { Metrics } from './core/observability/metrics.js';
 import type { AgentDefinition } from './types/agent.js';
 import type { ModelConfig } from './types/model.js';
+import type { EnvironmentConfig, SandboxProviderType } from './types/sandbox.js';
 
 const VERSION = '0.1.0';
 
@@ -246,7 +248,7 @@ async function startServer(opts: { port: string; host: string; dataDir?: string;
     // Load environments
     if (config.environments && typeof config.environments === 'object') {
       for (const [name, envConfig] of Object.entries(config.environments as Record<string, any>)) {
-        const envId = `env_${name}`;
+        const envId = `env_${nanoid(18)}`;
         const existing = db.prepare('SELECT id FROM environments WHERE name = ?').get(name);
         if (!existing) {
           db.prepare('INSERT INTO environments (id, name, config) VALUES (?, ?, ?)').run(
@@ -308,29 +310,11 @@ async function startServer(opts: { port: string; host: string; dataDir?: string;
   const workQueue = new WorkQueue(db);
   sandboxRegistry.register(new SelfHostedSandboxProvider(workQueue));
 
-  // Resolve an environment name to its configured sandbox_provider type
-  const resolveEnvProviderType = (envName: string) => {
-    const row = db.prepare('SELECT config FROM environments WHERE name = ?').get(envName) as
-      | { config: string } | undefined;
+  const resolveEnvironmentConfig = (environmentId: string): EnvironmentConfig | undefined => {
+    const row = db.prepare('SELECT id, name, config FROM environments WHERE id = ? AND archived_at IS NULL').get(environmentId) as
+      | { id: string; name: string; config: string } | undefined;
     if (!row) return undefined;
-    try {
-      const cfg = JSON.parse(row.config);
-      return cfg.sandbox_provider as any;
-    } catch {
-      return undefined;
-    }
-  };
-
-  // Resolve an environment name to whether workspace snapshots are enabled
-  const resolveEnvSnapshot = (envName: string) => {
-    const row = db.prepare('SELECT config FROM environments WHERE name = ?').get(envName) as
-      | { config: string } | undefined;
-    if (!row) return false;
-    try {
-      return JSON.parse(row.config)?.snapshot?.enabled === true;
-    } catch {
-      return false;
-    }
+    return normalizeRuntimeEnvironment(row);
   };
 
   const snapshots = new SnapshotManager(db, join(dataDir, 'snapshots'));
@@ -341,9 +325,8 @@ async function startServer(opts: { port: string; host: string; dataDir?: string;
     modelRegistry,
     sandboxProvider,
     sandboxRegistry,
-    resolveEnvProviderType,
+    resolveEnvironmentConfig,
     resolveAgent: (agentId) => loadAgentDefinitionById(db, agentId),
-    resolveEnvSnapshot,
     strategy,
     eventLogger,
     compactor: new ContextCompactor(),
@@ -456,6 +439,38 @@ async function startServer(opts: { port: string; host: string; dataDir?: string;
   };
   process.on('SIGINT', () => void shutdown());
   process.on('SIGTERM', () => void shutdown());
+}
+
+function normalizeRuntimeEnvironment(row: { id: string; name: string; config: string }): EnvironmentConfig {
+  const parsed = parseJsonObject(row.config);
+  const sandboxProvider = parseSandboxProvider(parsed.sandbox_provider)
+    ?? (parsed.hosting_type === 'self_hosted' ? 'self_hosted' : 'local');
+
+  return {
+    ...parsed,
+    name: typeof parsed.name === 'string' && parsed.name.trim() ? parsed.name.trim() : row.name || row.id,
+    sandbox_provider: sandboxProvider,
+    timeout: typeof parsed.timeout === 'number' ? parsed.timeout : 300,
+  };
+}
+
+function parseSandboxProvider(value: unknown): SandboxProviderType | undefined {
+  return value === 'local'
+    || value === 'docker'
+    || value === 'e2b'
+    || value === 'daytona'
+    || value === 'self_hosted'
+    ? value
+    : undefined;
+}
+
+function parseJsonObject(value: string): Record<string, any> {
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
 }
 
 // ============================================================

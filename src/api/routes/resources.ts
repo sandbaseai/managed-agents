@@ -1,10 +1,10 @@
-import { createCipheriv, createHash, randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { Hono } from 'hono';
 import { nanoid } from 'nanoid';
 import type { ServerDeps } from '../server.js';
 import { pageOf } from '../standard.js';
+import { encryptSecret } from '@/core/security/secrets.js';
 
 type ResourceKind = 'environment' | 'credential_vault' | 'memory_store';
 type FileCreateInput = {
@@ -21,7 +21,7 @@ export function resourceRoutes(deps: ServerDeps) {
   const app = new Hono();
 
   app.get('/environments', (c) => {
-    const rows = deps.db.prepare('SELECT * FROM environments ORDER BY created_at DESC').all() as unknown as EnvironmentRow[];
+    const rows = deps.db.prepare('SELECT * FROM environments WHERE archived_at IS NULL ORDER BY created_at DESC').all() as unknown as EnvironmentRow[];
     return c.json(pageOf(rows.map(toEnvironment)));
   });
 
@@ -31,9 +31,7 @@ export function resourceRoutes(deps: ServerDeps) {
     const name = stringField(body.value.name);
     if (!name) return invalid(c, 'name is required');
     const config = normalizeEnvironmentConfig(body.value);
-    const id = typeof body.value.id === 'string' && body.value.id.startsWith('env_')
-      ? body.value.id
-      : `env_${nanoid(18)}`;
+    const id = `env_${nanoid(18)}`;
     try {
       deps.db.prepare(
         'INSERT INTO environments (id, name, description, config, metadata, updated_at) VALUES (?, ?, ?, ?, ?, datetime(\'now\'))',
@@ -44,16 +42,16 @@ export function resourceRoutes(deps: ServerDeps) {
         JSON.stringify(config),
         JSON.stringify(stringRecordField(body.value.metadata)),
       );
-      const row = deps.db.prepare('SELECT * FROM environments WHERE id = ?').get(id) as unknown as EnvironmentRow;
+      const row = deps.db.prepare('SELECT * FROM environments WHERE id = ? AND archived_at IS NULL').get(id) as unknown as EnvironmentRow;
       return c.json(toEnvironment(row), 201);
     } catch (err: any) {
-      if (String(err.message).includes('UNIQUE')) return conflict(c, `Environment already exists: ${name}`);
+      if (String(err.message).includes('UNIQUE')) return conflict(c, 'Environment id already exists');
       return c.json({ error: { type: 'internal_error', message: err.message } }, 500);
     }
   });
 
   app.get('/environments/:id', (c) => {
-    const row = deps.db.prepare('SELECT * FROM environments WHERE id = ?').get(c.req.param('id')) as EnvironmentRow | undefined;
+    const row = deps.db.prepare('SELECT * FROM environments WHERE id = ? AND archived_at IS NULL').get(c.req.param('id')) as EnvironmentRow | undefined;
     return row ? c.json(toEnvironment(row)) : notFound(c, 'Environment not found');
   });
 
@@ -61,7 +59,7 @@ export function resourceRoutes(deps: ServerDeps) {
     const body = await readObjectBody(c);
     if (!body.ok) return body.response;
     const id = c.req.param('id');
-    const existing = deps.db.prepare('SELECT * FROM environments WHERE id = ?').get(id) as EnvironmentRow | undefined;
+    const existing = deps.db.prepare('SELECT * FROM environments WHERE id = ? AND archived_at IS NULL').get(id) as EnvironmentRow | undefined;
     if (!existing) return notFound(c, 'Environment not found');
 
     const name = stringField(body.value.name) ?? existing.name;
@@ -75,7 +73,7 @@ export function resourceRoutes(deps: ServerDeps) {
       JSON.stringify(body.value.metadata === undefined ? parseObject(existing.metadata) : stringRecordField(body.value.metadata)),
       id,
     );
-    const row = deps.db.prepare('SELECT * FROM environments WHERE id = ?').get(id) as unknown as EnvironmentRow;
+    const row = deps.db.prepare('SELECT * FROM environments WHERE id = ? AND archived_at IS NULL').get(id) as unknown as EnvironmentRow;
     return c.json(toEnvironment(row));
   });
 
@@ -124,7 +122,7 @@ export function resourceRoutes(deps: ServerDeps) {
   });
 
   app.get('/credential-vaults', (c) => {
-    const rows = deps.db.prepare(`${vaultSelect()} ORDER BY v.created_at DESC`).all() as unknown as VaultRow[];
+    const rows = deps.db.prepare(`${vaultSelect('WHERE v.archived_at IS NULL')} ORDER BY v.created_at DESC`).all() as unknown as VaultRow[];
     return c.json(pageOf(rows.map((row) => toVault(row, deps))));
   });
 
@@ -133,9 +131,7 @@ export function resourceRoutes(deps: ServerDeps) {
     if (!body.ok) return body.response;
     const name = stringField(body.value.name);
     if (!name) return invalid(c, 'name is required');
-    const id = typeof body.value.id === 'string' && body.value.id.startsWith('vlt_')
-      ? body.value.id
-      : `vlt_${nanoid(18)}`;
+    const id = `vlt_${nanoid(18)}`;
     try {
       deps.db.prepare(
         'INSERT INTO credential_vaults (id, name, description, metadata) VALUES (?, ?, ?, ?)',
@@ -145,21 +141,21 @@ export function resourceRoutes(deps: ServerDeps) {
         stringField(body.value.description) ?? '',
         JSON.stringify(stringRecordField(body.value.metadata)),
       );
-      const row = deps.db.prepare(vaultSelect('WHERE v.id = ?')).get(id) as unknown as VaultRow;
+      const row = deps.db.prepare(vaultSelect('WHERE v.id = ? AND v.archived_at IS NULL')).get(id) as unknown as VaultRow;
       return c.json(toVault(row, deps), 201);
     } catch (err: any) {
-      if (String(err.message).includes('UNIQUE')) return conflict(c, `Credential vault already exists: ${name}`);
+      if (String(err.message).includes('UNIQUE')) return conflict(c, 'Credential vault id already exists');
       return c.json({ error: { type: 'internal_error', message: err.message } }, 500);
     }
   });
 
   app.get('/credential-vaults/:id', (c) => {
-    const row = deps.db.prepare(vaultSelect('WHERE v.id = ?')).get(c.req.param('id')) as VaultRow | undefined;
+    const row = deps.db.prepare(vaultSelect('WHERE v.id = ? AND v.archived_at IS NULL')).get(c.req.param('id')) as VaultRow | undefined;
     return row ? c.json(toVault(row, deps)) : notFound(c, 'Credential vault not found');
   });
 
   app.get('/credential-vaults/:id/credentials', (c) => {
-    const vault = deps.db.prepare('SELECT id FROM credential_vaults WHERE id = ?').get(c.req.param('id'));
+    const vault = deps.db.prepare('SELECT id FROM credential_vaults WHERE id = ? AND archived_at IS NULL').get(c.req.param('id'));
     if (!vault) return notFound(c, 'Credential vault not found');
     return c.json(pageOf(listCredentials(deps, c.req.param('id'))));
   });
@@ -168,7 +164,7 @@ export function resourceRoutes(deps: ServerDeps) {
     const body = await readObjectBody(c);
     if (!body.ok) return body.response;
     const vaultId = c.req.param('id');
-    const vault = deps.db.prepare('SELECT id FROM credential_vaults WHERE id = ?').get(vaultId);
+    const vault = deps.db.prepare('SELECT id FROM credential_vaults WHERE id = ? AND archived_at IS NULL').get(vaultId);
     if (!vault) return notFound(c, 'Credential vault not found');
 
     const authType = stringField(body.value.auth_type);
@@ -183,10 +179,8 @@ export function resourceRoutes(deps: ServerDeps) {
 
     const injectionLocations = parseCredentialInjectionLocations(body.value.injection_locations);
     if (!injectionLocations.ok) return invalid(c, injectionLocations.message);
-    const encryptedSecret = secretValue ? encryptSecret(secretValue, deps) : { ciphertext: '', nonce: '', tag: '' };
-    const id = typeof body.value.id === 'string' && body.value.id.startsWith('vcrd_')
-      ? body.value.id
-      : `vcrd_${nanoid(18)}`;
+    const encryptedSecret = secretValue ? encryptSecret(secretValue, deps.workspace?.dataDir) : { ciphertext: '', nonce: '', tag: '' };
+    const id = `vcrd_${nanoid(18)}`;
     const now = new Date().toISOString();
     deps.db.prepare(
       `INSERT INTO credential_records (
@@ -222,7 +216,7 @@ export function resourceRoutes(deps: ServerDeps) {
   app.post('/credential-vaults/:id/archive', (c) => archiveResource(c, deps, 'credential_vaults', (row) => toVault(row, deps)));
 
   app.get('/memory_stores', (c) => {
-    const rows = deps.db.prepare(`${memoryStoreSelect()} ORDER BY m.created_at DESC`).all() as unknown as MemoryStoreRow[];
+    const rows = deps.db.prepare(`${memoryStoreSelect('WHERE m.archived_at IS NULL')} ORDER BY m.created_at DESC`).all() as unknown as MemoryStoreRow[];
     return c.json(pageOf(rows.map((row) => toMemoryStore(row, deps))));
   });
 
@@ -231,9 +225,7 @@ export function resourceRoutes(deps: ServerDeps) {
     if (!body.ok) return body.response;
     const name = stringField(body.value.name);
     if (!name) return invalid(c, 'name is required');
-    const id = typeof body.value.id === 'string' && body.value.id.startsWith('memstore_')
-      ? body.value.id
-      : `memstore_${nanoid(18)}`;
+    const id = `memstore_${nanoid(18)}`;
     try {
       deps.db.prepare(
         'INSERT INTO memory_stores (id, name, description, provider, config, metadata) VALUES (?, ?, ?, ?, ?, ?)',
@@ -245,21 +237,21 @@ export function resourceRoutes(deps: ServerDeps) {
         JSON.stringify(objectField(body.value.config)),
         JSON.stringify(stringRecordField(body.value.metadata)),
       );
-      const row = deps.db.prepare(memoryStoreSelect('WHERE m.id = ?')).get(id) as unknown as MemoryStoreRow;
+      const row = deps.db.prepare(memoryStoreSelect('WHERE m.id = ? AND m.archived_at IS NULL')).get(id) as unknown as MemoryStoreRow;
       return c.json(toMemoryStore(row, deps), 201);
     } catch (err: any) {
-      if (String(err.message).includes('UNIQUE')) return conflict(c, `Memory store already exists: ${name}`);
+      if (String(err.message).includes('UNIQUE')) return conflict(c, 'Memory store id already exists');
       return c.json({ error: { type: 'internal_error', message: err.message } }, 500);
     }
   });
 
   app.get('/memory_stores/:id', (c) => {
-    const row = deps.db.prepare(memoryStoreSelect('WHERE m.id = ?')).get(c.req.param('id')) as MemoryStoreRow | undefined;
+    const row = deps.db.prepare(memoryStoreSelect('WHERE m.id = ? AND m.archived_at IS NULL')).get(c.req.param('id')) as MemoryStoreRow | undefined;
     return row ? c.json(toMemoryStore(row, deps)) : notFound(c, 'Memory store not found');
   });
 
   app.get('/memory_stores/:id/memories', (c) => {
-    const store = deps.db.prepare('SELECT id FROM memory_stores WHERE id = ?').get(c.req.param('id'));
+    const store = deps.db.prepare('SELECT id FROM memory_stores WHERE id = ? AND archived_at IS NULL').get(c.req.param('id'));
     if (!store) return notFound(c, 'Memory store not found');
     return c.json(pageOf(listMemories(deps, c.req.param('id'))));
   });
@@ -268,14 +260,12 @@ export function resourceRoutes(deps: ServerDeps) {
     const body = await readObjectBody(c);
     if (!body.ok) return body.response;
     const storeId = c.req.param('id');
-    const store = deps.db.prepare('SELECT id FROM memory_stores WHERE id = ?').get(storeId);
+    const store = deps.db.prepare('SELECT id FROM memory_stores WHERE id = ? AND archived_at IS NULL').get(storeId);
     if (!store) return notFound(c, 'Memory store not found');
     const path = memoryPath(body.value.path);
     if (!path) return invalid(c, 'path is required and must start with /');
     const content = typeof body.value.content === 'string' ? body.value.content : '';
-    const id = typeof body.value.id === 'string' && body.value.id.startsWith('mem_')
-      ? body.value.id
-      : `mem_${nanoid(18)}`;
+    const id = `mem_${nanoid(18)}`;
     const now = new Date().toISOString();
     try {
       deps.db.prepare(
@@ -296,7 +286,9 @@ export function resourceRoutes(deps: ServerDeps) {
     if (!body.ok) return body.response;
     const storeId = c.req.param('id');
     const memoryId = c.req.param('memoryId');
-    const existing = deps.db.prepare('SELECT * FROM memory_records WHERE id = ? AND store_id = ?').get(memoryId, storeId) as MemoryRecordRow | undefined;
+    const store = deps.db.prepare('SELECT id FROM memory_stores WHERE id = ? AND archived_at IS NULL').get(storeId);
+    if (!store) return notFound(c, 'Memory store not found');
+    const existing = deps.db.prepare('SELECT * FROM memory_records WHERE id = ? AND store_id = ? AND archived_at IS NULL').get(memoryId, storeId) as MemoryRecordRow | undefined;
     if (!existing) return notFound(c, 'Memory not found');
     const path = body.value.path === undefined ? existing.path : memoryPath(body.value.path);
     if (!path) return invalid(c, 'path must start with /');
@@ -323,7 +315,9 @@ export function resourceRoutes(deps: ServerDeps) {
   app.delete('/memory_stores/:id/memories/:memoryId', (c) => {
     const storeId = c.req.param('id');
     const memoryId = c.req.param('memoryId');
-    const existing = deps.db.prepare('SELECT * FROM memory_records WHERE id = ? AND store_id = ?').get(memoryId, storeId) as MemoryRecordRow | undefined;
+    const store = deps.db.prepare('SELECT id FROM memory_stores WHERE id = ? AND archived_at IS NULL').get(storeId);
+    if (!store) return notFound(c, 'Memory store not found');
+    const existing = deps.db.prepare('SELECT * FROM memory_records WHERE id = ? AND store_id = ? AND archived_at IS NULL').get(memoryId, storeId) as MemoryRecordRow | undefined;
     if (!existing) return notFound(c, 'Memory not found');
     deps.db.prepare('UPDATE memory_records SET archived_at = datetime(\'now\'), updated_at = datetime(\'now\') WHERE id = ? AND store_id = ?').run(memoryId, storeId);
     deps.db.prepare('UPDATE memory_stores SET updated_at = datetime(\'now\') WHERE id = ?').run(storeId);
@@ -702,7 +696,7 @@ function toMemory(row: MemoryRecordRow) {
 
 function archiveResource(c: any, deps: ServerDeps, table: string, map: (row: any) => unknown) {
   const id = c.req.param('id');
-  const existing = deps.db.prepare(`SELECT * FROM ${table} WHERE id = ?`).get(id);
+  const existing = deps.db.prepare(`SELECT * FROM ${table} WHERE id = ? AND archived_at IS NULL`).get(id);
   if (!existing) return notFound(c, 'Resource not found');
   deps.db.prepare(`UPDATE ${table} SET archived_at = datetime('now'), updated_at = datetime('now') WHERE id = ?`).run(id);
   const row = deps.db.prepare(`SELECT * FROM ${table} WHERE id = ?`).get(id);
@@ -786,34 +780,6 @@ function secretHint(value: string) {
   return visible ? `••••${visible}` : '••••';
 }
 
-function encryptSecret(value: string, deps: ServerDeps) {
-  const nonce = randomBytes(12);
-  const cipher = createCipheriv('aes-256-gcm', resolveSecretKey(deps), nonce);
-  const ciphertext = Buffer.concat([cipher.update(value, 'utf8'), cipher.final()]);
-  const tag = cipher.getAuthTag();
-  return {
-    ciphertext: ciphertext.toString('base64'),
-    nonce: nonce.toString('base64'),
-    tag: tag.toString('base64'),
-  };
-}
-
-function resolveSecretKey(deps: ServerDeps): Buffer {
-  const configuredKey = process.env.MANAGED_AGENTS_SECRET_KEY;
-  if (configuredKey) return createHash('sha256').update(configuredKey).digest();
-
-  if (deps.workspace?.dataDir) {
-    const secretsPath = join(deps.workspace.dataDir, 'secrets.key');
-    if (!existsSync(secretsPath)) {
-      mkdirSync(deps.workspace.dataDir, { recursive: true });
-      writeFileSync(secretsPath, `${randomBytes(32).toString('base64')}\n`, { mode: 0o600 });
-    }
-    return createHash('sha256').update(readFileSync(secretsPath, 'utf8').trim()).digest();
-  }
-
-  return createHash('sha256').update('managed-agents-test-secret-key').digest();
-}
-
 function memoryPath(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined;
   const trimmed = value.trim();
@@ -826,7 +792,11 @@ function memoryPath(value: unknown): string | undefined {
 function updateCredentialState(c: any, deps: ServerDeps, status: 'archived' | 'deleted') {
   const vaultId = c.req.param('id');
   const credentialId = c.req.param('credentialId');
-  const existing = deps.db.prepare('SELECT * FROM credential_records WHERE id = ? AND vault_id = ?').get(credentialId, vaultId) as CredentialRow | undefined;
+  const vault = deps.db.prepare('SELECT id FROM credential_vaults WHERE id = ? AND archived_at IS NULL').get(vaultId);
+  if (!vault) return notFound(c, 'Credential vault not found');
+  const existing = status === 'deleted'
+    ? deps.db.prepare('SELECT * FROM credential_records WHERE id = ? AND vault_id = ? AND status != ?').get(credentialId, vaultId, 'deleted') as CredentialRow | undefined
+    : deps.db.prepare('SELECT * FROM credential_records WHERE id = ? AND vault_id = ? AND archived_at IS NULL AND status != ?').get(credentialId, vaultId, 'deleted') as CredentialRow | undefined;
   if (!existing) return notFound(c, 'Credential not found');
   deps.db.prepare(
     'UPDATE credential_records SET status = ?, archived_at = datetime(\'now\'), updated_at = datetime(\'now\') WHERE id = ? AND vault_id = ?',
