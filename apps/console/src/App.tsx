@@ -86,13 +86,12 @@ const NAV_GROUPS: Array<{ label: string; items: Array<{ id: ViewId; label: strin
   {
     label: 'Build',
     items: [
-      { id: 'quickstart', label: 'Quickstart', icon: Sparkles },
       { id: 'files', label: 'Files', icon: FileText },
       { id: 'skills', label: 'Skills', icon: Zap },
     ],
   },
   {
-    label: 'Managed Agents',
+    label: 'Default',
     items: [
       { id: 'agents', label: 'Agents', icon: Monitor },
       { id: 'sessions', label: 'Sessions', icon: MessageSquare },
@@ -118,6 +117,7 @@ const SETTINGS_SECTIONS = [
   { id: 'models', label: 'Models', icon: Brain, group: 'Runtime' },
   { id: 'loop-engine', label: 'Loop engine', icon: Gauge, group: 'Runtime' },
   { id: 'storage', label: 'Storage', icon: Database, group: 'Runtime' },
+  { id: 'memory', label: 'Memory', icon: Brain, group: 'Runtime' },
   { id: 'sandbox', label: 'Sandbox', icon: Shield, group: 'Runtime' },
   { id: 'api-keys', label: 'API keys', icon: KeyRound, group: 'Access' },
   { id: 'api-reference', label: 'API reference', icon: Keyboard, group: 'Developer' },
@@ -133,6 +133,7 @@ const SETTINGS_VIEW_IDS: ViewId[] = [
   'models',
   'loop-engine',
   'storage',
+  'memory',
   'sandbox',
   'api-keys',
   'api-reference',
@@ -249,62 +250,60 @@ export function App() {
     if (route.memoryStoreId) setSelectedMemoryStoreId(route.memoryStoreId);
   }, [route.memoryStoreId]);
 
+  const isSettingsRoute = SETTINGS_VIEW_IDS.includes(view);
+  const workspaceLabel = data.workspace?.name && data.workspace.name !== 'managed-agents'
+    ? data.workspace.name
+    : 'Default';
+  const workspaceTarget = data.workspace?.target ?? 'local';
+
   return (
-    <div className="shell">
-      <aside className="sidebar">
-        <div className="brand">
-          <span className="brandMark">▣</span>
-          <span>managed-agents</span>
-        </div>
-        <button className="workspaceSwitch" type="button" onClick={() => setRoute('workspace')}>
-          <span className="workspaceAvatar">{(data.workspace?.name ?? 'W').slice(0, 1).toUpperCase()}</span>
-          <span>
-            <strong>{data.workspace?.name ?? 'Workspace'}</strong>
-            <small>{data.workspace?.target ?? 'local'}</small>
-          </span>
-          <ChevronDown size={16} />
-        </button>
-        <nav className="nav">
-          {NAV_GROUPS.map((group) => (
-            <div className="navGroup" key={group.label}>
-              <div className="navLabel">{group.label}</div>
-              {group.items.map((item) => {
-                const Icon = item.icon;
-                const active = view === item.id
-                  || (item.id === 'settings' && SETTINGS_VIEW_IDS.includes(view))
-                  || (view === 'agent-detail' && item.id === 'agents')
-                  || (view === 'session-detail' && item.id === 'sessions')
-                  || (view === 'environment-detail' && item.id === 'environments')
-                  || (view === 'credential-vault-detail' && item.id === 'credential-vaults')
-                  || (view === 'memory-store-detail' && item.id === 'memory-stores');
-                return (
-                  <button
-                    type="button"
-                    className={`navItem ${active ? 'active' : ''}`}
-                    key={item.id}
-                    onClick={() => setRoute(item.id)}
-                  >
-                    <Icon size={18} />
-                    <span>{item.label}</span>
-                  </button>
-                );
-              })}
-            </div>
-          ))}
-        </nav>
-      </aside>
+    <div className={`shell ${isSettingsRoute ? 'settingsMode' : ''}`}>
+      {!isSettingsRoute ? (
+        <aside className="sidebar">
+          <div className="brand">
+            <span className="brandMark">▣</span>
+            <span>managed-agents</span>
+          </div>
+          <button className="workspaceSwitch" type="button" onClick={() => setRoute('workspace')}>
+            <span className="workspaceAvatar">{workspaceLabel.slice(0, 1).toUpperCase()}</span>
+            <span>
+              <strong>{workspaceLabel}</strong>
+              <small>{workspaceTarget}</small>
+            </span>
+            <ChevronDown size={16} />
+          </button>
+          <nav className="nav">
+            {NAV_GROUPS.map((group) => (
+              <div className="navGroup" key={group.label}>
+                <div className="navLabel">{group.label}</div>
+                {group.items.map((item) => {
+                  const Icon = item.icon;
+                  const active = view === item.id
+                    || (item.id === 'settings' && SETTINGS_VIEW_IDS.includes(view))
+                    || (view === 'agent-detail' && item.id === 'agents')
+                    || (view === 'session-detail' && item.id === 'sessions')
+                    || (view === 'environment-detail' && item.id === 'environments')
+                    || (view === 'credential-vault-detail' && item.id === 'credential-vaults')
+                    || (view === 'memory-store-detail' && item.id === 'memory-stores');
+                  return (
+                    <button
+                      type="button"
+                      className={`navItem ${active ? 'active' : ''}`}
+                      key={item.id}
+                      onClick={() => setRoute(item.id)}
+                    >
+                      <Icon size={18} />
+                      <span>{item.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            ))}
+          </nav>
+        </aside>
+      ) : null}
 
       <main className="main">
-        <header className="consoleNotice">
-          <div className={`runtimeConnection ${data.runtime ? 'connected' : 'starting'}`}>
-            <span className="runtimeStatusDot" aria-hidden="true" />
-            <span>{data.runtime ? 'Runtime connected' : 'Runtime starting'}</span>
-          </div>
-          <button className="iconButton quiet" type="button" title="Refresh" onClick={() => void refresh()}>
-            <RefreshCw size={17} />
-          </button>
-        </header>
-
         {error ? <div className="banner error">{error}</div> : null}
         {loading ? <LoadingState /> : (
           <View
@@ -453,8 +452,6 @@ function View(props: {
   onRefresh: () => void;
 }) {
   switch (props.view) {
-    case 'quickstart':
-      return <Quickstart data={props.data} onNewAgent={props.onNewAgent} />;
     case 'agents':
       return <Agents data={props.data} onNewAgent={() => props.onNewAgent('blank')} onOpenAgent={props.onOpenAgent} />;
     case 'agent-detail': {
@@ -540,6 +537,8 @@ function View(props: {
       return <SettingsView data={props.data} section="loop-engine" onRefresh={props.onRefresh} setView={props.setView} />;
     case 'storage':
       return <SettingsView data={props.data} section="storage" onRefresh={props.onRefresh} setView={props.setView} />;
+    case 'memory':
+      return <SettingsView data={props.data} section="memory" onRefresh={props.onRefresh} setView={props.setView} />;
     case 'sandbox':
       return <SettingsView data={props.data} section="sandbox" onRefresh={props.onRefresh} setView={props.setView} />;
     case 'api-keys':
@@ -555,84 +554,8 @@ function View(props: {
     case 'settings':
       return <SettingsView data={props.data} section="general" onRefresh={props.onRefresh} setView={props.setView} />;
     default:
-      return <Quickstart data={props.data} onNewAgent={props.onNewAgent} />;
+      return <Agents data={props.data} onNewAgent={() => props.onNewAgent('blank')} onOpenAgent={props.onOpenAgent} />;
   }
-}
-
-function Quickstart({ data, onNewAgent }: { data: ConsoleData; onNewAgent: (template: Template | 'blank') => void }) {
-  const [query, setQuery] = useState('');
-  const filtered = data.templates.filter((template) => {
-    const q = query.toLowerCase();
-    return template.name.toLowerCase().includes(q) || template.description.toLowerCase().includes(q);
-  });
-  const [selected, setSelected] = useState<Template | null>(data.templates[0] ?? null);
-
-  useEffect(() => {
-    if (data.templates.length === 0) {
-      setSelected(null);
-      return;
-    }
-    if (!selected || !data.templates.some((template) => template.id === selected.id)) {
-      setSelected(data.templates[0]);
-    }
-  }, [data.templates, selected]);
-
-  return (
-    <section className="quickstart">
-      <div className="quickPrompt">
-        <h1 className="quickstartTitle">Quickstart</h1>
-        <div className="stepper">
-          {[1, 2, 3, 4].map((step) => <span key={step} className={step === 1 ? 'current' : ''}>{step}</span>)}
-        </div>
-        <div className="buildPrompt">
-          <Sparkles size={22} />
-          <h2>What do you want to build?</h2>
-          <div className="promptActions">
-            <button className="primaryButton" type="button" onClick={() => onNewAgent(selected ?? 'blank')}>
-              <Plus size={16} />
-              Create agent
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <div className="panel templatesPanel">
-        <div className="panelHeader">
-          <div>
-            <h2>Browse templates</h2>
-            <p>{filtered.length} available</p>
-          </div>
-        </div>
-        <div className="searchBox">
-          <Search size={17} />
-          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search templates" />
-        </div>
-        <div className="templateGrid">
-          {filtered.map((template) => (
-            <button
-              type="button"
-              key={template.id}
-              className={`templateCard ${selected?.id === template.id ? 'selected' : ''}`}
-              onClick={() => setSelected(template)}
-            >
-              <strong>{template.name}</strong>
-              <span>{template.description}</span>
-              <small>{template.summary}</small>
-            </button>
-          ))}
-        </div>
-        {selected ? (
-          <div className="codePreview">
-            <div className="codeHeader">
-              <span>{selected.agent.name}.yaml</span>
-              <button className="textButton" type="button" onClick={() => onNewAgent(selected)}>Use template</button>
-            </div>
-            <pre>{agentYamlPreview(selected.agent)}</pre>
-          </div>
-        ) : null}
-      </div>
-    </section>
-  );
 }
 
 function Agents({ data, onNewAgent, onOpenAgent }: { data: ConsoleData; onNewAgent: () => void; onOpenAgent: (agent: Agent) => void }) {
@@ -2333,61 +2256,171 @@ function SettingsModels({ data }: { data: ConsoleData }) {
   );
 }
 
+type PluginSelectOption = {
+  value: string;
+  label: string;
+  disabled?: boolean;
+};
+
+function PluginSettingsPanel({
+  icon,
+  title,
+  description,
+  badge = 'Built-in',
+  children,
+}: {
+  icon: ReactNode;
+  title: string;
+  description: string;
+  badge?: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="pluginSettingsPanel">
+      <div className="pluginSettingsHeader">
+        <span className="pluginSettingsIcon">{icon}</span>
+        <div>
+          <strong>{title}</strong>
+          <p>{description}</p>
+        </div>
+        <ResourceBadge>{badge}</ResourceBadge>
+      </div>
+      <div className="pluginSelectStack">{children}</div>
+    </div>
+  );
+}
+
+function PluginSelectField({
+  label,
+  value,
+  options,
+  description,
+  readOnly = true,
+}: {
+  label: string;
+  value: string;
+  options: PluginSelectOption[];
+  description?: string;
+  readOnly?: boolean;
+}) {
+  const normalizedOptions = options.some((option) => option.value === value)
+    ? options
+    : [{ value, label: value || 'Not configured' }, ...options];
+  return (
+    <label className={`pluginSelectField ${description ? 'withDescription' : ''}`}>
+      <span className="pluginSelectLabel">{label}</span>
+      <div className="pluginSelectControl">
+        <select value={value} disabled={readOnly} aria-label={label}>
+          {normalizedOptions.map((option) => (
+            <option key={option.value} value={option.value} disabled={option.disabled}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </div>
+      {description ? <small>{description}</small> : null}
+    </label>
+  );
+}
+
+function providerOptions(values: string[], fallback: PluginSelectOption[]): PluginSelectOption[] {
+  const seen = new Set<string>();
+  const current = values.filter(Boolean).map((value) => {
+    seen.add(value);
+    return { value, label: titleCase(value.replace(/[-_]/g, ' ')) };
+  });
+  return [
+    ...current,
+    ...fallback.filter((option) => !seen.has(option.value)),
+  ];
+}
+
 function SettingsLoopEngine({ data }: { data: ConsoleData }) {
-  const running = data.sessions.filter((session) => session.status === 'running').length;
-  const failed = data.sessions.filter((session) => session.status === 'failed').length;
+  const modelProvider = data.runtime?.models.length ? 'model-registry' : 'model-registry-unconfigured';
+  const sandboxProvider = data.runtime?.sandbox_providers.length ? 'sandbox-runtime-provider' : 'sandbox-provider-unconfigured';
   return (
     <section className="stack">
       <div className="pageIntro">
         <div>
-          <h1>Loop Engine</h1>
-          <p>Inspect the agent turn loop that handles model calls, tools, events, and approvals.</p>
+          <h1>Loop engine</h1>
+          <p>Select the provider plugins that drive agent turns, tool execution, approval policy, and event handling.</p>
         </div>
       </div>
-      <SummaryStrip items={[
-        { label: 'Engine', value: 'DefaultStrategy', icon: <Gauge size={18} /> },
-        { label: 'Default max steps', value: 25, icon: <RefreshCw size={18} /> },
-        { label: 'Running sessions', value: running, icon: <CirclePlay size={18} /> },
-        { label: 'Failed sessions', value: failed, icon: <Activity size={18} /> },
-      ]} />
-      <div className="workspaceGrid">
-        <div className="panel subtlePanel">
-          <h2>Execution loop</h2>
-          <p>Current runtime loop behavior reported by the local process and agent definitions.</p>
-          <KeyValuePanel rows={[
-            ['Strategy', 'DefaultStrategy'],
-            ['Model adapter', data.runtime?.models.length ? 'configured model registry' : 'no model configured'],
-            ['Tool execution', data.runtime?.sandbox_providers.length ? 'sandbox-backed tool resolver' : 'sandbox unavailable'],
-            ['Event stream', 'session event log'],
-          ]} />
-        </div>
-        <div className="panel subtlePanel">
-          <h2>Agent coverage</h2>
-          <p>Agents use the loop engine when sessions receive user events.</p>
-          <KeyValuePanel rows={[
-            ['Agents', data.agents.length],
-            ['Sessions', data.sessions.length],
-            ['Idle sessions', data.sessions.filter((session) => session.status === 'idle').length],
-            ['Terminated sessions', data.sessions.filter((session) => session.status === 'terminated').length],
-          ]} />
-        </div>
+      <div className="pluginSettingsGrid">
+        <PluginSettingsPanel
+          icon={<Gauge size={18} />}
+          title="Turn loop provider"
+          description="Owns session event processing, model turns, tool scheduling, and stop conditions."
+        >
+          <PluginSelectField
+            label="Provider"
+            value="managed-agents-loop"
+            options={[
+              { value: 'managed-agents-loop', label: 'Default loop' },
+              { value: 'external-loop-plugin', label: 'External loop plugin', disabled: true },
+            ]}
+            description="Plugin registry writes are read-only in this build; the active provider is loaded at runtime start."
+          />
+          <PluginSelectField
+            label="Turn strategy"
+            value="default-agent-turns"
+            options={[
+              { value: 'default-agent-turns', label: 'Default agent turns' },
+              { value: 'planner-executor', label: 'Planner / executor plugin', disabled: true },
+            ]}
+            description="Controls how user events become model requests, tool calls, and agent messages."
+          />
+          <PluginSelectField
+            label="Max step policy"
+            value="bounded-25-steps"
+            options={[
+              { value: 'bounded-25-steps', label: 'Bounded loop, 25 steps' },
+              { value: 'custom-step-budget', label: 'Custom step budget plugin', disabled: true },
+            ]}
+          />
+        </PluginSettingsPanel>
+        <PluginSettingsPanel
+          icon={<Activity size={18} />}
+          title="Runtime adapters"
+          description="Connect the loop to model, sandbox, event, and approval subsystems."
+        >
+          <PluginSelectField
+            label="Model adapter"
+            value={modelProvider}
+            options={[
+              { value: 'model-registry', label: 'Configured model registry' },
+              { value: 'model-registry-unconfigured', label: 'Model registry (no models configured)' },
+              { value: 'remote-model-plugin', label: 'Remote model plugin', disabled: true },
+            ]}
+          />
+          <PluginSelectField
+            label="Tool executor"
+            value={sandboxProvider}
+            options={[
+              { value: 'sandbox-runtime-provider', label: 'Sandbox runtime provider' },
+              { value: 'sandbox-provider-unconfigured', label: 'Sandbox provider not configured' },
+              { value: 'remote-tool-runner', label: 'Remote tool runner plugin', disabled: true },
+            ]}
+          />
+          <PluginSelectField
+            label="Approval policy"
+            value="agent-definition-policy"
+            options={[
+              { value: 'agent-definition-policy', label: 'Agent definition policy' },
+              { value: 'workspace-policy-plugin', label: 'Workspace policy plugin', disabled: true },
+            ]}
+          />
+        </PluginSettingsPanel>
       </div>
-      <div className="tablePanel">
-        <table>
-          <thead><tr><th>Agent</th><th>Model</th><th>Tools</th><th>Skills</th><th>Status</th></tr></thead>
-          <tbody>
-            {data.agents.map((agent) => (
-              <tr key={agent.id}>
-                <td><strong>{agent.name}</strong><br /><code>{truncateMiddle(agent.id, 24)}</code></td>
-                <td><code>{agent.model}</code></td>
-                <td>{agent.tools.length}</td>
-                <td>{agent.skills.length}</td>
-                <td><StatusPill status={agent.status} /></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {data.agents.length === 0 ? <div className="emptyValue">No agents created yet</div> : null}
+      <div className="panel subtlePanel">
+        <h2>Current wiring</h2>
+        <p>These values are reported by the runtime and will become editable once provider plugin writes are enabled.</p>
+        <KeyValuePanel rows={[
+          ['Agents', data.agents.length],
+          ['Sessions', data.sessions.length],
+          ['Configured models', data.runtime?.models.length ?? 0],
+          ['Sandbox providers', data.runtime?.sandbox_providers.join(', ') || 'none'],
+        ]} />
       </div>
     </section>
   );
@@ -2402,18 +2435,75 @@ function SettingsStorage({ data }: { data: ConsoleData }) {
       <div className="pageIntro">
         <div>
           <h1>Storage</h1>
-          <p>Review SQLite state, uploaded files, skill bundles, and runtime data directories.</p>
+          <p>Select storage provider plugins for metadata, files, skills, events, and runtime state.</p>
         </div>
       </div>
-      <SummaryStrip items={[
-        { label: 'Database', value: databasePath ? 'SQLite' : 'not resolved', icon: <Database size={18} /> },
-        { label: 'Files', value: data.files.length, icon: <FileText size={18} /> },
-        { label: 'Memory stores', value: data.memoryStores.length, icon: <Brain size={18} /> },
-        { label: 'Skills', value: data.skills.length, icon: <Zap size={18} /> },
-      ]} />
+      <div className="pluginSettingsGrid">
+        <PluginSettingsPanel
+          icon={<Database size={18} />}
+          title="Metadata storage"
+          description="Persists agents, sessions, environments, vaults, API keys, and audit metadata."
+        >
+          <PluginSelectField
+            label="Metadata provider"
+            value={databasePath ? 'sqlite' : 'unresolved'}
+            options={[
+              { value: 'sqlite', label: 'SQLite' },
+              { value: 'unresolved', label: 'Not resolved' },
+              { value: 'postgres-plugin', label: 'Postgres plugin', disabled: true },
+            ]}
+          />
+          <PluginSelectField
+            label="Event store"
+            value="sqlite-event-log"
+            options={[
+              { value: 'sqlite-event-log', label: 'SQLite event log' },
+              { value: 'streaming-event-store', label: 'Streaming event store plugin', disabled: true },
+            ]}
+          />
+          <PluginSelectField
+            label="Audit trail"
+            value="sqlite-audit-log"
+            options={[
+              { value: 'sqlite-audit-log', label: 'SQLite audit log' },
+              { value: 'external-audit-plugin', label: 'External audit plugin', disabled: true },
+            ]}
+          />
+        </PluginSettingsPanel>
+        <PluginSettingsPanel
+          icon={<FileText size={18} />}
+          title="Artifact storage"
+          description="Stores uploaded files, skill bundles, temporary resources, and local cache content."
+        >
+          <PluginSelectField
+            label="File provider"
+            value="local-filesystem"
+            options={[
+              { value: 'local-filesystem', label: 'Local filesystem' },
+              { value: 's3-plugin', label: 'S3-compatible plugin', disabled: true },
+            ]}
+          />
+          <PluginSelectField
+            label="Skill bundle provider"
+            value="local-filesystem"
+            options={[
+              { value: 'local-filesystem', label: 'Local filesystem' },
+              { value: 'registry-backed-skills', label: 'Registry-backed skills plugin', disabled: true },
+            ]}
+          />
+          <PluginSelectField
+            label="Cache provider"
+            value="local-filesystem"
+            options={[
+              { value: 'local-filesystem', label: 'Local filesystem' },
+              { value: 'distributed-cache-plugin', label: 'Distributed cache plugin', disabled: true },
+            ]}
+          />
+        </PluginSettingsPanel>
+      </div>
       <div className="workspaceGrid">
         <div className="panel subtlePanel">
-          <h2>Persistent state</h2>
+          <h2>Current paths</h2>
           <p>Mutable runtime records live outside the source tree by default.</p>
           <KeyValuePanel rows={[
             ['Runtime data directory', dataDir],
@@ -2432,22 +2522,176 @@ function SettingsStorage({ data }: { data: ConsoleData }) {
   );
 }
 
+function SettingsMemory({ data }: { data: ConsoleData }) {
+  const memoryProvider = data.runtime?.memory || 'disabled';
+  return (
+    <section className="stack">
+      <div className="pageIntro">
+        <div>
+          <h1>Memory</h1>
+          <p>Select the memory provider plugin used by sessions that attach memory stores.</p>
+        </div>
+      </div>
+      <div className="pluginSettingsGrid">
+        <PluginSettingsPanel
+          icon={<Brain size={18} />}
+          title="Memory provider"
+          description="Controls long-term memory mounting, read/write access, and prompt context injection."
+          badge={memoryProvider === 'disabled' ? 'Disabled' : 'Built-in'}
+        >
+          <PluginSelectField
+            label="Provider"
+            value={memoryProvider}
+            options={[
+              { value: 'disabled', label: 'Disabled' },
+              { value: 'local-memory-store', label: 'Local memory store provider' },
+              { value: 'vector-memory-plugin', label: 'Vector memory plugin', disabled: true },
+            ]}
+          />
+          <PluginSelectField
+            label="Mount strategy"
+            value="session-resource-mount"
+            options={[
+              { value: 'session-resource-mount', label: 'Session resource mount' },
+              { value: 'agent-default-memory', label: 'Agent default memory plugin', disabled: true },
+            ]}
+          />
+          <PluginSelectField
+            label="Prompt injection"
+            value="store-description"
+            options={[
+              { value: 'store-description', label: 'Store name and description' },
+              { value: 'retrieval-summary-plugin', label: 'Retrieval summary plugin', disabled: true },
+            ]}
+          />
+        </PluginSettingsPanel>
+        <PluginSettingsPanel
+          icon={<Database size={18} />}
+          title="Memory persistence"
+          description="Defines where memory store metadata and memory files are written."
+        >
+          <PluginSelectField
+            label="Metadata provider"
+            value="sqlite"
+            options={[
+              { value: 'sqlite', label: 'SQLite' },
+              { value: 'external-metadata-plugin', label: 'External metadata plugin', disabled: true },
+            ]}
+          />
+          <PluginSelectField
+            label="Content provider"
+            value="local-filesystem"
+            options={[
+              { value: 'local-filesystem', label: 'Local filesystem' },
+              { value: 'object-storage-plugin', label: 'Object storage plugin', disabled: true },
+            ]}
+          />
+          <PluginSelectField
+            label="Default access"
+            value="read-write"
+            options={[
+              { value: 'read-write', label: 'Read & write' },
+              { value: 'read-only', label: 'Read only' },
+            ]}
+          />
+        </PluginSettingsPanel>
+      </div>
+      <div className="tablePanel">
+        <table>
+          <thead><tr><th>ID</th><th>Name</th><th>Provider</th><th>Status</th><th>Updated</th></tr></thead>
+          <tbody>
+            {data.memoryStores.map((store) => (
+              <tr key={store.id}>
+                <td><code>{truncateMiddle(store.id, 18)}</code></td>
+                <td><strong>{store.name}</strong></td>
+                <td><code>{store.provider}</code></td>
+                <td><StatusPill status={store.status} /></td>
+                <td>{formatDateShort(store.updated_at)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {data.memoryStores.length === 0 ? <div className="emptyValue">No memory stores created yet</div> : null}
+      </div>
+    </section>
+  );
+}
+
 function SettingsSandbox({ data }: { data: ConsoleData }) {
   const providers = data.runtime?.sandbox_providers ?? [];
+  const primaryProvider = providers[0] ?? 'local';
   return (
     <section className="stack">
       <div className="pageIntro">
         <div>
           <h1>Sandbox</h1>
-          <p>Manage execution isolation through environment templates and sandbox providers.</p>
+          <p>Select sandbox provider plugins for code execution, local workers, and environment isolation.</p>
         </div>
       </div>
-      <SummaryStrip items={[
-        { label: 'Providers', value: providers.join(', ') || 'none', icon: <Shield size={18} /> },
-        { label: 'Environments', value: data.environments.length, icon: <Server size={18} /> },
-        { label: 'Cloud templates', value: data.environments.filter((env) => env.hosting_type === 'cloud').length, icon: <Cloud size={18} /> },
-        { label: 'Self-hosted', value: data.environments.filter((env) => env.hosting_type === 'self_hosted').length, icon: <Terminal size={18} /> },
-      ]} />
+      <div className="pluginSettingsGrid">
+        <PluginSettingsPanel
+          icon={<Shield size={18} />}
+          title="Execution provider"
+          description="Controls where session tools and code execution run."
+        >
+          <PluginSelectField
+            label="Provider"
+            value={primaryProvider}
+            options={providerOptions(providers, [
+              { value: 'local', label: 'Local sandbox' },
+              { value: 'docker', label: 'Docker sandbox', disabled: true },
+              { value: 'self_hosted', label: 'Self-hosted worker', disabled: true },
+            ])}
+          />
+          <PluginSelectField
+            label="Default hosting"
+            value="local"
+            options={[
+              { value: 'local', label: 'Local' },
+              { value: 'cloud', label: 'Cloud plugin', disabled: true },
+              { value: 'self_hosted', label: 'Self-hosted worker' },
+            ]}
+          />
+          <PluginSelectField
+            label="Workspace mount"
+            value="project-workspace"
+            options={[
+              { value: 'project-workspace', label: 'Project workspace' },
+              { value: 'ephemeral-workspace', label: 'Ephemeral workspace plugin', disabled: true },
+            ]}
+          />
+        </PluginSettingsPanel>
+        <PluginSettingsPanel
+          icon={<Globe size={18} />}
+          title="Network and packages"
+          description="Sets default network and package installation policies for environment templates."
+        >
+          <PluginSelectField
+            label="Network mode"
+            value="limited"
+            options={[
+              { value: 'limited', label: 'Limited' },
+              { value: 'unrestricted', label: 'Unrestricted' },
+            ]}
+          />
+          <PluginSelectField
+            label="MCP network access"
+            value="environment-policy"
+            options={[
+              { value: 'environment-policy', label: 'Environment policy' },
+              { value: 'always-allow-plugin', label: 'Always allow plugin', disabled: true },
+            ]}
+          />
+          <PluginSelectField
+            label="Package manager"
+            value="environment-packages"
+            options={[
+              { value: 'environment-packages', label: 'Environment packages' },
+              { value: 'package-cache-plugin', label: 'Package cache plugin', disabled: true },
+            ]}
+          />
+        </PluginSettingsPanel>
+      </div>
       <div className="tablePanel">
         <table>
           <thead><tr><th>ID</th><th>Name</th><th>Status</th><th>Hosting</th><th>Provider</th><th>Network</th><th>Updated</th></tr></thead>
@@ -2653,7 +2897,7 @@ function ApiKeys({ data, onRefresh }: { data: ConsoleData; onRefresh: () => void
       <div className="sectionHeaderRow">
         <div>
           <h1>API keys</h1>
-          <p>Create and manage bearer tokens for the local Managed Agents API.</p>
+          <p>Create and manage bearer tokens for the local API.</p>
         </div>
         <button className="primaryButton" type="button" onClick={() => setModalOpen(true)}>
           <Plus size={18} />Create key
@@ -3174,6 +3418,12 @@ function SettingsView({
   return (
     <section className="settingsShell">
       <aside className="settingsSidebar" aria-label="Settings sections">
+        <div className="settingsSidebarHeader">
+          <strong>Settings</strong>
+          <button className="iconButton quiet" type="button" title="Back to console" onClick={() => setView('agents')}>
+            <X size={17} />
+          </button>
+        </div>
         <div className="settingsSearch">
           <Search size={16} />
           <input aria-label="Search settings" placeholder="Search settings..." disabled />
@@ -3210,6 +3460,7 @@ function SettingsView({
         {active === 'models' ? <SettingsModels data={data} /> : null}
         {active === 'loop-engine' ? <SettingsLoopEngine data={data} /> : null}
         {active === 'storage' ? <SettingsStorage data={data} /> : null}
+        {active === 'memory' ? <SettingsMemory data={data} /> : null}
         {active === 'sandbox' ? <SettingsSandbox data={data} /> : null}
         {active === 'api-keys' ? <ApiKeys data={data} onRefresh={onRefresh} /> : null}
         {active === 'api-reference' ? <SettingsApiReference data={data} setView={setView} /> : null}
@@ -3221,11 +3472,15 @@ function SettingsView({
 }
 
 function SettingsGeneral({ data, setView }: { data: ConsoleData; setView: (view: ViewId) => void }) {
+  const workspaceLabel = data.workspace?.name && data.workspace.name !== 'managed-agents'
+    ? data.workspace.name
+    : 'Default';
   const cards: Array<{ id: ViewId; title: string; body: string; icon: ReactNode; meta: string | number }> = [
     { id: 'models', title: 'Models', body: 'Provider model IDs, base URLs, and API key state.', icon: <Brain size={20} />, meta: data.runtime?.models.length ?? 0 },
-    { id: 'loop-engine', title: 'Loop engine', body: 'Agent turn loop, tool execution, and session processing.', icon: <Gauge size={20} />, meta: data.sessions.filter((session) => session.status === 'running').length },
-    { id: 'storage', title: 'Storage', body: 'SQLite state, uploaded files, memory, and runtime paths.', icon: <Database size={20} />, meta: data.files.length + data.memoryStores.length },
-    { id: 'sandbox', title: 'Sandbox', body: 'Environment templates and execution isolation providers.', icon: <Shield size={20} />, meta: data.environments.length },
+    { id: 'loop-engine', title: 'Loop engine', body: 'Provider plugins for agent turns, tools, events, and approvals.', icon: <Gauge size={20} />, meta: 'provider' },
+    { id: 'storage', title: 'Storage', body: 'Provider plugins for metadata, files, skills, and audit records.', icon: <Database size={20} />, meta: 'provider' },
+    { id: 'memory', title: 'Memory', body: 'Provider plugins for memory stores, mounting, and context injection.', icon: <Brain size={20} />, meta: data.runtime?.memory ?? 'disabled' },
+    { id: 'sandbox', title: 'Sandbox', body: 'Provider plugins for local execution and environment isolation.', icon: <Shield size={20} />, meta: data.runtime?.sandbox_providers.length ?? 0 },
     { id: 'api-keys', title: 'API keys', body: 'Bearer tokens for local API access and dashboard auth.', icon: <KeyRound size={20} />, meta: data.apiKeys.filter((key) => key.status === 'active').length },
     { id: 'api-reference', title: 'API reference', body: 'HTTP endpoints, SDK snippets, and Skill upload examples.', icon: <Keyboard size={20} />, meta: '/v1' },
     { id: 'logs', title: 'Logs', body: 'Runtime logs, refresh, and process restart controls.', icon: <FileText size={20} />, meta: data.runtime?.status ?? 'starting' },
@@ -3240,7 +3495,7 @@ function SettingsGeneral({ data, setView }: { data: ConsoleData; setView: (view:
         </div>
       </div>
       <SummaryStrip items={[
-        { label: 'Workspace', value: data.workspace?.name ?? 'local', icon: <Box size={18} /> },
+        { label: 'Workspace', value: workspaceLabel, icon: <Box size={18} /> },
         { label: 'Target', value: data.workspace?.target ?? 'local', icon: <Layers size={18} /> },
         { label: 'Runtime', value: data.runtime?.status ?? 'starting', icon: <Terminal size={18} /> },
         { label: 'Auth', value: data.runtime?.auth_enabled ? 'enabled' : 'disabled', icon: <KeyRound size={18} /> },
@@ -3250,10 +3505,10 @@ function SettingsGeneral({ data, setView }: { data: ConsoleData; setView: (view:
           <h2>Project</h2>
           <p>Runtime records are stored outside the source tree, while seed directories stay in the project.</p>
           <KeyValuePanel rows={[
-            ['Workspace', data.workspace?.name],
+            ['Workspace', workspaceLabel],
             ['Root folder', pathName(data.workspace?.root) || data.workspace?.name],
             ['Configuration folder', workspaceConfigDir(data.workspace)],
-            ['Memory', data.runtime?.memory],
+            ['Memory provider', data.runtime?.memory],
           ]} />
         </div>
         <div className="panel subtlePanel">
@@ -4350,10 +4605,6 @@ function splitCsv(value: string): string[] {
 
 function newDraftId() {
   return `draft_${Math.random().toString(36).slice(2, 10)}`;
-}
-
-function agentYamlPreview(agent: Template['agent']): string {
-  return agentDefinitionYaml(agent);
 }
 
 function credentialAuthLabel(type: CredentialAuthType) {

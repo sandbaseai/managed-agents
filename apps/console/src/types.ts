@@ -304,7 +304,6 @@ export type ConsoleData = {
 };
 
 export type ViewId =
-  | 'quickstart'
   | 'agents'
   | 'sessions'
   | 'environments'
@@ -320,6 +319,7 @@ export type ViewId =
   | 'models'
   | 'loop-engine'
   | 'storage'
+  | 'memory'
   | 'sandbox'
   | 'logs'
   | 'monitoring'

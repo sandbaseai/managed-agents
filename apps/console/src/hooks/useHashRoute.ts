@@ -40,7 +40,7 @@ export function useHashRoute(): [HashRoute, (view: ViewId, id?: string) => void]
 }
 
 function parseHashRoute(hash = window.location.hash.replace(/^#/, '')): HashRoute {
-  const value = hash || 'quickstart';
+  const value = hash || 'agents';
   if (value.startsWith('agents/')) {
     const agentId = decodeURIComponent(value.slice('agents/'.length));
     return agentId ? { view: 'agent-detail', agentId } : { view: 'agents' };
@@ -66,12 +66,11 @@ function parseHashRoute(hash = window.location.hash.replace(/^#/, '')): HashRout
   if (value === 'environment-detail') return { view: 'environment-detail' };
   if (value === 'credential-vault-detail') return { view: 'credential-vault-detail' };
   if (value === 'memory-store-detail') return { view: 'memory-store-detail' };
-  return { view: isView(value) ? value : 'quickstart' };
+  return { view: isView(value) ? value : 'agents' };
 }
 
 function isView(value: string): value is ViewId {
   return [
-    'quickstart',
     'agents',
     'agent-detail',
     'sessions',
@@ -89,6 +88,7 @@ function isView(value: string): value is ViewId {
     'models',
     'loop-engine',
     'storage',
+    'memory',
     'sandbox',
     'logs',
     'monitoring',

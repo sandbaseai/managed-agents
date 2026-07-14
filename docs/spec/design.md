@@ -272,8 +272,7 @@ that can safely restart or rebind the runtime.
 The Console is a React/Vite application built into `dist/console` and served
 from `/dashboard`. It provides:
 
-- Quickstart templates
-- agent list and agent creation
+- agent list, agent creation, and built-in templates
 - session list and session creation
 - environment, credential vault, and memory store management
 - skill, workspace, runtime, API key, and observability views
