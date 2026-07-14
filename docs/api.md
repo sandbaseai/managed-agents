@@ -1,18 +1,42 @@
 # API Reference
 
-The runtime exposes a JSON HTTP API under `/v1`. The local Console and SDK use
-the same API.
+`managed-agents` exposes a local-first JSON API under `/v1`. The Dashboard, the
+TypeScript SDK, and external automation all use the same resource model: agents,
+sessions, environments, credential vaults, memory stores, files, skills, API
+keys, and runtime operations.
 
-The Dashboard also includes a live reference page at `Settings > API reference`.
-It shows the active base URL, current authentication mode, endpoint groups,
-copyable `curl` and SDK snippets, and Skill upload examples from the running
-runtime.
+The API is intentionally close to Claude Managed Agents while remaining
+self-hosted and inspectable. Resource metadata is stored in SQLite, uploaded
+assets live under the runtime data directory, and session timelines are
+persisted as replayable events.
 
-## Base URL
+## Interactive Reference
+
+Open `Settings > API reference` in the Dashboard for an in-product reference page
+modeled after platform API docs:
+
+- endpoint navigation grouped by resource
+- method/path headers for each operation
+- header, query, body, and return field descriptions
+- copyable `curl` examples generated from the active runtime base URL
+- TypeScript SDK and Skill upload examples
+
+Use this page when integrating a local runtime into scripts, CI jobs, desktop
+apps, or an internal control plane. It reflects the server you are connected to,
+including whether bearer authentication is currently enabled.
+
+## Runtime Contract
+
+The local server exposes the Dashboard and API from the same origin:
 
 ```text
-http://127.0.0.1:3000/v1
+Dashboard: http://127.0.0.1:3000/dashboard
+API:       http://127.0.0.1:3000/v1
 ```
+
+All timestamps are RFC 3339 strings. Identifiers are opaque tagged ids such as
+`agent_...`, `sess_...`, `env_...`, `skill_...`, and `memstore_...`; clients
+should not infer meaning from their length or suffix.
 
 ## Compatibility Headers
 
@@ -41,7 +65,7 @@ Authorization: Bearer ma_local_example
 Raw API keys are never returned from list or retrieve responses. A newly created
 managed key returns `secret_key` once; store it before discarding the response.
 
-## Common Shapes
+## Pagination and Errors
 
 Collection responses:
 

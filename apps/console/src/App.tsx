@@ -43,7 +43,7 @@ import {
 import { Dispatch, FormEvent, ReactNode, SetStateAction, useEffect, useMemo, useState } from 'react';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { clearStoredApiKey, deleteJson, getJson, getPage, getStoredApiKey, getText, postJson, putJson, setStoredApiKey } from './api';
-import { EmptyState, KeyValuePanel, LoadingState, RequiredMark, ResourceBadge, StatusPill, SummaryStrip, Toolbar } from './components/Common';
+import { EmptyState, FilterSelect, KeyValuePanel, LoadingState, RequiredMark, ResourceBadge, StatusPill, SummaryStrip, Toolbar } from './components/Common';
 import { Modal } from './components/Modal';
 import { Files, Skills } from './components/pages/BuildPages';
 import { useHashRoute } from './hooks/useHashRoute';
@@ -560,9 +560,12 @@ function View(props: {
 
 function Agents({ data, onNewAgent, onOpenAgent }: { data: ConsoleData; onNewAgent: () => void; onOpenAgent: (agent: Agent) => void }) {
   const [query, setQuery] = useState('');
+  const [status, setStatus] = useState('active');
   const agents = data.agents.filter((agent) => {
     const q = query.toLowerCase();
-    return agent.id.toLowerCase().includes(q) || agent.name.toLowerCase().includes(q) || agent.description.toLowerCase().includes(q) || agent.model.toLowerCase().includes(q);
+    const matchesStatus = status === 'all' || (status === 'active' ? !agent.archived_at : status === 'archived' ? !!agent.archived_at : agent.status === status);
+    const matchesQuery = agent.id.toLowerCase().includes(q) || agent.name.toLowerCase().includes(q) || agent.description.toLowerCase().includes(q) || agent.model.toLowerCase().includes(q);
+    return matchesStatus && matchesQuery;
   });
   return (
     <section className="stack">
@@ -582,8 +585,17 @@ function Agents({ data, onNewAgent, onOpenAgent }: { data: ConsoleData; onNewAge
         placeholder="Search by name or exact ID"
         actions={(
           <>
-            <button className="filterButton" type="button">Created <strong>All time</strong> <ChevronDown size={15} /></button>
-            <button className="filterButton" type="button">Status <strong>Active</strong> <ChevronDown size={15} /></button>
+            <FilterSelect label="Created" value="all" onChange={() => undefined} options={[{ value: 'all', label: 'All time' }]} />
+            <FilterSelect
+              label="Status"
+              value={status}
+              onChange={setStatus}
+              options={[
+                { value: 'active', label: 'Active' },
+                { value: 'all', label: 'All' },
+                { value: 'archived', label: 'Archived' },
+              ]}
+            />
           </>
         )}
       />
@@ -783,9 +795,12 @@ function AgentConfigTab({ agent }: { agent: Agent }) {
 
 function AgentSessionsTab({ sessions, onOpenSession }: { sessions: Session[]; onOpenSession: (session: Session) => void }) {
   const [query, setQuery] = useState('');
+  const [status, setStatus] = useState('all');
   const filtered = sessions.filter((session) => {
     const q = query.toLowerCase();
-    return session.id.toLowerCase().includes(q) || (session.title ?? '').toLowerCase().includes(q);
+    const matchesStatus = status === 'all' || session.status === status;
+    const matchesQuery = session.id.toLowerCase().includes(q) || (session.title ?? '').toLowerCase().includes(q);
+    return matchesStatus && matchesQuery;
   });
   return (
     <div className="detailStack">
@@ -795,10 +810,21 @@ function AgentSessionsTab({ sessions, onOpenSession }: { sessions: Session[]; on
         placeholder="Search by session ID"
         actions={(
           <>
-            <button className="filterButton" type="button">Created <strong>All time</strong> <ChevronDown size={15} /></button>
-            <button className="filterButton" type="button">Version <strong>All</strong> <ChevronDown size={15} /></button>
-            <button className="filterButton" type="button">Deployment <strong>All</strong> <ChevronDown size={15} /></button>
-            <button className="filterButton" type="button">Status <strong>All</strong> <ChevronDown size={15} /></button>
+            <FilterSelect label="Created" value="all" onChange={() => undefined} options={[{ value: 'all', label: 'All time' }]} />
+            <FilterSelect label="Version" value="all" onChange={() => undefined} options={[{ value: 'all', label: 'All' }]} />
+            <FilterSelect label="Deployment" value="all" onChange={() => undefined} options={[{ value: 'all', label: 'All' }]} />
+            <FilterSelect
+              label="Status"
+              value={status}
+              onChange={setStatus}
+              options={[
+                { value: 'all', label: 'All' },
+                { value: 'idle', label: 'Idle' },
+                { value: 'running', label: 'Running' },
+                { value: 'failed', label: 'Failed' },
+                { value: 'terminated', label: 'Terminated' },
+              ]}
+            />
           </>
         )}
       />
@@ -858,9 +884,14 @@ function MetricCard({ title, value, subtitle }: { title: string; value: ReactNod
 
 function Sessions({ data, onNewSession, onOpenSession }: { data: ConsoleData; onNewSession: () => void; onOpenSession: (session: Session) => void }) {
   const [query, setQuery] = useState('');
+  const [status, setStatus] = useState('active');
+  const [agentId, setAgentId] = useState('all');
   const sessions = data.sessions.filter((session) => {
     const q = query.toLowerCase();
-    return session.id.toLowerCase().includes(q) || session.agent.name.toLowerCase().includes(q) || (session.title ?? '').toLowerCase().includes(q);
+    const matchesStatus = status === 'all' || (status === 'active' ? !session.archived_at : session.status === status);
+    const matchesAgent = agentId === 'all' || session.agent.id === agentId;
+    const matchesQuery = session.id.toLowerCase().includes(q) || session.agent.name.toLowerCase().includes(q) || (session.title ?? '').toLowerCase().includes(q);
+    return matchesStatus && matchesAgent && matchesQuery;
   });
   return (
     <section className="stack">
@@ -880,10 +911,30 @@ function Sessions({ data, onNewSession, onOpenSession }: { data: ConsoleData; on
         placeholder="Search by session ID"
         actions={(
           <>
-            <button className="filterButton" type="button">Created <strong>All time</strong> <ChevronDown size={15} /></button>
-            <button className="filterButton" type="button">Agent <strong>All</strong> <ChevronDown size={15} /></button>
-            <button className="filterButton" type="button">Deployment <strong>All</strong> <ChevronDown size={15} /></button>
-            <button className="filterButton" type="button">Status <strong>Active</strong> <ChevronDown size={15} /></button>
+            <FilterSelect label="Created" value="all" onChange={() => undefined} options={[{ value: 'all', label: 'All time' }]} />
+            <FilterSelect
+              label="Agent"
+              value={agentId}
+              onChange={setAgentId}
+              options={[
+                { value: 'all', label: 'All' },
+                ...data.agents.map((agent) => ({ value: agent.id, label: agent.name })),
+              ]}
+            />
+            <FilterSelect label="Deployment" value="all" onChange={() => undefined} options={[{ value: 'all', label: 'All' }]} />
+            <FilterSelect
+              label="Status"
+              value={status}
+              onChange={setStatus}
+              options={[
+                { value: 'active', label: 'Active' },
+                { value: 'all', label: 'All' },
+                { value: 'idle', label: 'Idle' },
+                { value: 'running', label: 'Running' },
+                { value: 'failed', label: 'Failed' },
+                { value: 'terminated', label: 'Terminated' },
+              ]}
+            />
           </>
         )}
       />
@@ -1180,9 +1231,12 @@ function SessionDetail({
 
 function Environments({ data, onNew, onOpenEnvironment }: { data: ConsoleData; onNew: () => void; onOpenEnvironment: (environment: Environment) => void }) {
   const [query, setQuery] = useState('');
+  const [status, setStatus] = useState('all');
   const environments = data.environments.filter((environment) => {
     const q = query.toLowerCase();
-    return environment.id.toLowerCase().includes(q) || environment.name.toLowerCase().includes(q) || environment.description.toLowerCase().includes(q);
+    const matchesStatus = status === 'all' || environment.status === status;
+    const matchesQuery = environment.id.toLowerCase().includes(q) || environment.name.toLowerCase().includes(q) || environment.description.toLowerCase().includes(q);
+    return matchesStatus && matchesQuery;
   });
 
   return (
@@ -1206,7 +1260,18 @@ function Environments({ data, onNew, onOpenEnvironment }: { data: ConsoleData; o
         query={query}
         onQuery={setQuery}
         placeholder="Search by name or exact ID"
-        actions={<button className="filterButton" type="button">Status <strong>All</strong> <ChevronDown size={15} /></button>}
+        actions={(
+          <FilterSelect
+            label="Status"
+            value={status}
+            onChange={setStatus}
+            options={[
+              { value: 'all', label: 'All' },
+              { value: 'active', label: 'Active' },
+              { value: 'archived', label: 'Archived' },
+            ]}
+          />
+        )}
       />
       <div className="tablePanel environmentsTablePanel">
         <table className="resourceTable">
@@ -1596,9 +1661,12 @@ function SetupStep({ index, title, body, code }: { index: number; title: string;
 
 function CredentialVaults({ data, onNew, onOpenVault }: { data: ConsoleData; onNew: () => void; onOpenVault: (vault: Vault) => void }) {
   const [query, setQuery] = useState('');
+  const [status, setStatus] = useState('all');
   const vaults = data.vaults.filter((vault) => {
     const q = query.toLowerCase();
-    return vault.id.toLowerCase().includes(q) || vault.name.toLowerCase().includes(q);
+    const matchesStatus = status === 'all' || vault.status === status;
+    const matchesQuery = vault.id.toLowerCase().includes(q) || vault.name.toLowerCase().includes(q);
+    return matchesStatus && matchesQuery;
   });
   return (
     <section className="stack">
@@ -1619,7 +1687,18 @@ function CredentialVaults({ data, onNew, onOpenVault }: { data: ConsoleData; onN
         query={query}
         onQuery={setQuery}
         placeholder="Search by name or exact ID"
-        actions={<button className="filterButton" type="button">Status <strong>All</strong> <ChevronDown size={15} /></button>}
+        actions={(
+          <FilterSelect
+            label="Status"
+            value={status}
+            onChange={setStatus}
+            options={[
+              { value: 'all', label: 'All' },
+              { value: 'active', label: 'Active' },
+              { value: 'archived', label: 'Archived' },
+            ]}
+          />
+        )}
       />
       <div className="tablePanel resourceTablePanel">
         <table className="resourceTable">
@@ -1666,13 +1745,16 @@ function CredentialVaultDetail({
   const [menuOpen, setMenuOpen] = useState(false);
   const [credentialMenuId, setCredentialMenuId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
+  const [status, setStatus] = useState('all');
   const credentials = vault.credentials.filter((credential) => {
     const q = query.toLowerCase();
-    return credential.id.toLowerCase().includes(q)
+    const matchesStatus = status === 'all' || credential.status === status;
+    const matchesQuery = credential.id.toLowerCase().includes(q)
       || credential.name.toLowerCase().includes(q)
       || credentialAuthLabel(credential.auth_type).toLowerCase().includes(q)
       || credential.mcp_server_url.toLowerCase().includes(q)
       || credential.variable_name.toLowerCase().includes(q);
+    return matchesStatus && matchesQuery;
   });
 
   const archiveVault = async () => {
@@ -1729,7 +1811,18 @@ function CredentialVaultDetail({
           query={query}
           onQuery={setQuery}
           placeholder="Search credentials"
-          actions={<button className="filterButton" type="button">Status <strong>All</strong> <ChevronDown size={15} /></button>}
+          actions={(
+            <FilterSelect
+              label="Status"
+              value={status}
+              onChange={setStatus}
+              options={[
+                { value: 'all', label: 'All' },
+                { value: 'active', label: 'Active' },
+                { value: 'archived', label: 'Archived' },
+              ]}
+            />
+          )}
         />
         <div className="tablePanel">
           <table>
@@ -1793,9 +1886,12 @@ function CredentialAuthCell({ credential }: { credential: VaultCredential }) {
 
 function MemoryStores({ data, onNew, onOpenMemoryStore }: { data: ConsoleData; onNew: () => void; onOpenMemoryStore: (store: MemoryStore) => void }) {
   const [query, setQuery] = useState('');
+  const [status, setStatus] = useState('active');
   const stores = data.memoryStores.filter((store) => {
     const q = query.toLowerCase();
-    return store.id.toLowerCase().includes(q) || store.name.toLowerCase().includes(q) || store.description.toLowerCase().includes(q);
+    const matchesStatus = status === 'all' || (status === 'active' ? !store.archived_at : status === 'archived' ? !!store.archived_at : store.status === status);
+    const matchesQuery = store.id.toLowerCase().includes(q) || store.name.toLowerCase().includes(q) || store.description.toLowerCase().includes(q);
+    return matchesStatus && matchesQuery;
   });
   return (
     <section className="stack">
@@ -1818,8 +1914,17 @@ function MemoryStores({ data, onNew, onOpenMemoryStore }: { data: ConsoleData; o
         placeholder="Search by name or exact ID"
         actions={(
           <>
-            <button className="filterButton" type="button">Created <strong>All time</strong> <ChevronDown size={15} /></button>
-            <button className="filterButton" type="button">Status <strong>Active</strong> <ChevronDown size={15} /></button>
+            <FilterSelect label="Created" value="all" onChange={() => undefined} options={[{ value: 'all', label: 'All time' }]} />
+            <FilterSelect
+              label="Status"
+              value={status}
+              onChange={setStatus}
+              options={[
+                { value: 'active', label: 'Active' },
+                { value: 'all', label: 'All' },
+                { value: 'archived', label: 'Archived' },
+              ]}
+            />
           </>
         )}
       />
@@ -3133,95 +3238,229 @@ type EndpointGroup = {
   endpoints: Array<{ method: string; path: string; description: string }>;
 };
 
-const API_ENDPOINT_GROUPS: EndpointGroup[] = [
+type ApiDocField = {
+  name: string;
+  type: string;
+  description: string;
+  required?: boolean;
+};
+
+type ApiDocEndpoint = {
+  id: string;
+  group: string;
+  title: string;
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE';
+  path: string;
+  summary: string;
+  headers?: ApiDocField[];
+  parameters?: ApiDocField[];
+  response: ApiDocField[];
+};
+
+const API_REFERENCE_DOCS: ApiDocEndpoint[] = [
   {
-    title: 'Agents',
-    description: 'Create, update, version, and archive managed agent definitions.',
-    endpoints: [
-      { method: 'GET', path: '/v1/agents', description: 'List agents' },
-      { method: 'POST', path: '/v1/agents', description: 'Create an agent from the standard YAML/JSON shape' },
-      { method: 'GET', path: '/v1/agents/{agent_id}', description: 'Retrieve an agent' },
-      { method: 'PUT', path: '/v1/agents/{agent_id}', description: 'Save a new agent version' },
-      { method: 'GET', path: '/v1/agents/{agent_id}/versions', description: 'List agent versions' },
-      { method: 'POST', path: '/v1/agents/{agent_id}/archive', description: 'Archive an agent' },
+    id: 'sessions-create',
+    group: 'Sessions',
+    title: 'Create session',
+    method: 'POST',
+    path: '/v1/sessions',
+    summary: 'Create an executable agent session in an environment. Sessions persist a resumable event log and can be continued through messages or raw events.',
+    parameters: [
+      { name: 'agent', type: 'string | object', required: true, description: 'Agent id, or an object with an id and optional version.' },
+      { name: 'environment_id', type: 'string', required: true, description: 'Environment template used to prepare the session runtime.' },
+      { name: 'title', type: 'string', description: 'Optional human-readable session title.' },
+      { name: 'resources', type: 'array', description: 'Files, GitHub repositories, or memory stores mounted into the session.' },
+      { name: 'vault_ids', type: 'string[]', description: 'Credential vault ids available to tools during this session.' },
+      { name: 'metadata', type: 'object', description: 'Opaque key-value tags for audit and external bookkeeping.' },
+    ],
+    response: [
+      { name: 'id', type: 'string', description: 'Server-generated sess_... identifier.' },
+      { name: 'status', type: 'idle | running | error | archived', description: 'Current session lifecycle state.' },
+      { name: 'agent', type: 'object', description: 'Pinned agent id, name, and version used by this session.' },
+      { name: 'usage', type: 'object', description: 'Input and output token counters recorded by the runtime.' },
+      { name: 'created_at', type: 'datetime', description: 'RFC 3339 creation timestamp.' },
     ],
   },
   {
-    title: 'Sessions',
-    description: 'Run agents, send events, stream replies, inspect transcripts, and stop runs.',
-    endpoints: [
-      { method: 'GET', path: '/v1/sessions', description: 'List sessions' },
-      { method: 'POST', path: '/v1/sessions', description: 'Create a session' },
-      { method: 'GET', path: '/v1/sessions/{session_id}', description: 'Retrieve a session' },
-      { method: 'POST', path: '/v1/sessions/{session_id}/messages', description: 'Send a user message and optionally stream SSE' },
-      { method: 'POST', path: '/v1/sessions/{session_id}/events', description: 'Send raw session events' },
-      { method: 'GET', path: '/v1/sessions/{session_id}/events', description: 'List recorded events' },
-      { method: 'GET', path: '/v1/sessions/{session_id}/events/stream', description: 'Tail the live SSE event stream' },
-      { method: 'POST', path: '/v1/sessions/{session_id}/stop', description: 'Interrupt and terminate a session' },
+    id: 'sessions-message',
+    group: 'Sessions',
+    title: 'Send message',
+    method: 'POST',
+    path: '/v1/sessions/{session_id}/messages',
+    summary: 'Append a user message and run the agent loop. Set stream to true for Server-Sent Events compatible with browser clients and SDK iterators.',
+    parameters: [
+      { name: 'content', type: 'string | content[]', required: true, description: 'User message text or structured content blocks.' },
+      { name: 'stream', type: 'boolean', description: 'When true, returns an SSE stream of session and agent events.' },
+      { name: 'metadata', type: 'object', description: 'Optional event-level metadata.' },
+    ],
+    response: [
+      { name: 'event', type: 'SSE event', description: 'Streaming event when stream is true.' },
+      { name: 'session', type: 'object', description: 'Updated session envelope for non-streaming calls.' },
     ],
   },
   {
-    title: 'Build resources',
-    description: 'Files and Skills that can be mounted into sessions or attached to agents.',
-    endpoints: [
-      { method: 'GET', path: '/v1/files', description: 'List uploaded files' },
-      { method: 'POST', path: '/v1/files', description: 'Upload a file' },
-      { method: 'GET', path: '/v1/files/{file_id}', description: 'Retrieve file metadata' },
-      { method: 'GET', path: '/v1/files/{file_id}/content', description: 'Download file content' },
-      { method: 'DELETE', path: '/v1/files/{file_id}', description: 'Delete a file from active listings' },
-      { method: 'GET', path: '/v1/skills', description: 'List custom and built-in skills' },
-      { method: 'POST', path: '/v1/skills', description: 'Upload a Skill package' },
-      { method: 'GET', path: '/v1/skills/{skill_id}', description: 'Retrieve Skill metadata' },
-      { method: 'DELETE', path: '/v1/skills/{skill_id}', description: 'Delete a custom Skill' },
+    id: 'agents-create',
+    group: 'Agents',
+    title: 'Create agent',
+    method: 'POST',
+    path: '/v1/agents',
+    summary: 'Create a managed agent definition using the Claude-style runtime shape. Console-created agents are stored in SQLite and versioned on update.',
+    parameters: [
+      { name: 'name', type: 'string', required: true, description: 'Human-readable agent name.' },
+      { name: 'description', type: 'string', description: 'Short agent purpose shown in lists and details.' },
+      { name: 'model', type: 'string | object', required: true, description: 'Model id string, or object with id and speed.' },
+      { name: 'system', type: 'string', required: true, description: 'System prompt used to drive the agent.' },
+      { name: 'mcp_servers', type: 'array', description: 'MCP server definitions referenced by mcp_toolset entries.' },
+      { name: 'tools', type: 'array', description: 'Built-in and MCP toolsets with permission policy configuration.' },
+      { name: 'skills', type: 'array', description: 'Skill references attached to this agent.' },
+      { name: 'metadata', type: 'object', description: 'Opaque agent metadata.' },
+    ],
+    response: [
+      { name: 'id', type: 'string', description: 'Server-generated agent_... identifier.' },
+      { name: 'version', type: 'number', description: 'Initial version, incremented by updates.' },
+      { name: 'status', type: 'active | archived', description: 'Current agent state.' },
+      { name: 'created_at', type: 'datetime', description: 'RFC 3339 creation timestamp.' },
     ],
   },
   {
-    title: 'Runtime resources',
-    description: 'Execution environments, credential vaults, persistent memory, and API access.',
-    endpoints: [
-      { method: 'GET', path: '/v1/environments', description: 'List environments' },
-      { method: 'POST', path: '/v1/environments', description: 'Create an environment template' },
-      { method: 'GET', path: '/v1/environments/{environment_id}', description: 'Retrieve an environment' },
-      { method: 'PUT', path: '/v1/environments/{environment_id}', description: 'Update an environment' },
-      { method: 'POST', path: '/v1/environments/{environment_id}/archive', description: 'Archive an environment' },
-      { method: 'GET', path: '/v1/credential-vaults', description: 'List credential vaults' },
-      { method: 'POST', path: '/v1/credential-vaults', description: 'Create a credential vault' },
-      { method: 'GET', path: '/v1/credential-vaults/{vault_id}', description: 'Retrieve a credential vault' },
-      { method: 'GET', path: '/v1/credential-vaults/{vault_id}/credentials', description: 'List credentials in a vault' },
-      { method: 'POST', path: '/v1/credential-vaults/{vault_id}/credentials', description: 'Add a credential to a vault' },
-      { method: 'POST', path: '/v1/credential-vaults/{vault_id}/credentials/{credential_id}/archive', description: 'Archive a credential' },
-      { method: 'DELETE', path: '/v1/credential-vaults/{vault_id}/credentials/{credential_id}', description: 'Delete a credential' },
-      { method: 'GET', path: '/v1/memory_stores', description: 'List memory stores' },
-      { method: 'POST', path: '/v1/memory_stores', description: 'Create a memory store' },
-      { method: 'GET', path: '/v1/memory_stores/{memory_store_id}', description: 'Retrieve a memory store' },
-      { method: 'GET', path: '/v1/memory_stores/{memory_store_id}/memories', description: 'List memories in a store' },
-      { method: 'POST', path: '/v1/memory_stores/{memory_store_id}/memories', description: 'Create a memory entry' },
-      { method: 'PUT', path: '/v1/memory_stores/{memory_store_id}/memories/{memory_id}', description: 'Update a memory entry' },
-      { method: 'DELETE', path: '/v1/memory_stores/{memory_store_id}/memories/{memory_id}', description: 'Delete a memory entry' },
-      { method: 'POST', path: '/v1/memory_stores/{memory_store_id}/archive', description: 'Archive a memory store' },
-      { method: 'GET', path: '/v1/api-keys', description: 'List dashboard/API keys' },
-      { method: 'POST', path: '/v1/api-keys', description: 'Create a bearer API key' },
-      { method: 'DELETE', path: '/v1/api-keys/{key_id}', description: 'Delete a managed API key' },
+    id: 'skills-create',
+    group: 'Skills',
+    title: 'Create skill',
+    method: 'POST',
+    path: '/v1/skills',
+    summary: 'Upload a reusable Skill package. A valid package contains one top-level folder with SKILL.md at its root.',
+    parameters: [
+      { name: 'files', type: 'multipart file[] | JSON file[]', required: true, description: 'Zip, .skill file, directory upload, or JSON file list.' },
+      { name: 'display_title', type: 'string', description: 'Optional human label not included in model prompts.' },
+    ],
+    response: [
+      { name: 'id', type: 'string', description: 'Server-generated skill_... identifier for custom uploads.' },
+      { name: 'display_title', type: 'string', description: 'Human-readable title.' },
+      { name: 'latest_version', type: 'string', description: 'Latest uploaded version identifier.' },
+      { name: 'source', type: 'custom | anthropic', description: 'Skill origin.' },
     ],
   },
   {
-    title: 'Operations',
-    description: 'Local runtime health, logs, metrics, workspace metadata, and process controls.',
-    endpoints: [
-      { method: 'GET', path: '/v1/x/health', description: 'Read service health' },
-      { method: 'GET', path: '/v1/x/runtime', description: 'Read runtime capabilities' },
-      { method: 'GET', path: '/v1/x/workspace', description: 'Read workspace paths and target' },
-      { method: 'GET', path: '/v1/x/templates', description: 'List built-in agent templates' },
-      { method: 'GET', path: '/v1/x/mcp/status', description: 'Read MCP server status' },
-      { method: 'GET', path: '/v1/x/logs', description: 'Tail recent runtime logs' },
-      { method: 'GET', path: '/v1/x/metrics', description: 'Prometheus-style metrics' },
-      { method: 'POST', path: '/v1/x/reload', description: 'Reload local config' },
-      { method: 'POST', path: '/v1/x/restart', description: 'Request runtime restart' },
-      { method: 'POST', path: '/v1/x/worker/claim', description: 'Self-hosted worker claim endpoint' },
-      { method: 'POST', path: '/v1/x/worker/complete', description: 'Self-hosted worker completion endpoint' },
+    id: 'files-upload',
+    group: 'Files',
+    title: 'Upload file',
+    method: 'POST',
+    path: '/v1/files',
+    summary: 'Upload files once and mount them into sessions as resources. Metadata is stored in SQLite; bytes live in the runtime data directory.',
+    parameters: [
+      { name: 'file', type: 'multipart file', required: true, description: 'File payload for multipart uploads.' },
+      { name: 'name', type: 'string', description: 'Filename for JSON uploads.' },
+      { name: 'content', type: 'string', description: 'JSON upload content, encoded as utf8 or base64.' },
+    ],
+    response: [
+      { name: 'id', type: 'string', description: 'Server-generated file_... identifier.' },
+      { name: 'filename', type: 'string', description: 'Original or supplied filename.' },
+      { name: 'size_bytes', type: 'number', description: 'Stored file size.' },
+      { name: 'created_at', type: 'datetime', description: 'RFC 3339 upload timestamp.' },
+    ],
+  },
+  {
+    id: 'environments-create',
+    group: 'Environments',
+    title: 'Create environment',
+    method: 'POST',
+    path: '/v1/environments',
+    summary: 'Create a reusable environment template for session containers, package policy, sandboxing, and network access.',
+    parameters: [
+      { name: 'name', type: 'string', required: true, description: 'Human-readable environment name.' },
+      { name: 'hosting_type', type: 'cloud | self_hosted', description: 'Where session work is expected to run.' },
+      { name: 'network', type: 'object', description: 'Limited or unrestricted network policy.' },
+      { name: 'packages', type: 'array', description: 'Package manager and package declarations available in this environment.' },
+      { name: 'metadata', type: 'object', description: 'Opaque environment tags.' },
+    ],
+    response: [
+      { name: 'id', type: 'string', description: 'Server-generated env_... identifier.' },
+      { name: 'status', type: 'active | archived', description: 'Current environment state.' },
+      { name: 'hosting_type', type: 'cloud | self_hosted', description: 'Configured hosting mode.' },
+    ],
+  },
+  {
+    id: 'vaults-credential-create',
+    group: 'Credential vaults',
+    title: 'Add credential',
+    method: 'POST',
+    path: '/v1/credential-vaults/{vault_id}/credentials',
+    summary: 'Add an OAuth, bearer token, or environment variable credential to a workspace vault.',
+    parameters: [
+      { name: 'auth_type', type: 'mcp_oauth | bearer_token | environment_variable', required: true, description: 'Credential type and injection mode.' },
+      { name: 'name', type: 'string', description: 'Optional human-readable label.' },
+      { name: 'value', type: 'string', description: 'Secret value. Stored encrypted and never returned in list responses.' },
+      { name: 'network', type: 'object', description: 'Allowed hosts and access mode for this credential.' },
+      { name: 'injection_locations', type: 'array', description: 'Request header or body injection locations.' },
+    ],
+    response: [
+      { name: 'id', type: 'string', description: 'Server-generated vcrd_... identifier.' },
+      { name: 'value_hint', type: 'string', description: 'Masked hint for the stored secret.' },
+      { name: 'status', type: 'active | archived', description: 'Current credential state.' },
+    ],
+  },
+  {
+    id: 'memory-create',
+    group: 'Memory stores',
+    title: 'Create memory',
+    method: 'POST',
+    path: '/v1/memory_stores/{memory_store_id}/memories',
+    summary: 'Write a persistent memory entry into a mounted store. Memory paths are slash-prefixed and rendered as a tree in the Console.',
+    parameters: [
+      { name: 'path', type: 'string', required: true, description: 'Absolute memory path, such as /notes/release.' },
+      { name: 'content', type: 'string', required: true, description: 'Memory text content.' },
+      { name: 'metadata', type: 'object', description: 'Optional bookkeeping tags.' },
+    ],
+    response: [
+      { name: 'id', type: 'string', description: 'Server-generated mem_... identifier.' },
+      { name: 'path', type: 'string', description: 'Normalized memory path.' },
+      { name: 'updated_at', type: 'datetime', description: 'Last write timestamp.' },
+    ],
+  },
+  {
+    id: 'api-keys-create',
+    group: 'API keys',
+    title: 'Create API key',
+    method: 'POST',
+    path: '/v1/api-keys',
+    summary: 'Create a local bearer token for shared dashboard or API access. The full secret is returned once.',
+    parameters: [
+      { name: 'name', type: 'string', required: true, description: 'Human-readable key label.' },
+      { name: 'metadata', type: 'object', description: 'Optional key tags.' },
+    ],
+    response: [
+      { name: 'id', type: 'string', description: 'Server-generated key_... identifier.' },
+      { name: 'key_prefix', type: 'string', description: 'Safe display prefix.' },
+      { name: 'secret_key', type: 'string', description: 'Full bearer token, returned only on create.' },
+    ],
+  },
+  {
+    id: 'logs-list',
+    group: 'Operations',
+    title: 'List runtime logs',
+    method: 'GET',
+    path: '/v1/x/logs',
+    summary: 'Read recent structured runtime logs from the current process. Use this for local operations and troubleshooting.',
+    parameters: [
+      { name: 'limit', type: 'number', description: 'Maximum log lines to return.' },
+      { name: 'level', type: 'debug | info | warn | error', description: 'Minimum severity filter.' },
+      { name: 'q', type: 'string', description: 'Text search against the rendered log message.' },
+    ],
+    response: [
+      { name: 'data', type: 'RuntimeLogEntry[]', description: 'Recent structured log lines.' },
+      { name: 'has_more', type: 'boolean', description: 'Whether older rows exist outside the page.' },
     ],
   },
 ];
+
+const API_ENDPOINT_GROUPS: EndpointGroup[] = Array.from(new Set(API_REFERENCE_DOCS.map((endpoint) => endpoint.group)))
+  .map((group) => ({
+    title: group,
+    description: API_REFERENCE_DOCS.find((endpoint) => endpoint.group === group)?.summary ?? '',
+    endpoints: API_REFERENCE_DOCS
+      .filter((endpoint) => endpoint.group === group)
+      .map((endpoint) => ({ method: endpoint.method, path: endpoint.path, description: endpoint.title })),
+  }));
 
 function SettingsApiReference({ data, setView }: { data: ConsoleData; setView: (view: ViewId) => void }) {
   const baseUrl = typeof window === 'undefined' ? 'http://127.0.0.1:3000' : window.location.origin;
@@ -3289,6 +3528,64 @@ skills:
     skill_id: skill_...
 metadata:
   template: incident-commander`;
+  const [activeEndpointId, setActiveEndpointId] = useState('sessions-create');
+  const activeEndpoint = API_REFERENCE_DOCS.find((endpoint) => endpoint.id === activeEndpointId) ?? API_REFERENCE_DOCS[0];
+  const headers = activeEndpoint.headers ?? [
+    { name: 'Content-Type', type: 'application/json', description: 'Required for JSON request bodies.', required: activeEndpoint.method !== 'GET' },
+    { name: 'Authorization', type: 'Bearer token', description: authEnabled ? 'Required when local API authentication is enabled.' : 'Optional while local API authentication is disabled.' },
+    { name: 'anthropic-beta', type: 'string', description: 'Accepted for Claude Managed Agents-compatible clients.' },
+  ];
+  const endpointExample = activeEndpoint.id === 'sessions-create' ? sessionCurl
+    : activeEndpoint.id === 'sessions-message' ? [
+      `curl -N -X POST '${baseUrl}/v1/sessions/${firstSessionId}/messages' \\`,
+      "  -H 'Content-Type: application/json' \\",
+      authCurl.trimEnd(),
+      "  -d '{\"content\":\"Hello from the API\",\"stream\":true}'",
+    ].filter(Boolean).join('\n')
+      : activeEndpoint.id === 'agents-create' ? [
+        `curl -sS -X POST '${baseUrl}/v1/agents' \\`,
+        "  -H 'Content-Type: application/json' \\",
+        authCurl.trimEnd(),
+        "  -d '{",
+        '    "name": "assistant",',
+        '    "description": "Helps with development tasks.",',
+        '    "model": { "id": "claude-opus-4-8", "speed": "standard" },',
+        '    "system": "You are a helpful assistant.",',
+        '    "tools": [{ "type": "agent_toolset_20260401" }],',
+        '    "skills": []',
+        "  }'",
+      ].filter(Boolean).join('\n')
+        : activeEndpoint.id === 'skills-create' ? skillUploadSnippet
+          : activeEndpoint.id === 'files-upload' ? [
+            `curl -sS -X POST '${baseUrl}/v1/files' \\`,
+            authCurl.trimEnd(),
+            "  -F 'file=@notes.txt'",
+          ].filter(Boolean).join('\n')
+            : activeEndpoint.id === 'environments-create' ? [
+              `curl -sS -X POST '${baseUrl}/v1/environments' \\`,
+              "  -H 'Content-Type: application/json' \\",
+              authCurl.trimEnd(),
+              "  -d '{\"name\":\"local-dev\",\"hosting_type\":\"self_hosted\",\"network\":{\"type\":\"limited\"}}'",
+            ].filter(Boolean).join('\n')
+              : activeEndpoint.id === 'vaults-credential-create' ? [
+                `curl -sS -X POST '${baseUrl}/v1/credential-vaults/vlt_.../credentials' \\`,
+                "  -H 'Content-Type: application/json' \\",
+                authCurl.trimEnd(),
+                "  -d '{\"auth_type\":\"environment_variable\",\"variable_name\":\"GITHUB_TOKEN\",\"value\":\"ghp_example\"}'",
+              ].filter(Boolean).join('\n')
+                : activeEndpoint.id === 'memory-create' ? [
+                  `curl -sS -X POST '${baseUrl}/v1/memory_stores/memstore_.../memories' \\`,
+                  "  -H 'Content-Type: application/json' \\",
+                  authCurl.trimEnd(),
+                  "  -d '{\"path\":\"/notes/release\",\"content\":\"Keep release notes concise.\"}'",
+                ].filter(Boolean).join('\n')
+                  : activeEndpoint.id === 'api-keys-create' ? [
+                    `curl -sS -X POST '${baseUrl}/v1/api-keys' \\`,
+                    "  -H 'Content-Type: application/json' \\",
+                    authCurl.trimEnd(),
+                    "  -d '{\"name\":\"Local Console\"}'",
+                  ].filter(Boolean).join('\n')
+                    : `curl -sS '${baseUrl}${activeEndpoint.path}'`;
 
   return (
     <section className="stack apiReference">
@@ -3302,99 +3599,136 @@ metadata:
         </button>
       </div>
 
-      <SummaryStrip items={[
-        { label: 'Base URL', value: baseUrl, icon: <Globe size={18} /> },
-        { label: 'API prefix', value: '/v1', icon: <Terminal size={18} /> },
-        { label: 'Auth', value: authEnabled ? 'Bearer token required' : 'disabled locally', icon: <KeyRound size={18} /> },
-        { label: 'Streaming', value: 'Server-sent events', icon: <Activity size={18} /> },
-      ]} />
+      <div className="apiDocsShell">
+        <aside className="apiDocsNav" aria-label="API endpoints">
+          <div className="apiDocsSearch">
+            <Search size={15} />
+            <span>Search endpoints...</span>
+          </div>
+          <div className="apiDocsRuntime">
+            <span>Base URL</span>
+            <code>{baseUrl}</code>
+          </div>
+          {API_ENDPOINT_GROUPS.map((group) => (
+            <div className="apiDocsNavGroup" key={group.title}>
+              <strong>{group.title}</strong>
+              {API_REFERENCE_DOCS.filter((endpoint) => endpoint.group === group.title).map((endpoint) => (
+                <button
+                  type="button"
+                  key={endpoint.id}
+                  className={`apiDocsNavItem ${endpoint.id === activeEndpoint.id ? 'active' : ''}`}
+                  onClick={() => setActiveEndpointId(endpoint.id)}
+                >
+                  <span className={`methodSquare method${endpoint.method}`}>{endpoint.method}</span>
+                  <span>{endpoint.title}</span>
+                </button>
+              ))}
+            </div>
+          ))}
+        </aside>
 
-      <div className="workspaceGrid">
-        <div className="panel subtlePanel">
-          <h2>Current runtime</h2>
-          <p>These values are read from the running local service.</p>
-          <KeyValuePanel rows={[
-            ['Dashboard', `${baseUrl}/dashboard`],
-            ['Health check', `${baseUrl}/v1/x/health`],
-            ['Authentication', authEnabled ? 'Authorization: Bearer <api-key>' : 'Not required for this runtime'],
-            ['API keys', 'Settings / API keys'],
-          ]} />
-        </div>
-        <div className="panel subtlePanel">
-          <h2>Recommended flow</h2>
-          <p>Create resources through the Console, then copy IDs into API calls.</p>
-          <KeyValuePanel rows={[
-            ['Agent sample', firstAgentId],
-            ['Environment sample', firstEnvironmentId],
-            ['Session sample', firstSessionId],
-            ['Skill package', 'top-level folder with SKILL.md'],
-          ]} />
-        </div>
-      </div>
+        <article className="apiDocsArticle">
+          <div className="apiDocsArticleHeader">
+            <div>
+              <h2>{activeEndpoint.title}</h2>
+              <div className="apiDocsPath">
+                <span className={`methodPill method${activeEndpoint.method}`}>{activeEndpoint.method}</span>
+                <code>{activeEndpoint.path}</code>
+              </div>
+            </div>
+            <button className="button secondary" type="button" onClick={() => copyText(`${activeEndpoint.method} ${activeEndpoint.path}`)}>
+              <Copy size={15} /> Copy endpoint
+            </button>
+          </div>
+          <p className="apiDocsSummary">{activeEndpoint.summary}</p>
 
-      <div className="apiReferenceGrid">
-        {API_ENDPOINT_GROUPS.map((group) => (
-          <div className="panel subtlePanel endpointGroup" key={group.title}>
-            <h2>{group.title}</h2>
-            <p>{group.description}</p>
-            <div className="endpointList">
-              {group.endpoints.map((endpoint) => (
-                <div className="endpointRow" key={`${endpoint.method}:${endpoint.path}`}>
-                  <span className={`methodPill method${endpoint.method}`}>{endpoint.method}</span>
-                  <code>{endpoint.path}</code>
-                  <small>{endpoint.description}</small>
+          <section className="apiDocsSection">
+            <h3>Header parameters</h3>
+            <div className="apiParamList">
+              {headers.map((field) => (
+                <div className="apiParamRow" key={field.name}>
+                  <div>
+                    <strong>{field.name}</strong>
+                    {field.required ? <span>required</span> : <span>optional</span>}
+                  </div>
+                  <p><code>{field.type}</code> {field.description}</p>
                 </div>
               ))}
             </div>
-          </div>
-        ))}
-      </div>
+          </section>
 
-      <div className="workspaceGrid">
-        <ApiSnippet title="Create a session and stream a message" value={sessionCurl} />
-        <ApiSnippet title="TypeScript SDK" value={sdkSnippet} />
-      </div>
+          <section className="apiDocsSection">
+            <h3>{activeEndpoint.method === 'GET' ? 'Query parameters' : 'Body parameters'}</h3>
+            <div className="apiParamList">
+              {(activeEndpoint.parameters ?? []).map((field) => (
+                <div className="apiParamRow" key={field.name}>
+                  <div>
+                    <strong>{field.name}</strong>
+                    {field.required ? <span>required</span> : <span>optional</span>}
+                  </div>
+                  <p><code>{field.type}</code> {field.description}</p>
+                </div>
+              ))}
+            </div>
+          </section>
 
-      <div className="panel subtlePanel">
-        <div className="panelHeader">
-          <div>
-            <h2>Skills API</h2>
-            <p>Skills are reusable instruction packages. Upload a zip, .skill file, directory upload, or JSON file list.</p>
-          </div>
-          <ResourceBadge label="8 MB max" />
-        </div>
-        <div className="skillReferenceGrid">
-          <div>
-            <h3>Package shape</h3>
+          <section className="apiDocsSection">
+            <h3>Returns</h3>
+            <div className="apiParamList">
+              {activeEndpoint.response.map((field) => (
+                <div className="apiParamRow" key={field.name}>
+                  <div>
+                    <strong>{field.name}</strong>
+                    <span>{field.type}</span>
+                  </div>
+                  <p>{field.description}</p>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section className="apiDocsSection">
+            <h3>Skills package notes</h3>
+            <p>Skill uploads follow Claude's package rule: one top-level folder containing <code>SKILL.md</code> at its root. The runtime derives the custom skill name from that package metadata and generates a random <code>skill_...</code> id.</p>
             <pre className="metricsPreview">code-review-assistant/{'\n'}  SKILL.md{'\n'}  references/checklist.md</pre>
-            <p className="mutedLine">All files must be inside one top-level directory. <code>SKILL.md</code> must be at that directory root and start with YAML frontmatter containing <code>name</code> and <code>description</code>.</p>
-          </div>
-          <div>
-            <h3>Attach to an agent</h3>
-            <pre className="metricsPreview">{skillAttachSnippet}</pre>
-          </div>
-        </div>
-      </div>
+          </section>
+        </article>
 
-      <div className="workspaceGrid">
-        <ApiSnippet title="Upload a Skill package" value={skillUploadSnippet} />
-        <ApiSnippet title="Create a Skill with JSON" value={skillJsonSnippet} />
+        <aside className="apiDocsCodeRail" aria-label="API examples">
+          <div className="apiDocsCodeCard">
+            <div className="snippetHeader">
+              <h2>Example request</h2>
+              <button className="iconButton" type="button" title="Copy request" aria-label="Copy request" onClick={() => copyText(endpointExample)}>
+                <Copy size={16} />
+              </button>
+            </div>
+            <pre className="metricsPreview apiSnippet">{endpointExample}</pre>
+          </div>
+          <div className="apiDocsCodeCard">
+            <div className="snippetHeader">
+              <h2>TypeScript SDK</h2>
+              <button className="iconButton" type="button" title="Copy SDK snippet" aria-label="Copy SDK snippet" onClick={() => copyText(sdkSnippet)}>
+                <Copy size={16} />
+              </button>
+            </div>
+            <pre className="metricsPreview apiSnippet">{sdkSnippet}</pre>
+          </div>
+          <div className="apiDocsCodeCard">
+            <div className="snippetHeader">
+              <h2>Skill JSON upload</h2>
+              <button className="iconButton" type="button" title="Copy Skill JSON" aria-label="Copy Skill JSON" onClick={() => copyText(skillJsonSnippet)}>
+                <Copy size={16} />
+              </button>
+            </div>
+            <pre className="metricsPreview apiSnippet">{skillJsonSnippet}</pre>
+          </div>
+          <div className="apiDocsCodeCard">
+            <h2>Agent skill reference</h2>
+            <pre className="metricsPreview apiSnippet">{skillAttachSnippet}</pre>
+          </div>
+        </aside>
       </div>
     </section>
-  );
-}
-
-function ApiSnippet({ title, value }: { title: string; value: string }) {
-  return (
-    <div className="panel subtlePanel snippetPanel">
-      <div className="snippetHeader">
-        <h2>{title}</h2>
-        <button className="iconButton" type="button" title="Copy snippet" aria-label={`Copy ${title}`} onClick={() => copyText(value)}>
-          <Copy size={16} />
-        </button>
-      </div>
-      <pre className="metricsPreview apiSnippet">{value}</pre>
-    </div>
   );
 }
 

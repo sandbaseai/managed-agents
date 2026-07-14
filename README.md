@@ -146,6 +146,11 @@ The API is available at:
 http://127.0.0.1:3000/v1
 ```
 
+Inside the Dashboard, open `Settings > API reference` for a Claude-style
+developer reference page. It shows the active base URL, authentication mode,
+grouped endpoints, parameter descriptions, return fields, and copyable `curl`
+and TypeScript SDK examples generated from your running runtime.
+
 ## Workspace Layout
 
 ```text
@@ -470,7 +475,7 @@ const session = await client.sessions.create({
   title: 'SDK smoke test',
 });
 
-for await (const event of client.sessions.message(session.id, 'Hello')) {
+for await (const event of client.sessions.chat(session.id, 'Hello')) {
   if (event.type === 'agent.message_chunk') {
     process.stdout.write(event.delta ?? '');
   }
