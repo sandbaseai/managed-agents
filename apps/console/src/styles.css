@@ -1,33 +1,55 @@
 :root {
   color-scheme: light;
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --bg: #faf9f7;
-  --sidebar-bg: #f4f3f0;
-  --surface: #ffffff;
-  --surface-muted: #f3f2ee;
-  --surface-hover: #eeeeea;
-  --surface-active: #e9e8e4;
-  --border: #dedbd3;
-  --border-subtle: #e9e6de;
-  --text: #171614;
-  --text-soft: #514e48;
-  --muted: #7d786f;
-  --muted-soft: #aaa49a;
-  --accent: #6b5de6;
-  --accent-soft: #f1efff;
-  --accent-border: #dad5ff;
-  --success: #167029;
-  --success-soft: #d8f0d4;
-  --info: #1f5f9e;
-  --info-soft: #dbeeff;
-  --danger: #a23b38;
-  --danger-soft: #fdeceb;
-  --warning: #8a5a00;
-  --warning-soft: #fff3d4;
-  --shadow-control: 0 1px 2px rgba(21, 21, 20, 0.08);
-  --shadow-popover: 0 16px 44px rgba(21, 21, 20, 0.14);
-  --shadow-modal: 0 28px 80px rgba(21, 21, 20, 0.26);
+  font-family: var(--font-sans);
+  --font-sans: "PingFang SC", -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", "Cascadia Mono", Consolas, monospace;
+  --white: #ffffff;
+  --gray-50: #faf9f8;
+  --gray-100: #f5f3f2;
+  --gray-200: #ebe7e5;
+  --gray-300: #ddd7d4;
+  --gray-400: #c5bfbc;
+  --gray-500: #9b9591;
+  --gray-600: #7c7772;
+  --gray-700: #5f5a55;
+  --gray-800: #3f3b37;
+  --gray-950: #11100f;
+  --primary-50: #fff7f3;
+  --primary-100: #ffebe2;
+  --primary-200: #ffd7c8;
+  --primary-600: #d97757;
+  --primary-700: #b65c3f;
+  --bg: var(--white);
+  --sidebar-bg: var(--gray-50);
+  --surface: var(--white);
+  --surface-muted: var(--gray-100);
+  --surface-hover: var(--gray-100);
+  --surface-active: var(--gray-200);
+  --border: var(--gray-300);
+  --border-subtle: var(--gray-200);
+  --border-strong: var(--gray-400);
+  --text: var(--gray-950);
+  --text-soft: var(--gray-800);
+  --muted: var(--gray-600);
+  --muted-soft: var(--gray-400);
+  --accent: var(--primary-600);
+  --accent-soft: var(--primary-50);
+  --accent-border: var(--primary-200);
+  --success: #15803d;
+  --success-soft: #dcfce7;
+  --info: #1d4f91;
+  --info-soft: #dbeafe;
+  --danger: #b42318;
+  --danger-soft: #fee4e2;
+  --warning: #b54708;
+  --warning-soft: #fff4cc;
+  --shadow-control: 0 0 0 0 transparent;
+  --shadow-popover: 0 10px 24px rgba(17, 16, 15, 0.1);
+  --shadow-modal: 0 24px 70px rgba(17, 16, 15, 0.2);
   --radius: 8px;
+  --radius-sm: 6px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
   background: var(--bg);
   color: var(--text);
   font-synthesis: none;
@@ -48,6 +70,8 @@ body,
 body {
   background: var(--bg);
   color: var(--text);
+  font-size: 14px;
+  line-height: 1.5;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -64,50 +88,55 @@ button {
 
 .shell {
   display: grid;
-  grid-template-columns: 256px minmax(0, 1fr);
+  grid-template-columns: 240px minmax(0, 1fr);
   min-height: 100%;
   min-width: 0;
+}
+
+.shell.settingsMode {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .sidebar {
   min-width: 0;
   background: var(--sidebar-bg);
   border-right: 1px solid var(--border-subtle);
-  padding: 16px 10px 12px;
+  padding: 14px 8px 10px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 }
 
 .brand {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   color: var(--text);
-  font-weight: 720;
+  font-weight: 690;
   letter-spacing: 0;
-  padding: 2px 10px 6px;
-  min-height: 32px;
+  padding: 2px 8px 6px;
+  min-height: 30px;
+  font-size: 14px;
 }
 
 .brandMark {
   color: var(--accent);
-  font-size: 19px;
+  font-size: 17px;
   line-height: 1;
 }
 
 .workspaceSwitch {
-  min-height: 46px;
+  min-height: 42px;
   width: 100%;
   display: grid;
-  grid-template-columns: 30px minmax(0, 1fr) 18px;
-  gap: 9px;
+  grid-template-columns: 28px minmax(0, 1fr) 16px;
+  gap: 8px;
   align-items: center;
   text-align: left;
   border: 1px solid var(--border);
   background: var(--surface);
   border-radius: var(--radius);
-  padding: 7px 9px;
+  padding: 6px 8px;
   color: var(--text);
   box-shadow: var(--shadow-control);
 }
@@ -129,24 +158,29 @@ button {
   white-space: nowrap;
 }
 
+.workspaceSwitch strong {
+  font-size: 14px;
+  line-height: 1.2;
+}
+
 .workspaceSwitch small {
   color: var(--muted);
   text-transform: uppercase;
-  font-size: 11px;
+  font-size: 10.5px;
   letter-spacing: 0;
 }
 
 .workspaceAvatar {
-  width: 30px;
-  height: 30px;
+  width: 28px;
+  height: 28px;
   display: grid;
   place-items: center;
   border-radius: var(--radius);
   background: var(--accent-soft);
   color: var(--accent);
   box-shadow: inset 0 0 0 1px var(--accent-border);
-  font-weight: 760;
-  font-size: 13px;
+  font-weight: 700;
+  font-size: 12px;
 }
 
 .nav {
@@ -155,36 +189,36 @@ button {
   max-width: 100%;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 14px;
   overflow: auto;
 }
 
 .navGroup {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
 }
 
 .navLabel {
   color: var(--muted);
-  font-size: 12px;
-  font-weight: 680;
-  padding: 6px 10px 4px;
+  font-size: 11px;
+  font-weight: 670;
+  padding: 6px 8px 4px;
 }
 
 .navItem {
-  height: 38px;
+  height: 34px;
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: 8px;
   border: 0;
   border-radius: var(--radius);
   background: transparent;
   color: var(--text-soft);
-  padding: 0 10px;
+  padding: 0 8px;
   text-align: left;
   font-size: 14px;
-  font-weight: 560;
+  font-weight: 540;
 }
 
 .navItem:hover {
@@ -200,7 +234,7 @@ button {
 .main {
   min-width: 0;
   max-width: 100%;
-  background: var(--bg);
+  background: #ffffff;
 }
 
 .consoleNotice {
@@ -262,13 +296,13 @@ p {
 }
 
 h1 {
-  font-size: 28px;
+  font-size: 23px;
   line-height: 1.2;
   letter-spacing: 0;
 }
 
 h2 {
-  font-size: 18px;
+  font-size: 16px;
   line-height: 1.3;
   letter-spacing: 0;
 }
@@ -292,10 +326,11 @@ h2 {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  min-height: 38px;
-  padding: 0 14px;
-  font-weight: 690;
+  gap: 7px;
+  min-height: 32px;
+  padding: 0 11px;
+  font-size: 13.5px;
+  font-weight: 650;
   line-height: 1;
   white-space: nowrap;
 }
@@ -308,7 +343,7 @@ h2 {
 }
 
 .primaryButton:hover {
-  background: #050505;
+  background: #050403;
 }
 
 .primaryButton:disabled {
@@ -353,7 +388,7 @@ h2 {
 }
 
 .iconButton {
-  width: 38px;
+  width: 34px;
   padding: 0;
   background: var(--surface);
   color: var(--text-soft);
@@ -391,73 +426,7 @@ h2 {
 .banner.error {
   color: var(--danger);
   background: var(--danger-soft);
-  border-color: #f3c4bd;
-}
-
-.quickstart {
-  display: grid;
-  grid-template-columns: minmax(320px, 0.8fr) minmax(420px, 1.2fr);
-  gap: 22px;
-  padding: 32px 38px 42px;
-}
-
-.quickPrompt {
-  position: relative;
-  min-height: calc(100vh - 122px);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 48px;
-}
-
-.quickstartTitle {
-  position: absolute;
-  top: 0;
-  left: 0;
-  font-size: 17px;
-  line-height: 1.3;
-}
-
-.stepper {
-  display: flex;
-  align-items: center;
-  gap: 22px;
-}
-
-.stepper span {
-  width: 34px;
-  height: 34px;
-  display: grid;
-  place-items: center;
-  border-radius: 999px;
-  background: var(--surface-active);
-  color: var(--muted);
-  font-weight: 750;
-}
-
-.stepper span.current {
-  background: var(--text);
-  color: var(--surface);
-}
-
-.buildPrompt {
-  width: min(420px, 100%);
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  align-items: center;
-  text-align: center;
-}
-
-.buildPrompt textarea {
-  width: 100%;
-  min-height: 128px;
-  resize: vertical;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 12px;
-  background: var(--surface);
+  border-color: #f6bdb7;
 }
 
 .panel,
@@ -465,14 +434,6 @@ h2 {
   background: var(--surface);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius);
-}
-
-.templatesPanel {
-  padding: 18px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  min-height: calc(100vh - 122px);
 }
 
 .panelHeader {
@@ -492,18 +453,18 @@ td span,
   display: flex;
   flex-direction: row;
   align-items: center;
-  gap: 9px;
-  min-height: 42px;
+  gap: 8px;
+  min-height: 36px;
   border: 1px solid var(--border);
   background: var(--surface);
   border-radius: var(--radius);
-  padding: 0 12px;
+  padding: 0 10px;
   color: var(--muted);
 }
 
 .searchBox:focus-within {
   border-color: var(--muted-soft);
-  box-shadow: 0 0 0 3px rgba(21, 21, 20, 0.06);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--border-subtle) 72%, transparent);
 }
 
 .searchBox input {
@@ -577,32 +538,32 @@ pre {
 }
 
 .stack {
-  padding: 34px 38px 44px;
+  padding: 26px 32px 36px;
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 17px;
 }
 
 .summaryStrip {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
+  gap: 10px;
 }
 
 .summaryItem {
-  min-height: 76px;
+  min-height: 68px;
   background: var(--surface);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius);
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 14px;
+  gap: 10px;
+  padding: 12px;
 }
 
 .summaryItem > span {
-  width: 34px;
-  height: 34px;
+  width: 32px;
+  height: 32px;
   display: grid;
   place-items: center;
   border-radius: var(--radius);
@@ -619,6 +580,7 @@ pre {
 
 .summaryItem small {
   color: var(--muted);
+  font-size: 12px;
 }
 
 .summaryItem strong {
@@ -643,7 +605,7 @@ pre {
 }
 
 .filterSelect {
-  min-height: 42px;
+  min-height: 36px;
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -676,12 +638,12 @@ pre {
 table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 14px;
+  font-size: 13.5px;
 }
 
 th,
 td {
-  padding: 15px 16px;
+  padding: 12px 10px;
   border-bottom: 1px solid var(--border-subtle);
   text-align: left;
   vertical-align: middle;
@@ -690,8 +652,8 @@ td {
 th {
   background: var(--surface);
   color: var(--text-soft);
-  font-size: 13px;
-  font-weight: 720;
+  font-size: 12px;
+  font-weight: 700;
 }
 
 td {
@@ -705,7 +667,7 @@ td span {
 
 td span {
   font-size: 12px;
-  margin-top: 3px;
+  margin-top: 2px;
 }
 
 tr:last-child td {
@@ -729,13 +691,13 @@ tr[role="button"]:hover td,
 .status {
   display: inline-flex;
   align-items: center;
-  min-height: 24px;
-  padding: 0 9px;
+  min-height: 22px;
+  padding: 0 8px;
   border-radius: 999px;
   background: var(--surface-muted);
   color: var(--text-soft);
   font-size: 12px;
-  font-weight: 720;
+  font-weight: 700;
   text-transform: capitalize;
 }
 
@@ -762,7 +724,7 @@ tr[role="button"]:hover td,
 }
 
 .resourceGrid {
-  padding: 28px;
+  padding: 24px;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 14px;
@@ -773,11 +735,11 @@ tr[role="button"]:hover td,
 }
 
 .resourceCard {
-  min-height: 128px;
+  min-height: 112px;
   background: var(--surface);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius);
-  padding: 15px;
+  padding: 13px;
   display: grid;
   grid-template-columns: 38px minmax(0, 1fr) auto;
   gap: 12px;
@@ -790,8 +752,8 @@ tr[role="button"]:hover td,
 }
 
 .resourceIcon {
-  width: 38px;
-  height: 38px;
+  width: 34px;
+  height: 34px;
   display: grid;
   place-items: center;
   border-radius: var(--radius);
@@ -841,8 +803,8 @@ tr[role="button"]:hover td,
 }
 
 .sourceBadge.anthropic {
-  background: #dcecff;
-  color: #225d9a;
+  background: var(--info-soft);
+  color: var(--info);
 }
 
 .sourceBadge.custom {
@@ -857,7 +819,7 @@ tr[role="button"]:hover td,
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius);
   background: var(--surface);
-  box-shadow: 0 12px 30px rgba(21, 21, 20, 0.07);
+  box-shadow: none;
 }
 
 .drawerHeader {
@@ -1041,7 +1003,7 @@ tr[role="button"]:hover td,
 
 .formAlert.error {
   background: var(--danger-soft);
-  border-color: #f3c4bd;
+  border-color: #f6bdb7;
   color: var(--danger);
 }
 
@@ -1172,21 +1134,21 @@ tr[role="button"]:hover td,
 }
 
 .configPathRow strong {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-family: var(--font-mono);
   font-size: 14px;
   color: var(--text);
 }
 
 .compactSelect {
-  min-height: 38px;
+  min-height: 34px;
   min-width: 150px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 0 36px 0 12px;
   background: var(--surface);
   color: var(--text);
-  font-size: 14px;
-  font-weight: 620;
+  font-size: 13.5px;
+  font-weight: 560;
 }
 
 .runtimeLogPanel {
@@ -1213,7 +1175,7 @@ tr[role="button"]:hover td,
   overflow: auto;
   background: #171716;
   color: #f2f2ef;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   line-height: 1.55;
 }
@@ -1352,7 +1314,7 @@ tr[role="button"]:hover td,
 
 .fileNameCell small {
   color: var(--muted);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
 }
 
@@ -1396,7 +1358,7 @@ tr[role="button"]:hover td,
   margin: 0;
   overflow: hidden;
   color: var(--muted);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1419,11 +1381,11 @@ tr[role="button"]:hover td,
 
 .fileContentInput {
   min-height: 240px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-family: var(--font-mono);
 }
 
 .subtlePanel {
-  padding: 18px;
+  padding: 16px;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -1431,18 +1393,18 @@ tr[role="button"]:hover td,
 
 .emptyState,
 .loading {
-  min-height: 180px;
-  border: 1px dashed var(--border);
+  min-height: 170px;
+  border: 0;
   border-radius: var(--radius);
   color: var(--muted);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 7px;
   background: var(--surface);
   text-align: center;
-  padding: 24px;
+  padding: 22px;
 }
 
 .emptyState strong {
@@ -1605,7 +1567,7 @@ input:focus,
 textarea:focus,
 select:focus {
   border-color: var(--muted);
-  box-shadow: 0 0 0 3px rgba(23, 21, 20, 0.08);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--border-subtle) 70%, transparent);
 }
 
 .toolGrid {
@@ -1674,21 +1636,21 @@ select:focus {
 }
 
 .filterButton {
-  min-height: 42px;
+  min-height: 36px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--surface);
   color: var(--muted);
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 0 12px;
+  gap: 7px;
+  padding: 0 10px;
   box-shadow: var(--shadow-control);
 }
 
 .filterButton strong {
   color: var(--text);
-  font-weight: 680;
+  font-weight: 600;
 }
 
 .pageIntro {
@@ -1703,13 +1665,13 @@ select:focus {
 }
 
 .pageIntro h1 {
-  font-size: 30px;
-  font-weight: 760;
+  font-size: 22px;
+  font-weight: 720;
 }
 
 .pageIntro p {
-  margin-top: 8px;
-  font-size: 16px;
+  margin-top: 5px;
+  font-size: 14px;
   line-height: 1.4;
 }
 
@@ -1722,30 +1684,44 @@ select:focus {
 }
 
 .settingsShell {
-  min-height: calc(100vh - 50px);
+  min-height: 100vh;
   display: grid;
-  grid-template-columns: 280px minmax(0, 1fr);
-  background: var(--bg);
+  grid-template-columns: 244px minmax(0, 1fr);
+  background: #ffffff;
 }
 
 .settingsSidebar {
   border-right: 1px solid var(--border-subtle);
   background: var(--sidebar-bg);
-  padding: 22px 14px;
+  padding: 12px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 10px;
+}
+
+.settingsSidebarHeader {
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0 4px 2px;
+}
+
+.settingsSidebarHeader strong {
+  font-size: 15px;
+  font-weight: 690;
 }
 
 .settingsSearch {
-  min-height: 40px;
+  min-height: 34px;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--surface);
-  padding: 0 12px;
+  padding: 0 9px;
   color: var(--muted);
   box-shadow: var(--shadow-control);
 }
@@ -1755,41 +1731,42 @@ select:focus {
   border: 0;
   background: transparent;
   color: var(--muted);
-  min-height: 36px;
+  min-height: 30px;
+  font-size: 13px;
 }
 
 .settingsGroupLabel {
   color: var(--muted);
-  font-size: 13px;
-  font-weight: 680;
-  padding: 0 10px;
+  font-size: 11px;
+  font-weight: 670;
+  padding: 0 8px;
 }
 
 .settingsNavGroup {
   display: flex;
   flex-direction: column;
-  gap: 7px;
+  gap: 4px;
 }
 
 .settingsNav {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
 }
 
 .settingsNavItem {
-  min-height: 42px;
+  min-height: 32px;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   border: 0;
   border-radius: var(--radius);
   background: transparent;
   color: var(--text-soft);
-  padding: 0 12px;
+  padding: 0 8px;
   text-align: left;
-  font-size: 14px;
-  font-weight: 610;
+  font-size: 13px;
+  font-weight: 560;
 }
 
 .settingsNavItem:hover {
@@ -1806,17 +1783,18 @@ select:focus {
 }
 
 .settingsContent > .stack {
-  padding-top: 30px;
+  max-width: 1080px;
+  padding: 34px 44px 52px;
 }
 
 .settingsOverviewGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 10px;
 }
 
 .settingsOverviewCard {
-  min-height: 116px;
+  min-height: 88px;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius);
   background: var(--surface);
@@ -1824,10 +1802,10 @@ select:focus {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: flex-start;
-  gap: 14px;
-  padding: 18px;
+  gap: 10px;
+  padding: 12px;
   text-align: left;
-  box-shadow: var(--shadow-control);
+  box-shadow: none;
 }
 
 .settingsOverviewCard:hover {
@@ -1836,8 +1814,8 @@ select:focus {
 }
 
 .settingsOverviewIcon {
-  width: 38px;
-  height: 38px;
+  width: 32px;
+  height: 32px;
   border-radius: var(--radius);
   background: var(--surface-muted);
   display: inline-flex;
@@ -1852,14 +1830,15 @@ select:focus {
 }
 
 .settingsOverviewCard strong {
-  font-size: 15px;
-  font-weight: 720;
+  font-size: 14px;
+  font-weight: 680;
 }
 
 .settingsOverviewCard small {
-  margin-top: 6px;
+  margin-top: 4px;
   color: var(--muted);
   line-height: 1.4;
+  font-size: 13px;
 }
 
 .settingsOverviewCard em {
@@ -1873,7 +1852,121 @@ select:focus {
   justify-content: center;
   padding: 0 10px;
   font-style: normal;
+  font-weight: 650;
+}
+
+.pluginSettingsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 460px), 1fr));
+  gap: 12px;
+  align-items: start;
+}
+
+.pluginSettingsPanel {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+  background: var(--surface);
+  overflow: hidden;
+  min-width: 0;
+  box-shadow: none;
+}
+
+.pluginSettingsHeader {
+  min-height: 64px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.pluginSettingsIcon {
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius);
+  background: var(--surface-muted);
+  color: var(--text-soft);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pluginSettingsHeader strong,
+.pluginSettingsHeader p {
+  display: block;
+}
+
+.pluginSettingsHeader strong {
+  font-size: 13px;
   font-weight: 680;
+}
+
+.pluginSettingsHeader p {
+  margin: 3px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.pluginSelectStack {
+  display: grid;
+}
+
+.pluginSelectField {
+  min-height: 60px;
+  display: grid;
+  grid-template-columns: minmax(112px, 136px) minmax(220px, 1fr);
+  gap: 6px 12px;
+  align-items: start;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text);
+}
+
+.pluginSelectField:last-child {
+  border-bottom: 0;
+}
+
+.pluginSelectLabel {
+  color: var(--text-soft);
+  font-weight: 610;
+  line-height: 34px;
+}
+
+.pluginSelectControl {
+  min-width: 0;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.pluginSelectField select {
+  min-height: 34px;
+  width: min(100%, 320px);
+  max-width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  padding: 0 32px 0 10px;
+  font-size: 13px;
+  font-weight: 560;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pluginSelectField select:disabled {
+  color: var(--text);
+  opacity: 1;
+  background: var(--surface-muted);
+}
+
+.pluginSelectField small {
+  grid-column: 2;
+  color: var(--muted);
+  font-size: 11.5px;
+  line-height: 1.35;
+  max-width: 420px;
 }
 
 .apiReferenceGrid {
@@ -1950,23 +2043,23 @@ select:focus {
 }
 
 .methodGET {
-  color: #1f5f8d;
-  background: #dbeafe;
+  color: var(--info);
+  background: var(--info-soft);
 }
 
 .methodPOST {
-  color: #1b6b42;
-  background: #dcfce7;
+  color: var(--success);
+  background: var(--success-soft);
 }
 
 .methodPUT {
-  color: #7a4b00;
-  background: #fef3c7;
+  color: var(--warning);
+  background: var(--warning-soft);
 }
 
 .methodDELETE {
-  color: #9f1d1d;
-  background: #fee2e2;
+  color: var(--danger);
+  background: var(--danger-soft);
 }
 
 .snippetPanel {
@@ -2077,7 +2170,7 @@ select:focus {
 
 .monoCell,
 .monoText {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-family: var(--font-mono);
 }
 
 .clickableRow:hover {
@@ -2148,18 +2241,18 @@ select:focus {
 }
 
 .titleLine h1 {
-  font-size: 30px;
+  font-size: 23px;
   font-weight: 760;
 }
 
 .mutedLine {
-  margin-top: 14px;
-  font-size: 15px;
+  margin-top: 10px;
+  font-size: 14px;
 }
 
 .agentDescription {
-  margin-top: 12px;
-  font-size: 16px;
+  margin-top: 10px;
+  font-size: 14px;
   line-height: 1.45;
 }
 
@@ -2321,7 +2414,7 @@ select:focus {
 .toolsetHeader span {
   color: var(--muted);
   margin-top: 3px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-family: var(--font-mono);
 }
 
 .toolsetIcon {
@@ -2332,7 +2425,7 @@ select:focus {
   border-radius: var(--radius);
   background: var(--surface);
   border: 1px solid var(--border-subtle);
-  box-shadow: 0 8px 20px rgba(31, 29, 26, 0.08);
+  box-shadow: none;
 }
 
 .toolsetRow {
@@ -2341,7 +2434,7 @@ select:focus {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: 14px;
   padding: 0 18px;
 }
 
@@ -2397,15 +2490,15 @@ select:focus {
 .metricGrid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 16px;
+  gap: 12px;
 }
 
 .metricCard {
-  min-height: 136px;
+  min-height: 110px;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius);
   background: var(--surface);
-  padding: 22px;
+  padding: 16px;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -2413,11 +2506,11 @@ select:focus {
 }
 
 .metricCard strong {
-  font-size: 16px;
+  font-size: 14px;
 }
 
 .metricCard span {
-  font-size: 32px;
+  font-size: 22px;
   font-weight: 780;
 }
 
@@ -2431,49 +2524,49 @@ select:focus {
 }
 
 .sessionDetail {
-  padding: 34px 38px 48px;
+  padding: 28px 32px 40px;
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 20px;
 }
 
 .sessionCrumb {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   color: var(--muted);
 }
 
 .sessionCrumb .textButton {
   min-height: auto;
   color: var(--muted);
-  font-size: 18px;
+  font-size: 14px;
 }
 
 .sessionHero {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 24px;
+  gap: 20px;
 }
 
 .sessionHeroMain {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
 }
 
 .sessionHeroMain h1 {
-  font-size: 30px;
-  font-weight: 760;
+  font-size: 22px;
+  font-weight: 720;
   overflow-wrap: anywhere;
 }
 
 .sessionMetaRow {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   flex-wrap: wrap;
   color: var(--muted);
 }
@@ -2481,8 +2574,8 @@ select:focus {
 .sessionMetaRow > span:not(.resourceBadge) {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  min-height: 34px;
+  gap: 6px;
+  min-height: 30px;
   color: var(--muted);
 }
 
@@ -2498,10 +2591,10 @@ select:focus {
 }
 
 .sessionToolbar {
-  min-height: 52px;
+  min-height: 46px;
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   border-bottom: 1px solid var(--border);
 }
 
@@ -2510,9 +2603,9 @@ select:focus {
 }
 
 .compactSegment button {
-  min-height: 38px;
-  padding: 0 15px;
-  font-size: 16px;
+  min-height: 34px;
+  padding: 0 13px;
+  font-size: 14px;
 }
 
 .filterWrap {
@@ -2521,7 +2614,7 @@ select:focus {
 
 .eventFilterMenu {
   position: absolute;
-  top: 46px;
+  top: 40px;
   left: 0;
   width: 260px;
   padding: 10px;
@@ -2533,13 +2626,13 @@ select:focus {
 }
 
 .eventFilterMenu label {
-  min-height: 42px;
+  min-height: 36px;
   display: grid;
   grid-template-columns: 18px minmax(0, 1fr);
   align-items: center;
-  gap: 10px;
+  gap: 9px;
   color: var(--text);
-  font-size: 16px;
+  font-size: 14px;
 }
 
 .eventFilterMenu input {
@@ -2551,12 +2644,12 @@ select:focus {
 
 .eventFilterMenu button {
   width: 100%;
-  min-height: 42px;
+  min-height: 38px;
   border: 0;
   border-top: 1px solid var(--border-subtle);
   background: transparent;
   color: var(--text);
-  font-weight: 720;
+  font-weight: 660;
 }
 
 .sessionSearch {
@@ -2598,30 +2691,29 @@ select:focus {
 
 .sessionComposer {
   position: sticky;
-  bottom: 18px;
+  bottom: 14px;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: end;
   gap: 10px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  background: color-mix(in srgb, var(--surface) 92%, transparent);
-  padding: 12px;
-  box-shadow: var(--shadow-popover);
-  backdrop-filter: blur(10px);
+  background: var(--surface);
+  padding: 10px;
+  box-shadow: var(--shadow-control);
   z-index: 4;
 }
 
 .sessionComposer textarea {
   width: 100%;
-  min-height: 48px;
+  min-height: 44px;
   max-height: 150px;
   resize: vertical;
   border: 0;
   border-radius: calc(var(--radius) - 2px);
   background: var(--surface-muted);
   color: var(--text);
-  padding: 12px 14px;
+  padding: 10px 12px;
   line-height: 1.45;
 }
 
@@ -2724,7 +2816,7 @@ select:focus {
 
 .eventRow time {
   color: var(--muted);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-family: var(--font-mono);
   text-align: right;
 }
 
@@ -2742,7 +2834,7 @@ select:focus {
   white-space: nowrap;
   font-size: 12px;
   font-weight: 720;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-family: var(--font-mono);
 }
 
 .eventInspector {
@@ -2769,7 +2861,7 @@ select:focus {
 .eventInspectorHeader p {
   margin-top: 8px;
   color: var(--muted);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-family: var(--font-mono);
 }
 
 .tinySegment {
@@ -2918,7 +3010,7 @@ select:focus {
 }
 
 .compactMetrics .metricCard span {
-  font-size: 28px;
+  font-size: 22px;
 }
 
 .selfHostedGrid {
@@ -2998,26 +3090,26 @@ select:focus {
 }
 
 .titleInput {
-  min-height: 52px;
-  font-size: 30px;
+  min-height: 42px;
+  font-size: 22px;
   font-weight: 780;
 }
 
 .editField {
   gap: 10px;
   color: var(--text-soft);
-  font-size: 17px;
+  font-size: 14px;
 }
 
 .editField input,
 .editField select {
-  min-height: 48px;
-  font-size: 17px;
+  min-height: 38px;
+  font-size: 14px;
 }
 
 .editField textarea {
   min-height: 96px;
-  font-size: 17px;
+  font-size: 14px;
 }
 
 .editField small {
@@ -3027,19 +3119,19 @@ select:focus {
 }
 
 .switchRow {
-  min-height: 42px;
+  min-height: 36px;
   display: grid;
   grid-template-columns: minmax(0, 1fr) 70px;
   align-items: center;
   gap: 18px;
   color: var(--text-soft);
-  font-size: 17px;
+  font-size: 14px;
 }
 
 .switchRow input {
   appearance: none;
-  width: 58px;
-  height: 32px;
+  width: 44px;
+  height: 24px;
   min-height: auto;
   justify-self: end;
   border-radius: 999px;
@@ -3052,11 +3144,11 @@ select:focus {
 .switchRow input::before {
   content: "";
   display: block;
-  width: 26px;
-  height: 26px;
+  width: 18px;
+  height: 18px;
   border-radius: 999px;
   background: var(--surface);
-  box-shadow: 0 1px 4px rgba(31, 29, 26, 0.2);
+  box-shadow: 0 1px 3px rgba(31, 29, 26, 0.16);
   transition: transform 0.15s ease;
 }
 
@@ -3066,7 +3158,7 @@ select:focus {
 }
 
 .switchRow input:checked::before {
-  transform: translateX(25px);
+  transform: translateX(20px);
 }
 
 .sectionHeaderRow {
@@ -3093,8 +3185,8 @@ select:focus {
 
 .editableRow input,
 .editableRow select {
-  min-height: 46px;
-  font-size: 16px;
+  min-height: 38px;
+  font-size: 14px;
 }
 
 .environmentCreateForm {
@@ -3117,7 +3209,7 @@ select:focus {
 }
 
 .modalHeader h2 {
-  font-size: 26px;
+  font-size: 22px;
   font-weight: 760;
 }
 
@@ -3142,7 +3234,7 @@ select:focus {
   display: flex;
   align-items: center;
   gap: 10px;
-  font-size: 17px;
+  font-size: 15px;
 }
 
 .sectionTitle span {
@@ -3158,18 +3250,18 @@ select:focus {
 }
 
 .segment button {
-  min-height: 42px;
+  min-height: 34px;
   border: 0;
   border-radius: var(--radius);
   background: transparent;
   color: var(--muted);
-  font-size: 16px;
+  font-size: 13.5px;
 }
 
 .segment button.active {
   background: var(--surface);
   color: var(--text);
-  box-shadow: 0 1px 4px rgba(21, 21, 20, 0.12);
+  box-shadow: none;
 }
 
 .claudeTemplateGrid {
@@ -3237,7 +3329,7 @@ select:focus {
   border-radius: 0;
   box-shadow: none;
   resize: vertical;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-family: var(--font-mono);
   font-size: 14px;
   line-height: 1.55;
   padding: 14px 22px 22px;
@@ -3508,13 +3600,13 @@ select:focus {
 
 .sessionResources h3 {
   margin: 0;
-  font-size: 18px;
+  font-size: 16px;
 }
 
 .sessionResources p {
   margin-top: 8px;
   color: var(--muted);
-  font-size: 17px;
+  font-size: 14px;
 }
 
 .resourceEditor {
@@ -3554,8 +3646,8 @@ select:focus {
 }
 
 .resourceAddButton {
-  min-height: 44px;
-  font-size: 17px;
+  min-height: 34px;
+  font-size: 14px;
 }
 
 .resourceMenu {
@@ -3573,14 +3665,14 @@ select:focus {
 
 .resourceMenu button {
   width: 100%;
-  min-height: 44px;
+  min-height: 34px;
   border: 0;
   border-radius: var(--radius);
   background: transparent;
   color: var(--text);
   padding: 0 12px;
   text-align: left;
-  font-size: 17px;
+  font-size: 14px;
 }
 
 .resourceMenu button:hover {
@@ -3603,7 +3695,7 @@ select:focus {
 .authCell small {
   margin-top: 4px;
   color: var(--muted);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-family: var(--font-mono);
 }
 
 .rowMenu {
@@ -3917,18 +4009,78 @@ select:focus {
   box-shadow: none;
 }
 
+.stack > .tablePanel,
+.skillTablePanel,
+.agentTablePanel,
+.sessionsTablePanel,
+.environmentsTablePanel,
+.resourceTablePanel {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.stack > .tablePanel table,
+.skillTablePanel table,
+.agentTablePanel table,
+.sessionsTablePanel table,
+.environmentsTablePanel table,
+.resourceTablePanel table {
+  border-top: 1px solid var(--border-subtle);
+}
+
+.stack > .tablePanel th,
+.stack > .tablePanel td,
+.skillTablePanel th,
+.skillTablePanel td,
+.agentTablePanel th,
+.agentTablePanel td,
+.sessionsTablePanel th,
+.sessionsTablePanel td,
+.environmentsTablePanel th,
+.environmentsTablePanel td,
+.resourceTablePanel th,
+.resourceTablePanel td {
+  padding-left: 0;
+  padding-right: 18px;
+}
+
+.panel,
+.subtlePanel,
+.summaryItem,
+.metricCard,
+.resourceCard,
+.runtimeLogPanel,
+.memoryBrowser {
+  box-shadow: none;
+}
+
+.metricCard span {
+  font-size: 22px;
+  font-weight: 720;
+}
+
+.resourceBadge {
+  min-height: 30px;
+  font-weight: 560;
+}
+
+.memoryContentHeader {
+  min-height: 64px;
+}
+
+.memoryContentHeader h2 {
+  font-size: 18px;
+}
+
+.memoryPreview,
+.memoryEditor {
+  font-size: 14px;
+}
+
 @media (max-width: 1080px) {
   .shell {
     grid-template-columns: 232px minmax(0, 1fr);
-  }
-
-  .quickstart {
-    grid-template-columns: 1fr;
-  }
-
-  .quickPrompt {
-    min-height: auto;
-    padding: 16px 0;
   }
 
   .resourceGrid,
@@ -4061,7 +4213,6 @@ select:focus {
     flex: 0 0 auto;
   }
 
-  .quickstart,
   .stack,
   .resourceGrid,
   .agentDetail,
@@ -4076,27 +4227,40 @@ select:focus {
   .formGrid,
   .toolGrid,
   .skillPicker,
-    .claudeTemplateGrid,
-    .metricGrid,
-    .workspaceGrid,
-    .apiReferenceGrid,
-    .skillReferenceGrid {
+  .claudeTemplateGrid,
+  .metricGrid,
+  .workspaceGrid,
+  .apiReferenceGrid,
+  .skillReferenceGrid,
+  .pluginSettingsGrid {
     grid-template-columns: 1fr;
   }
 
-  .quickstart,
-  .quickstart > *,
-  .quickPrompt,
-  .templatesPanel,
+  .pluginSelectField {
+    grid-template-columns: 1fr;
+  }
+
+  .pluginSelectLabel {
+    line-height: 1.3;
+  }
+
+  .pluginSelectControl {
+    justify-content: stretch;
+  }
+
+  .pluginSelectField select {
+    width: 100%;
+  }
+
+  .pluginSelectField small {
+    grid-column: auto;
+  }
+
   .templateGrid,
   .templateCard,
   .codePreview {
     min-width: 0;
     max-width: 100%;
-  }
-
-  .quickstart {
-    overflow-x: hidden;
   }
 
   .agentsTablePanel {
@@ -4140,7 +4304,7 @@ select:focus {
 
   .titleInput {
     width: 100%;
-    font-size: 26px;
+    font-size: 22px;
   }
 
   .agentHeroActions {

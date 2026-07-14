@@ -87,8 +87,7 @@ http://127.0.0.1:3000/dashboard
 The Dashboard includes:
 
 - Workspace and local runtime status
-- Quickstart templates
-- Agents and agent versions
+- Agent templates and agent versions
 - Session creation and session debug timelines
 - Environments
 - Credential vaults and credentials

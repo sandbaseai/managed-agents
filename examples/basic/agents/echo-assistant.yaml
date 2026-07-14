@@ -13,19 +13,19 @@ tools:
       permission_policy:
         type: always_allow
     configs:
-      bash:
+      - name: bash
         enabled: true
         permission_policy:
           type: always_ask
-      read:
+      - name: read
         enabled: true
-      write:
+      - name: write
         enabled: true
-      edit:
+      - name: edit
         enabled: true
-      glob:
+      - name: glob
         enabled: true
-      grep:
+      - name: grep
         enabled: true
 max_turns: 10
 temperature: 0.7

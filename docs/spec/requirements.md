@@ -142,7 +142,7 @@ branches, loops, or a canvas-based workflow DSL.
 1. The Dashboard shall be served by the same process at `/dashboard`.
 2. The Console shall be implemented as a dedicated React/Vite application under
    `apps/console` and built into `dist/console`.
-3. The Console shall show Quickstart templates, agents, sessions,
+3. The Console shall show agent templates, agents, sessions,
    environments, credential vaults, memory stores, skills, files, and a
    Settings area for workspace, models, loop engine, storage, sandboxing, API
    keys, logs, and monitoring.
