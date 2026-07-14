@@ -22,7 +22,7 @@ import type { SessionManager } from '@/core/session/session-manager.js';
 import type { AgentDefinition } from '@/types/agent.js';
 import { workerRoutes } from './routes/worker.js';
 import type { WorkQueue } from '@/sandbox/self-hosted-provider.js';
-import type { Logger } from '@/core/observability/logger.js';
+import type { Logger, LogStore } from '@/core/observability/logger.js';
 import type { Metrics } from '@/core/observability/metrics.js';
 import type { Skill } from '@/core/skills/loader.js';
 import type { Database } from '@/core/db/database.js';
@@ -66,8 +66,12 @@ export interface ServerDeps {
   consoleRoot?: string | null;
   /** Optional structured logger for request logging. */
   logger?: Logger;
+  /** Optional in-process log store (exposed at /v1/x/logs). */
+  logStore?: LogStore;
   /** Optional metrics registry (exposed at /v1/x/metrics). */
   metrics?: Metrics;
+  /** Optional runtime restart hook (exposed at /v1/x/restart). */
+  restart?: () => Promise<void> | void;
   /** Optional work queue for the self_hosted sandbox worker endpoints (R9.14). */
   workQueue?: WorkQueue;
 }
@@ -116,7 +120,7 @@ export function createServer(deps: ServerDeps) {
   // SSE streaming
   app.route('/v1/sessions', streamRoutes(deps));
 
-  // Local runtime extension endpoints
+  // Runtime extension endpoints
   app.route('/v1/x', extendedRoutes(deps));
 
   // Self-hosted sandbox worker endpoints (R9.14)
@@ -128,9 +132,11 @@ export function createServer(deps: ServerDeps) {
   app.get('/', (c) => c.json({ status: 'ok', name: 'managed-agents', version: '0.1.0' }));
 
   // Web dashboard (R10)
-  app.get('/ui', (c) => serveConsoleAsset(c, 'index.html', deps.consoleRoot));
-  app.get('/ui/*', (c) => {
-    const path = c.req.path.replace(/^\/ui\/?/, '') || 'index.html';
+  app.get('/ui', (c) => c.redirect('/dashboard', 308));
+  app.get('/ui/*', (c) => c.redirect(c.req.path.replace(/^\/ui/, '/dashboard'), 308));
+  app.get('/dashboard', (c) => serveConsoleAsset(c, 'index.html', deps.consoleRoot));
+  app.get('/dashboard/*', (c) => {
+    const path = c.req.path.replace(/^\/dashboard\/?/, '') || 'index.html';
     return serveConsoleAsset(c, path, deps.consoleRoot);
   });
 
@@ -141,7 +147,7 @@ function serveConsoleAsset(c: any, requestedPath: string, overrideRoot?: string 
   const root = resolveConsoleRoot(overrideRoot);
   if (!root) {
     return c.html(
-      '<!doctype html><html><head><title>Console not built</title></head><body><h1>Console not built</h1><p>Run <code>npm run build:console</code> before serving /ui.</p></body></html>',
+      '<!doctype html><html><head><title>Dashboard not built</title></head><body><h1>Dashboard not built</h1><p>Run <code>npm run build:console</code> before serving /dashboard.</p></body></html>',
       503,
     );
   }

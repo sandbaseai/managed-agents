@@ -70,7 +70,7 @@ when they are first imported, while agents created through the API or Console
 receive server-generated `agent_...` ids. Use the returned id in API calls,
 sessions, and SDK requests; treat `name` as a human-readable display field.
 
-## Console Workflow
+## Dashboard Workflow
 
 Start the runtime:
 
@@ -81,10 +81,10 @@ managed-agents start
 Open:
 
 ```text
-http://127.0.0.1:3000/ui
+http://127.0.0.1:3000/dashboard
 ```
 
-The Console includes:
+The Dashboard includes:
 
 - Workspace and local runtime status
 - Quickstart templates
@@ -98,7 +98,7 @@ The Console includes:
 
 ## Create An Agent
 
-Use the Console `Create agent` action, or add a seed YAML file in `agents/` and
+Use the Dashboard `Create agent` action, or add a seed YAML file in `agents/` and
 reload to import it into SQLite:
 
 ```bash
@@ -300,5 +300,5 @@ managed-agents template create <name>
 - Keep skill uploads below 8 MB per package.
 - Use `MANAGED_AGENTS_SECRET_KEY` to provide a stable credential encryption key
   across runtime moves.
-- Create a managed API key in the Console or set `MANAGED_AGENTS_API_KEY` before
+- Create a managed API key in the Dashboard or set `MANAGED_AGENTS_API_KEY` before
   exposing the runtime beyond a trusted local network.

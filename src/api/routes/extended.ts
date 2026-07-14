@@ -3,13 +3,18 @@
  *
  * Runtime extension endpoints:
  * POST /v1/x/reload  - hot-reload agent definitions
+ * POST /v1/x/restart - restart the local runtime process
+ * GET  /v1/x/logs    - recent structured runtime logs
  * GET  /v1/x/health  - basic health check
  */
 
 import { Hono } from 'hono';
 import { dirname } from 'node:path';
 import type { ServerDeps } from '../server.js';
+import type { LogLevel } from '@/core/observability/logger.js';
 import { getAgentSkillIds, getEnabledToolNames } from '@/core/agent/standard.js';
+
+const LOG_LEVELS = new Set<LogLevel>(['debug', 'info', 'warn', 'error']);
 
 export function extendedRoutes(deps: ServerDeps) {
   const app = new Hono();
@@ -31,12 +36,62 @@ export function extendedRoutes(deps: ServerDeps) {
     }
   });
 
+  app.post('/restart', (c) => {
+    if (!deps.restart) {
+      return c.json({
+        error: {
+          type: 'unsupported',
+          message: 'Runtime restart is not available for this server instance.',
+        },
+      }, 501);
+    }
+
+    deps.logger?.warn('runtime_restart_scheduled', {
+      source: 'api',
+      path: c.req.path,
+    });
+
+    setTimeout(() => {
+      void Promise.resolve(deps.restart?.()).catch((err: any) => {
+        deps.logger?.error('runtime_restart_failed', {
+          error: err?.message ?? String(err),
+        });
+      });
+    }, 50);
+
+    return c.json({ restarting: true, status: 'scheduled' }, 202);
+  });
+
   // GET /health - Health check
   app.get('/health', (c) => {
     return c.json({
       status: 'healthy',
       timestamp: new Date().toISOString(),
       agents_loaded: deps.agents.length,
+    });
+  });
+
+  // GET /logs - Recent in-process runtime logs
+  app.get('/logs', (c) => {
+    const rawLevel = c.req.query('level');
+    const level = rawLevel as LogLevel | undefined;
+    if (rawLevel && !LOG_LEVELS.has(level as LogLevel)) {
+      return c.json({
+        error: {
+          type: 'invalid_request',
+          message: 'level must be one of debug, info, warn, or error',
+        },
+      }, 400);
+    }
+
+    const limit = parsePositiveInteger(c.req.query('limit')) ?? 200;
+    const query = c.req.query('q') ?? c.req.query('query') ?? undefined;
+    const data = deps.logStore?.list({ limit, level, query }) ?? [];
+    return c.json({
+      data,
+      has_more: false,
+      first_id: data[0]?.time ?? null,
+      last_id: data.at(-1)?.time ?? null,
     });
   });
 
@@ -106,6 +161,13 @@ export function extendedRoutes(deps: ServerDeps) {
   });
 
   return app;
+}
+
+function parsePositiveInteger(value: string | undefined): number | undefined {
+  if (!value) return undefined;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return undefined;
+  return Math.trunc(parsed);
 }
 
 function defaultTemplateModel(deps: ServerDeps) {

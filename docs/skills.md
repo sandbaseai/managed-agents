@@ -20,7 +20,7 @@ Valid upload formats:
 
 - A `.zip` file containing the top-level directory
 - A `.skill` file with the same zip structure
-- A directory upload from the Console
+- A directory upload from the Dashboard
 - A JSON or multipart API upload where all paths share the same top-level
   directory
 
@@ -79,16 +79,16 @@ zip -r code-review-assistant.zip code-review-assistant
 The archive must include the directory name. Do not zip only the files inside
 the directory.
 
-## Upload Through The Console
+## Upload Through The Dashboard
 
-1. Open `http://127.0.0.1:3000/ui`.
+1. Open `http://127.0.0.1:3000/dashboard`.
 2. Go to `Skills`.
 3. Click `Create skill`.
 4. Drop a `.zip`, `.skill`, or directory.
 5. Click `Continue`.
 
 If validation succeeds, the skill is created and the list is refreshed. If
-validation fails, the Console shows the first package error.
+validation fails, the Dashboard shows the first package error.
 
 ## Upload Through The API
 

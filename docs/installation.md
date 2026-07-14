@@ -22,10 +22,10 @@ npx managed-agents init
 npx managed-agents start
 ```
 
-The Console will be available at:
+The Dashboard will be available at:
 
 ```text
-http://127.0.0.1:3000/ui
+http://127.0.0.1:3000/dashboard
 ```
 
 The API will be available at:
@@ -83,7 +83,7 @@ During development, run the TypeScript entry point directly:
 npm run dev
 ```
 
-Run the Console Vite server separately when iterating on UI code:
+Run the Dashboard Vite server separately when iterating on frontend code:
 
 ```bash
 npm run dev:console
@@ -239,15 +239,15 @@ List agents:
 curl http://127.0.0.1:3000/v1/agents
 ```
 
-Open the Console:
+Open the Dashboard:
 
 ```text
-http://127.0.0.1:3000/ui
+http://127.0.0.1:3000/dashboard
 ```
 
 ## Troubleshooting
 
-If the Console loads but agents are missing, run:
+If the Dashboard loads but agents are missing, run:
 
 ```bash
 managed-agents reload

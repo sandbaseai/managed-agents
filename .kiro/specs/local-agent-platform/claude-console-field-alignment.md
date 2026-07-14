@@ -95,7 +95,7 @@ Manage
   Tags
 ```
 
-managed-agents Console target:
+managed-agents Dashboard target:
 
 ```text
 Workspace selector
@@ -116,13 +116,18 @@ Managed Agents
 
 Quality
   Eval Runs
-  Observability
+  Monitoring
 
 System
-  Workspace
-  Local Runtime
-  API Keys
   Settings
+    Workspace
+    Models
+    Loop engine
+    Storage
+    Sandbox
+    API keys
+    Logs
+    Monitoring
 ```
 
 Do not include Billing, Credits, Cost, or cloud account spend pages.
@@ -851,7 +856,7 @@ Observability should reuse session event fields:
 - stop reason
 - raw payload
 
-## Workspace and Local Runtime
+## Workspace and Runtime Settings
 
 Workspace selector fields:
 
@@ -871,17 +876,22 @@ Workspace page fields:
 - runtime target
 - start command
 
-Local Runtime page fields:
+Settings runtime section fields:
 
 - status
 - API URL
-- UI URL
+- dashboard URL
 - auth mode
 - loaded agents
 - loaded skills
 - active sessions
 - sandbox providers
 - memory provider
+- model base URL state
+- model API key state
+- SQLite database path
+- runtime log buffer
+- metrics endpoint status
 - start command
 - recent runtime logs or events
 
@@ -984,7 +994,7 @@ Standard serialization:
 
 ## Acceptance Criteria
 
-- `/ui` opens the new Console first screen, not the old UI.
+- `/dashboard` opens the new Dashboard first screen, not the old embedded console.
 - Quickstart visually and structurally matches Claude's template-first flow.
 - Every create modal uses the field set described above.
 - Agent YAML import/export uses Claude/OMA names.

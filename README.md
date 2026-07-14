@@ -134,10 +134,10 @@ npx managed-agents start
 # node /path/to/managed-agents/dist/index.js start
 ```
 
-Open the Console:
+Open the Dashboard:
 
 ```text
-http://127.0.0.1:3000/ui
+http://127.0.0.1:3000/dashboard
 ```
 
 The API is available at:
@@ -229,9 +229,9 @@ provider model id such as `claude-opus-4-8`, `gpt-4o`, or an OpenAI-compatible
 model name. API clients may also send a model configuration object when they
 need additional controls such as `speed`.
 
-## Console
+## Dashboard
 
-The Console provides a local dashboard for:
+The Dashboard provides a local console for:
 
 - Creating and editing agents
 - Starting sessions and viewing transcripts
@@ -242,7 +242,15 @@ The Console provides a local dashboard for:
 - Creating and editing memory stores
 - Uploading skills
 - Creating and archiving local API keys
-- Reviewing local runtime and workspace configuration
+- Reading the built-in API reference for `/v1` endpoints, SDK snippets, and
+  Skill upload examples
+- Reviewing Settings for models, loop engine behavior, storage, sandboxing,
+  API keys, API reference, logs, and monitoring
+- Restarting the runtime and viewing recent structured logs from Settings
+
+Open `Settings > API reference` in the Dashboard to see the active base URL,
+authentication mode, core service endpoints, copyable `curl` examples, SDK
+snippets, and the required Skill package shape.
 
 ## CLI
 
@@ -315,6 +323,34 @@ curl -X POST http://127.0.0.1:3000/v1/memory_stores \
     "description": "Long-lived incident context and follow-up notes.",
     "metadata": { "team": "platform" }
   }'
+```
+
+Upload a Skill package:
+
+```bash
+zip -r code-review-assistant.zip code-review-assistant
+
+curl -X POST http://127.0.0.1:3000/v1/skills \
+  -F "files=@code-review-assistant.zip"
+```
+
+The archive must contain one top-level directory and a root `SKILL.md` file:
+
+```text
+code-review-assistant/
++-- SKILL.md
++-- references/
+    +-- checklist.md
+```
+
+`SKILL.md` must start with YAML frontmatter that includes `name` and
+`description`. The server generates the stable `skill_...` id; the Skill name is
+read from the package metadata and can then be attached to agents:
+
+```yaml
+skills:
+  - type: custom
+    skill_id: skill_...
 ```
 
 Memory store names are labels for humans and prompts; they do not need to be
@@ -498,12 +534,18 @@ npm test
 npm run build
 ```
 
-Run the runtime and Console during development:
+Run the runtime and Dashboard during development:
 
 ```bash
 npm run dev
 npm run dev:console
 ```
+
+The Dashboard's `Settings > Logs` page can restart the CLI-managed server and
+display the current process log buffer. Runtime configuration is organized
+under `Settings > Models`, `Settings > Loop engine`, `Settings > Storage`, and
+`Settings > Sandbox`. The same log controls are available through
+`POST /v1/x/restart` and `GET /v1/x/logs`.
 
 ## Release Checks
 

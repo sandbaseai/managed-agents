@@ -10,8 +10,9 @@ Public fields follow the standard model directly: `system`,
 Current implementation status:
 
 - Console shell, Quickstart, Agents, Agent detail/edit, Sessions list,
-  Create session, Session detail, workspace, runtime, resources, skills,
-  API keys, and observability are implemented in `apps/console`.
+  Create session, Session detail, resources, skills, files, and grouped
+  Settings pages for workspace, models, loop engine, storage, sandboxing, API
+  keys, logs, and monitoring are implemented in `apps/console`.
 - Environments, Credential Vaults, and Memory Stores now have Claude-style
   list, create, and detail surfaces instead of placeholder cards.
 - Credential Vault detail supports adding MCP OAuth, bearer token, and
@@ -20,7 +21,7 @@ Current implementation status:
   edit-memory flows.
 - Console navigation currently uses hash routes (`#agents/:id`,
   `#sessions/:id`, `#credential-vaults/:id`, `#memory-stores/:id`) so it can
-  run under the existing `/ui` static mount without server-side SPA route
+  run under the `/dashboard` static mount without server-side SPA route
   rewrites.
 - Session pages follow the Claude Console structure: filters, create modal
   with Agent/Environment/Vaults/Resources, and Transcript/Debug event views.
@@ -29,7 +30,7 @@ Current implementation status:
 
 Build a real Console for `managed-agents` that can run both as:
 
-- a web console served by the runtime at `/ui`
+- a web dashboard served by the runtime at `/dashboard`
 - a future desktop-console frontend embedded by a desktop shell
 
 Do not continue iterating on the old embedded UI. The next product
@@ -71,7 +72,7 @@ When implementation choices conflict:
 3. Treat pre-launch implementation fields as replaceable draft details.
 
 This means the Console should look and behave like Claude first. OMA should
-prevent field omissions and guide standard API details. The old UI and
+prevent field omissions and guide standard API details. The old embedded console and
 pre-launch database shapes must not define the new product surface. Because
 the service has not launched, prefer changing schema/API to the standard model
 over keeping non-standard field names.
@@ -106,13 +107,13 @@ over keeping non-standard field names.
 Default route:
 
 ```text
-/ui -> /quickstart
+/dashboard -> /quickstart
 ```
 
 SPA history route:
 
 ```text
-/ui/* -> console index.html
+/dashboard/* -> console index.html
 ```
 
 This route serves the real Console app for deep links. It never serves the old
@@ -219,13 +220,13 @@ Purpose: feed the Workspace page and sidebar workspace selector.
 
 ### `GET /v1/x/runtime`
 
-Purpose: feed Local Runtime, Settings, and sidebar status.
+Purpose: feed Settings runtime sections, Settings summary, and sidebar status.
 
 ```json
 {
   "status": "healthy",
   "api_url": "http://localhost:3000/v1",
-  "ui_url": "http://localhost:3000/ui",
+  "dashboard_url": "http://localhost:3000/dashboard",
   "auth_enabled": false,
   "agents_loaded": 1,
   "skills_loaded": 1,
@@ -465,12 +466,14 @@ components/domain/
 - shows start command with copy action
 - shows validation/desktop-only actions as disabled in Web P0
 
-### Local Runtime
+### Settings
 
-- shows health and runtime metadata
-- shows reload action
-- shows desktop-only start/stop/restart controls disabled in Web P0
-- shows sandbox providers
+- Models: provider model IDs, base URL state, and API key state
+- Loop engine: agent/session execution loop summary
+- Storage: SQLite path, data directory, uploads, skills, and memory state
+- Sandbox: providers and environment templates
+- Logs: structured runtime logs and restart action
+- Monitoring: metrics endpoint and workspace activity counters
 
 ### Skills
 
@@ -544,7 +547,8 @@ components/domain/
 - Agents list/detail
 - Sessions list/detail
 - Workspace
-- Local Runtime
+- Settings with Workspace, Models, Loop engine, Storage, Sandbox, API keys,
+  Logs, and Monitoring subsections
 
 ### Milestone 4: Secondary Pages
 
@@ -560,8 +564,8 @@ components/domain/
 
 - root build script builds Console and runtime
 - package includes Console dist
-- server serves Console at `/ui`
-- server supports `/ui/*` SPA history route
+- server serves Dashboard at `/dashboard`
+- server supports `/dashboard/*` SPA history route
 - remove old `src/api/dashboard.ts`
 - no embedded UI
 
@@ -574,7 +578,7 @@ components/domain/
 - full tests
 - browser QA at desktop viewport
 - browser QA at mobile viewport
-- verify `/ui` never serves the old embedded UI
+- verify `/dashboard` never serves the old embedded console
 
 ## Desktop Preparation
 

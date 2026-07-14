@@ -26,7 +26,7 @@ branches, loops, or a canvas-based workflow DSL.
    directories.
 3. The runtime shall start from a project configuration file and load agents,
    skills, model settings, sandbox settings, and optional API keys.
-4. Startup output shall report the API URL, Console URL, loaded agents,
+4. Startup output shall report the API URL, Dashboard URL, loaded agents,
    loaded skills, sandbox providers, memory status, target profile, and auth
    status.
 
@@ -139,12 +139,13 @@ branches, loops, or a canvas-based workflow DSL.
 
 ### R12. Console
 
-1. The Console shall be served by the same process at `/ui`.
+1. The Dashboard shall be served by the same process at `/dashboard`.
 2. The Console shall be implemented as a dedicated React/Vite application under
    `apps/console` and built into `dist/console`.
 3. The Console shall show Quickstart templates, agents, sessions,
-   environments, credential vaults, memory stores, skills, workspace, local
-   runtime, API keys, and observability.
+   environments, credential vaults, memory stores, skills, files, and a
+   Settings area for workspace, models, loop engine, storage, sandboxing, API
+   keys, logs, and monitoring.
 4. The Console shall support creating agents, sessions, environments,
    credential vaults, and memory stores through the public API.
 5. The Console shall use the same public API and SSE stream as SDK clients.

@@ -260,6 +260,16 @@ export type Runtime = {
   auth_enabled: boolean;
 };
 
+export type RuntimeLogLevel = 'debug' | 'info' | 'warn' | 'error';
+
+export type RuntimeLogEntry = {
+  level: RuntimeLogLevel;
+  time: string;
+  msg: string;
+  line: string;
+  [key: string]: unknown;
+};
+
 export type Workspace = {
   type: 'workspace';
   name: string;
@@ -307,6 +317,13 @@ export type ViewId =
   | 'files'
   | 'workspace'
   | 'runtime'
+  | 'models'
+  | 'loop-engine'
+  | 'storage'
+  | 'sandbox'
+  | 'logs'
+  | 'monitoring'
+  | 'api-reference'
   | 'api-keys'
   | 'observability'
   | 'agent-detail'

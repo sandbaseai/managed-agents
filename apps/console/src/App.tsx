@@ -29,6 +29,7 @@ import {
   Plus,
   RefreshCw,
   Search,
+  Send,
   Server,
   Settings,
   Shield,
@@ -66,6 +67,8 @@ import type {
   McpToolset,
   Runtime,
   RuntimeConfigState,
+  RuntimeLogEntry,
+  RuntimeLogLevel,
   Session,
   SessionEvent,
   SessionResourceDraft,
@@ -101,10 +104,6 @@ const NAV_GROUPS: Array<{ label: string; items: Array<{ id: ViewId; label: strin
   {
     label: 'System',
     items: [
-      { id: 'workspace', label: 'Workspace', icon: Box },
-      { id: 'runtime', label: 'Local Runtime', icon: Terminal },
-      { id: 'api-keys', label: 'API Keys', icon: KeyRound },
-      { id: 'observability', label: 'Observability', icon: Activity },
       { id: 'settings', label: 'Settings', icon: Settings },
     ],
   },
@@ -112,6 +111,35 @@ const NAV_GROUPS: Array<{ label: string; items: Array<{ id: ViewId; label: strin
 
 const SESSION_EVENT_KINDS = ['user', 'agent', 'tool', 'error', 'system'] as const;
 type SessionEventKind = (typeof SESSION_EVENT_KINDS)[number];
+
+const SETTINGS_SECTIONS = [
+  { id: 'general', label: 'General', icon: Settings, group: 'Project' },
+  { id: 'workspace', label: 'Workspace', icon: Box, group: 'Project' },
+  { id: 'models', label: 'Models', icon: Brain, group: 'Runtime' },
+  { id: 'loop-engine', label: 'Loop engine', icon: Gauge, group: 'Runtime' },
+  { id: 'storage', label: 'Storage', icon: Database, group: 'Runtime' },
+  { id: 'sandbox', label: 'Sandbox', icon: Shield, group: 'Runtime' },
+  { id: 'api-keys', label: 'API keys', icon: KeyRound, group: 'Access' },
+  { id: 'api-reference', label: 'API reference', icon: Keyboard, group: 'Developer' },
+  { id: 'logs', label: 'Logs', icon: FileText, group: 'Operations' },
+  { id: 'monitoring', label: 'Monitoring', icon: Activity, group: 'Operations' },
+] as const;
+type SettingsSection = (typeof SETTINGS_SECTIONS)[number]['id'];
+const SETTINGS_GROUPS = ['Project', 'Runtime', 'Access', 'Developer', 'Operations'] as const;
+const SETTINGS_VIEW_IDS: ViewId[] = [
+  'settings',
+  'workspace',
+  'runtime',
+  'models',
+  'loop-engine',
+  'storage',
+  'sandbox',
+  'api-keys',
+  'api-reference',
+  'logs',
+  'monitoring',
+  'observability',
+];
 
 function emptyData(): ConsoleData {
   return {
@@ -243,6 +271,7 @@ export function App() {
               {group.items.map((item) => {
                 const Icon = item.icon;
                 const active = view === item.id
+                  || (item.id === 'settings' && SETTINGS_VIEW_IDS.includes(view))
                   || (view === 'agent-detail' && item.id === 'agents')
                   || (view === 'session-detail' && item.id === 'sessions')
                   || (view === 'environment-detail' && item.id === 'environments')
@@ -267,9 +296,9 @@ export function App() {
 
       <main className="main">
         <header className="consoleNotice">
-          <div>
-            <Info size={17} />
-            <span>{data.runtime ? 'Local runtime connected' : 'Local runtime starting'}</span>
+          <div className={`runtimeConnection ${data.runtime ? 'connected' : 'starting'}`}>
+            <span className="runtimeStatusDot" aria-hidden="true" />
+            <span>{data.runtime ? 'Runtime connected' : 'Runtime starting'}</span>
           </div>
           <button className="iconButton quiet" type="button" title="Refresh" onClick={() => void refresh()}>
             <RefreshCw size={17} />
@@ -502,15 +531,29 @@ function View(props: {
     case 'files':
       return <Files data={props.data} onRefresh={props.onRefresh} />;
     case 'workspace':
-      return <WorkspaceView data={props.data} />;
+      return <SettingsView data={props.data} section="workspace" onRefresh={props.onRefresh} setView={props.setView} />;
     case 'runtime':
-      return <RuntimeView data={props.data} />;
+      return <SettingsView data={props.data} section="models" onRefresh={props.onRefresh} setView={props.setView} />;
+    case 'models':
+      return <SettingsView data={props.data} section="models" onRefresh={props.onRefresh} setView={props.setView} />;
+    case 'loop-engine':
+      return <SettingsView data={props.data} section="loop-engine" onRefresh={props.onRefresh} setView={props.setView} />;
+    case 'storage':
+      return <SettingsView data={props.data} section="storage" onRefresh={props.onRefresh} setView={props.setView} />;
+    case 'sandbox':
+      return <SettingsView data={props.data} section="sandbox" onRefresh={props.onRefresh} setView={props.setView} />;
     case 'api-keys':
-      return <ApiKeys data={props.data} onRefresh={props.onRefresh} />;
+      return <SettingsView data={props.data} section="api-keys" onRefresh={props.onRefresh} setView={props.setView} />;
+    case 'api-reference':
+      return <SettingsView data={props.data} section="api-reference" onRefresh={props.onRefresh} setView={props.setView} />;
+    case 'logs':
+      return <SettingsView data={props.data} section="logs" onRefresh={props.onRefresh} setView={props.setView} />;
+    case 'monitoring':
+      return <SettingsView data={props.data} section="monitoring" onRefresh={props.onRefresh} setView={props.setView} />;
     case 'observability':
-      return <Observability data={props.data} />;
+      return <SettingsView data={props.data} section="monitoring" onRefresh={props.onRefresh} setView={props.setView} />;
     case 'settings':
-      return <SettingsView data={props.data} />;
+      return <SettingsView data={props.data} section="general" onRefresh={props.onRefresh} setView={props.setView} />;
     default:
       return <Quickstart data={props.data} onNewAgent={props.onNewAgent} />;
   }
@@ -994,6 +1037,9 @@ function SessionDetail({
   const [actionsOpen, setActionsOpen] = useState(false);
   const [selectedKinds, setSelectedKinds] = useState<Set<SessionEventKind>>(new Set(SESSION_EVENT_KINDS));
   const [query, setQuery] = useState('');
+  const [messageDraft, setMessageDraft] = useState('');
+  const [messageError, setMessageError] = useState('');
+  const [sendingMessage, setSendingMessage] = useState(false);
 
   const agent = data.agents.find((item) => item.id === session.agent.id);
   const environment = data.environments.find((item) => item.id === session.environment_id);
@@ -1025,8 +1071,31 @@ function SessionDetail({
     return text.includes(query.toLowerCase());
   });
 
+  const canSendMessage = messageDraft.trim().length > 0
+    && !sendingMessage
+    && session.status !== 'failed'
+    && session.status !== 'terminated';
+
+  const sendMessage = async (event?: FormEvent) => {
+    event?.preventDefault();
+    const content = messageDraft.trim();
+    if (!content || sendingMessage) return;
+    setSendingMessage(true);
+    setMessageError('');
+    try {
+      await postJson(`/v1/sessions/${encodeURIComponent(session.id)}/messages`, { content, stream: false });
+      setMessageDraft('');
+      await loadEvents();
+      onRefresh();
+    } catch (err) {
+      setMessageError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSendingMessage(false);
+    }
+  };
+
   const interrupt = async () => {
-    await postJson(`/v1/sessions/${session.id}/events`, { events: [{ type: 'user.interrupt', content: [{ type: 'text', text: 'Run interrupted by the user.' }] }] });
+    await postJson(`/v1/sessions/${encodeURIComponent(session.id)}/events`, { events: [{ type: 'user.interrupt', content: [{ type: 'text', text: 'Run interrupted by the user.' }] }] });
     setActionsOpen(false);
     await loadEvents();
     onRefresh();
@@ -1161,6 +1230,27 @@ function SessionDetail({
           </div>
         </div>
       </div>
+
+      <form className="sessionComposer" onSubmit={(event) => void sendMessage(event)}>
+        <textarea
+          value={messageDraft}
+          onChange={(event) => setMessageDraft(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' && !event.shiftKey) {
+              event.preventDefault();
+              void sendMessage();
+            }
+          }}
+          placeholder="Message this session..."
+          aria-label="Message this session"
+          disabled={sendingMessage || session.status === 'failed' || session.status === 'terminated'}
+        />
+        <button className="primaryButton" type="submit" disabled={!canSendMessage}>
+          <Send size={16} />
+          {sendingMessage ? 'Sending...' : 'Send'}
+        </button>
+        {messageError ? <div className="sessionComposerError">{messageError}</div> : null}
+      </form>
     </section>
   );
 }
@@ -2028,7 +2118,7 @@ function WorkspaceView({ data }: { data: ConsoleData }) {
           <p>{data.workspace?.name ?? 'local workspace'}</p>
           <KeyValuePanel rows={[
             ['Target', data.workspace?.target],
-            ['Mode', data.runtime ? 'Local runtime connected' : 'Local runtime starting'],
+            ['Mode', data.runtime ? 'Runtime connected' : 'Runtime starting'],
             ['Root folder', pathName(data.workspace?.root) || data.workspace?.name],
           ]} />
         </div>
@@ -2043,12 +2133,63 @@ function WorkspaceView({ data }: { data: ConsoleData }) {
 }
 
 function RuntimeView({ data }: { data: ConsoleData }) {
+  const [logs, setLogs] = useState<RuntimeLogEntry[]>([]);
+  const [logsLoading, setLogsLoading] = useState(false);
+  const [logsError, setLogsError] = useState('');
+  const [logLevel, setLogLevel] = useState<RuntimeLogLevel | 'all'>('all');
+  const [restartStatus, setRestartStatus] = useState('');
+  const [restarting, setRestarting] = useState(false);
+
+  const loadLogs = async () => {
+    setLogsLoading(true);
+    try {
+      const params = new URLSearchParams({ limit: '200' });
+      if (logLevel !== 'all') params.set('level', logLevel);
+      const page = await getPage<RuntimeLogEntry>(`/v1/x/logs?${params.toString()}`);
+      setLogs(page.data);
+      setLogsError('');
+    } catch (err: any) {
+      setLogsError(err?.message ?? String(err));
+    } finally {
+      setLogsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadLogs();
+    const timer = window.setInterval(() => void loadLogs(), 5000);
+    return () => window.clearInterval(timer);
+  }, [logLevel]);
+
+  const restartRuntime = async () => {
+    if (!window.confirm('Restart the local runtime? Active sessions will be interrupted.')) return;
+    setRestarting(true);
+    setRestartStatus('Scheduling runtime restart...');
+    try {
+      await postJson<{ restarting: boolean; status: string }>('/v1/x/restart', {});
+      setRestartStatus('Restart scheduled. The Console will reconnect when the runtime is back.');
+    } catch (err: any) {
+      setRestartStatus(err?.message ?? String(err));
+      setRestarting(false);
+    }
+  };
+
   return (
     <section className="stack">
       <div className="pageIntro">
         <div>
-          <h1>Local runtime</h1>
+          <h1>Runtime</h1>
           <p>Inspect the runtime process, available model adapters, sandbox providers, and managed project paths.</p>
+        </div>
+        <div className="topActions">
+          <button className="secondaryButton" type="button" onClick={() => void loadLogs()} disabled={logsLoading}>
+            <RefreshCw size={16} />
+            Refresh logs
+          </button>
+          <button className="primaryButton" type="button" onClick={() => void restartRuntime()} disabled={restarting}>
+            <RefreshCw size={16} />
+            Restart runtime
+          </button>
         </div>
       </div>
       <div className="sectionHeaderRow">
@@ -2095,8 +2236,380 @@ function RuntimeView({ data }: { data: ConsoleData }) {
         </div>
       </div>
       <WorkspacePathsPanel workspace={data.workspace} />
+      <div className="sectionHeaderRow">
+        <div>
+          <h2>Runtime logs</h2>
+          <p>Recent structured logs from the current runtime process.</p>
+        </div>
+        <div className="toolbarActions">
+          <select
+            className="compactSelect"
+            value={logLevel}
+            onChange={(event) => setLogLevel(event.target.value as RuntimeLogLevel | 'all')}
+            aria-label="Log level"
+          >
+            <option value="all">All levels</option>
+            <option value="debug">Debug and above</option>
+            <option value="info">Info and above</option>
+            <option value="warn">Warn and above</option>
+            <option value="error">Errors only</option>
+          </select>
+          <button className="iconButton" type="button" title="Refresh logs" onClick={() => void loadLogs()} disabled={logsLoading}>
+            <RefreshCw size={16} />
+          </button>
+        </div>
+      </div>
+      <div className="runtimeLogPanel">
+        {restartStatus ? <div className="runtimeStatus">{restartStatus}</div> : null}
+        {logsError ? <div className="runtimeStatus error">{logsError}</div> : null}
+        {logs.length === 0 ? (
+          <div className="emptyValue">{logsLoading ? 'Loading logs...' : 'No runtime logs captured yet'}</div>
+        ) : (
+          <div className="runtimeLogList" role="log" aria-live="polite">
+            {logs.map((entry, index) => (
+              <div className={`runtimeLogLine ${entry.level}`} key={`${entry.time}-${index}`}>
+                <span className="runtimeLogMeta">{formatRuntimeLogTime(entry.time)} {entry.level.toUpperCase()}</span>
+                <span className="runtimeLogMessage">{formatRuntimeLog(entry)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </section>
   );
+}
+
+function SettingsModels({ data }: { data: ConsoleData }) {
+  const models = data.runtime?.models ?? [];
+  const configured = models.filter((model) => model.api_key_state === 'configured').length;
+  return (
+    <section className="stack">
+      <div className="pageIntro">
+        <div>
+          <h1>Models</h1>
+          <p>Configure provider model IDs, API keys, and OpenAI-compatible base URLs.</p>
+        </div>
+      </div>
+      <SummaryStrip items={[
+        { label: 'Registered models', value: models.length, icon: <Brain size={18} /> },
+        { label: 'Keys configured', value: configured, icon: <KeyRound size={18} /> },
+        { label: 'Runtime status', value: data.runtime?.status ?? 'starting', icon: <Gauge size={18} /> },
+        { label: 'Config file', value: pathName(data.workspace?.configPath) || 'managed-agents.config.yaml', icon: <FileText size={18} /> },
+      ]} />
+      <div className="tablePanel">
+        <table>
+          <thead><tr><th>Name</th><th>Provider</th><th>Model ID</th><th>API key</th><th>Base URL</th></tr></thead>
+          <tbody>
+            {models.map((model) => (
+              <tr key={model.name}>
+                <td><strong>{model.name}</strong></td>
+                <td>{model.provider}</td>
+                <td><code>{model.model}</code></td>
+                <td><RuntimeConfigStatePill state={model.api_key_state} /></td>
+                <td><RuntimeConfigStatePill state={model.base_url_state} /></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {models.length === 0 ? (
+          <EmptyState
+            icon={<Brain size={22} />}
+            title="No models configured"
+            body="Add a model entry in managed-agents.config.yaml, then restart the runtime."
+          />
+        ) : null}
+      </div>
+      <div className="panel subtlePanel">
+        <h2>Configuration source</h2>
+        <p>Model settings are loaded at startup from the workspace config and environment variables.</p>
+        <KeyValuePanel rows={[
+          ['Config file', data.workspace?.configPath ?? 'managed-agents.config.yaml'],
+          ['Target', data.workspace?.target ?? 'local'],
+          ['Base URL field', 'models[].base_url'],
+          ['API key field', 'models[].api_key'],
+        ]} />
+      </div>
+    </section>
+  );
+}
+
+function SettingsLoopEngine({ data }: { data: ConsoleData }) {
+  const running = data.sessions.filter((session) => session.status === 'running').length;
+  const failed = data.sessions.filter((session) => session.status === 'failed').length;
+  return (
+    <section className="stack">
+      <div className="pageIntro">
+        <div>
+          <h1>Loop Engine</h1>
+          <p>Inspect the agent turn loop that handles model calls, tools, events, and approvals.</p>
+        </div>
+      </div>
+      <SummaryStrip items={[
+        { label: 'Engine', value: 'DefaultStrategy', icon: <Gauge size={18} /> },
+        { label: 'Default max steps', value: 25, icon: <RefreshCw size={18} /> },
+        { label: 'Running sessions', value: running, icon: <CirclePlay size={18} /> },
+        { label: 'Failed sessions', value: failed, icon: <Activity size={18} /> },
+      ]} />
+      <div className="workspaceGrid">
+        <div className="panel subtlePanel">
+          <h2>Execution loop</h2>
+          <p>Current runtime loop behavior reported by the local process and agent definitions.</p>
+          <KeyValuePanel rows={[
+            ['Strategy', 'DefaultStrategy'],
+            ['Model adapter', data.runtime?.models.length ? 'configured model registry' : 'no model configured'],
+            ['Tool execution', data.runtime?.sandbox_providers.length ? 'sandbox-backed tool resolver' : 'sandbox unavailable'],
+            ['Event stream', 'session event log'],
+          ]} />
+        </div>
+        <div className="panel subtlePanel">
+          <h2>Agent coverage</h2>
+          <p>Agents use the loop engine when sessions receive user events.</p>
+          <KeyValuePanel rows={[
+            ['Agents', data.agents.length],
+            ['Sessions', data.sessions.length],
+            ['Idle sessions', data.sessions.filter((session) => session.status === 'idle').length],
+            ['Terminated sessions', data.sessions.filter((session) => session.status === 'terminated').length],
+          ]} />
+        </div>
+      </div>
+      <div className="tablePanel">
+        <table>
+          <thead><tr><th>Agent</th><th>Model</th><th>Tools</th><th>Skills</th><th>Status</th></tr></thead>
+          <tbody>
+            {data.agents.map((agent) => (
+              <tr key={agent.id}>
+                <td><strong>{agent.name}</strong><br /><code>{truncateMiddle(agent.id, 24)}</code></td>
+                <td><code>{agent.model}</code></td>
+                <td>{agent.tools.length}</td>
+                <td>{agent.skills.length}</td>
+                <td><StatusPill status={agent.status} /></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {data.agents.length === 0 ? <div className="emptyValue">No agents created yet</div> : null}
+      </div>
+    </section>
+  );
+}
+
+function SettingsStorage({ data }: { data: ConsoleData }) {
+  const databasePath = runtimeDatabasePath(data.workspace);
+  const dataDir = data.workspace?.directories?.data ?? data.workspace?.dataDir;
+  const normalizedDataDir = dataDir?.replace(/\/$/, '');
+  return (
+    <section className="stack">
+      <div className="pageIntro">
+        <div>
+          <h1>Storage</h1>
+          <p>Review SQLite state, uploaded files, skill bundles, and runtime data directories.</p>
+        </div>
+      </div>
+      <SummaryStrip items={[
+        { label: 'Database', value: databasePath ? 'SQLite' : 'not resolved', icon: <Database size={18} /> },
+        { label: 'Files', value: data.files.length, icon: <FileText size={18} /> },
+        { label: 'Memory stores', value: data.memoryStores.length, icon: <Brain size={18} /> },
+        { label: 'Skills', value: data.skills.length, icon: <Zap size={18} /> },
+      ]} />
+      <div className="workspaceGrid">
+        <div className="panel subtlePanel">
+          <h2>Persistent state</h2>
+          <p>Mutable runtime records live outside the source tree by default.</p>
+          <KeyValuePanel rows={[
+            ['Runtime data directory', dataDir],
+            ['SQLite database', databasePath],
+            ['Uploaded files', normalizedDataDir ? `${normalizedDataDir}/files` : undefined],
+            ['Skill uploads', normalizedDataDir ? `${normalizedDataDir}/skills` : undefined],
+          ]} />
+        </div>
+        <div className="panel subtlePanel">
+          <h2>Project inputs</h2>
+          <p>Seed files remain project-owned and can be committed intentionally.</p>
+          <WorkspacePathsPanel workspace={data.workspace} />
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function SettingsSandbox({ data }: { data: ConsoleData }) {
+  const providers = data.runtime?.sandbox_providers ?? [];
+  return (
+    <section className="stack">
+      <div className="pageIntro">
+        <div>
+          <h1>Sandbox</h1>
+          <p>Manage execution isolation through environment templates and sandbox providers.</p>
+        </div>
+      </div>
+      <SummaryStrip items={[
+        { label: 'Providers', value: providers.join(', ') || 'none', icon: <Shield size={18} /> },
+        { label: 'Environments', value: data.environments.length, icon: <Server size={18} /> },
+        { label: 'Cloud templates', value: data.environments.filter((env) => env.hosting_type === 'cloud').length, icon: <Cloud size={18} /> },
+        { label: 'Self-hosted', value: data.environments.filter((env) => env.hosting_type === 'self_hosted').length, icon: <Terminal size={18} /> },
+      ]} />
+      <div className="tablePanel">
+        <table>
+          <thead><tr><th>ID</th><th>Name</th><th>Status</th><th>Hosting</th><th>Provider</th><th>Network</th><th>Updated</th></tr></thead>
+          <tbody>
+            {data.environments.map((environment) => (
+              <tr key={environment.id}>
+                <td><code>{truncateMiddle(environment.id, 18)}</code></td>
+                <td><strong>{environment.name}</strong></td>
+                <td><StatusPill status={environment.status} /></td>
+                <td><ResourceBadge>{titleCase(environment.hosting_type.replace('_', ' '))}</ResourceBadge></td>
+                <td><code>{environment.sandbox_provider ?? 'default'}</code></td>
+                <td>{environmentNetworkLabel(environment)}</td>
+                <td>{formatDateShort(environment.updated_at)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {data.environments.length === 0 ? <div className="emptyValue">No environments configured</div> : null}
+      </div>
+    </section>
+  );
+}
+
+function SettingsLogs({ data }: { data: ConsoleData }) {
+  const [logs, setLogs] = useState<RuntimeLogEntry[]>([]);
+  const [logsLoading, setLogsLoading] = useState(false);
+  const [logsError, setLogsError] = useState('');
+  const [logLevel, setLogLevel] = useState<RuntimeLogLevel | 'all'>('all');
+  const [restartStatus, setRestartStatus] = useState('');
+  const [restarting, setRestarting] = useState(false);
+
+  const loadLogs = async () => {
+    setLogsLoading(true);
+    try {
+      const params = new URLSearchParams({ limit: '200' });
+      if (logLevel !== 'all') params.set('level', logLevel);
+      const page = await getPage<RuntimeLogEntry>(`/v1/x/logs?${params.toString()}`);
+      setLogs(page.data);
+      setLogsError('');
+    } catch (err: any) {
+      setLogsError(err?.message ?? String(err));
+    } finally {
+      setLogsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadLogs();
+    const timer = window.setInterval(() => void loadLogs(), 5000);
+    return () => window.clearInterval(timer);
+  }, [logLevel]);
+
+  const restartRuntime = async () => {
+    if (!window.confirm('Restart the runtime? Active sessions will be interrupted.')) return;
+    setRestarting(true);
+    setRestartStatus('Scheduling runtime restart...');
+    try {
+      await postJson<{ restarting: boolean; status: string }>('/v1/x/restart', {});
+      setRestartStatus('Restart scheduled. The dashboard will reconnect when the runtime is back.');
+    } catch (err: any) {
+      setRestartStatus(err?.message ?? String(err));
+      setRestarting(false);
+    }
+  };
+
+  return (
+    <section className="stack">
+      <div className="pageIntro">
+        <div>
+          <h1>Logs</h1>
+          <p>View recent runtime logs and restart the local process when needed.</p>
+        </div>
+        <div className="topActions">
+          <button className="secondaryButton" type="button" onClick={() => void loadLogs()} disabled={logsLoading}>
+            <RefreshCw size={16} />
+            Refresh logs
+          </button>
+          <button className="primaryButton" type="button" onClick={() => void restartRuntime()} disabled={restarting}>
+            <RefreshCw size={16} />
+            Restart runtime
+          </button>
+        </div>
+      </div>
+      <SummaryStrip items={[
+        { label: 'Runtime', value: data.runtime?.status ?? 'starting', icon: <Gauge size={18} /> },
+        { label: 'Log lines', value: logs.length, icon: <FileText size={18} /> },
+        { label: 'Errors', value: logs.filter((entry) => entry.level === 'error').length, icon: <Activity size={18} /> },
+        { label: 'Data directory', value: pathName(data.workspace?.dataDir) || 'managed-agents', icon: <Database size={18} /> },
+      ]} />
+      <div className="sectionHeaderRow">
+        <div>
+          <h2>Runtime logs</h2>
+          <p>Recent structured logs from the current runtime process.</p>
+        </div>
+        <div className="toolbarActions">
+          <select
+            className="compactSelect"
+            value={logLevel}
+            onChange={(event) => setLogLevel(event.target.value as RuntimeLogLevel | 'all')}
+            aria-label="Log level"
+          >
+            <option value="all">All levels</option>
+            <option value="debug">Debug and above</option>
+            <option value="info">Info and above</option>
+            <option value="warn">Warn and above</option>
+            <option value="error">Errors only</option>
+          </select>
+          <button className="iconButton" type="button" title="Refresh logs" onClick={() => void loadLogs()} disabled={logsLoading}>
+            <RefreshCw size={16} />
+          </button>
+        </div>
+      </div>
+      <div className="runtimeLogPanel">
+        {restartStatus ? <div className="runtimeStatus">{restartStatus}</div> : null}
+        {logsError ? <div className="runtimeStatus error">{logsError}</div> : null}
+        {logs.length === 0 ? (
+          <div className="emptyValue">{logsLoading ? 'Loading logs...' : 'No runtime logs captured yet'}</div>
+        ) : (
+          <div className="runtimeLogList" role="log" aria-live="polite">
+            {logs.map((entry, index) => (
+              <div className={`runtimeLogLine ${entry.level}`} key={`${entry.time}-${index}`}>
+                <span className="runtimeLogMeta">{formatRuntimeLogTime(entry.time)} {entry.level.toUpperCase()}</span>
+                <span className="runtimeLogMessage">{formatRuntimeLog(entry)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function formatRuntimeLogTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
+function formatRuntimeLog(entry: RuntimeLogEntry) {
+  const extras = Object.entries(entry)
+    .filter(([key]) => !['level', 'time', 'msg', 'line'].includes(key))
+    .filter(([, value]) => value !== undefined && value !== null && value !== '')
+    .map(([key, value]) => `${key}=${formatRuntimeLogValue(value)}`);
+  return extras.length > 0 ? `${entry.msg} ${extras.join(' ')}` : entry.msg;
+}
+
+function formatRuntimeLogValue(value: unknown) {
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return String(value);
+  return JSON.stringify(value);
+}
+
+function runtimeDatabasePath(workspace: Workspace | null) {
+  const dataDir = workspace?.directories?.data ?? workspace?.dataDir;
+  return dataDir ? `${dataDir.replace(/\/$/, '')}/data.db` : undefined;
+}
+
+function environmentNetworkLabel(environment: Environment) {
+  const network = environment.network;
+  const type = typeof network?.type === 'string' ? network.type : environment.config?.network;
+  if (typeof type === 'string' && type.length > 0) return titleCase(type.replace('_', ' '));
+  if (environment.hosting_type === 'self_hosted') return 'Self-hosted';
+  return 'Limited';
 }
 
 function RuntimeConfigStatePill({ state }: { state: RuntimeConfigState }) {
@@ -2139,7 +2652,7 @@ function ApiKeys({ data, onRefresh }: { data: ConsoleData; onRefresh: () => void
       ]} />
       <div className="sectionHeaderRow">
         <div>
-          <h1>API Keys</h1>
+          <h1>API keys</h1>
           <p>Create and manage bearer tokens for the local Managed Agents API.</p>
         </div>
         <button className="primaryButton" type="button" onClick={() => setModalOpen(true)}>
@@ -2339,7 +2852,7 @@ function Observability({ data }: { data: ConsoleData }) {
     <section className="stack">
       <div className="pageIntro">
         <div>
-          <h1>Observability</h1>
+          <h1>Monitoring</h1>
           <p>Inspect live runtime counters and session activity for this workspace.</p>
         </div>
       </div>
@@ -2370,13 +2883,404 @@ function Observability({ data }: { data: ConsoleData }) {
   );
 }
 
-function SettingsView({ data }: { data: ConsoleData }) {
-  return <KeyValuePanel rows={[
-    ['Workspace', data.workspace?.name],
-    ['Target', data.workspace?.target],
-    ['Auth enabled', data.runtime?.auth_enabled ? 'yes' : 'no'],
-    ['Memory', data.runtime?.memory],
-  ]} />;
+type EndpointGroup = {
+  title: string;
+  description: string;
+  endpoints: Array<{ method: string; path: string; description: string }>;
+};
+
+const API_ENDPOINT_GROUPS: EndpointGroup[] = [
+  {
+    title: 'Agents',
+    description: 'Create, update, version, and archive managed agent definitions.',
+    endpoints: [
+      { method: 'GET', path: '/v1/agents', description: 'List agents' },
+      { method: 'POST', path: '/v1/agents', description: 'Create an agent from the standard YAML/JSON shape' },
+      { method: 'GET', path: '/v1/agents/{agent_id}', description: 'Retrieve an agent' },
+      { method: 'PUT', path: '/v1/agents/{agent_id}', description: 'Save a new agent version' },
+      { method: 'GET', path: '/v1/agents/{agent_id}/versions', description: 'List agent versions' },
+      { method: 'POST', path: '/v1/agents/{agent_id}/archive', description: 'Archive an agent' },
+    ],
+  },
+  {
+    title: 'Sessions',
+    description: 'Run agents, send events, stream replies, inspect transcripts, and stop runs.',
+    endpoints: [
+      { method: 'GET', path: '/v1/sessions', description: 'List sessions' },
+      { method: 'POST', path: '/v1/sessions', description: 'Create a session' },
+      { method: 'GET', path: '/v1/sessions/{session_id}', description: 'Retrieve a session' },
+      { method: 'POST', path: '/v1/sessions/{session_id}/messages', description: 'Send a user message and optionally stream SSE' },
+      { method: 'POST', path: '/v1/sessions/{session_id}/events', description: 'Send raw session events' },
+      { method: 'GET', path: '/v1/sessions/{session_id}/events', description: 'List recorded events' },
+      { method: 'GET', path: '/v1/sessions/{session_id}/events/stream', description: 'Tail the live SSE event stream' },
+      { method: 'POST', path: '/v1/sessions/{session_id}/stop', description: 'Interrupt and terminate a session' },
+    ],
+  },
+  {
+    title: 'Build resources',
+    description: 'Files and Skills that can be mounted into sessions or attached to agents.',
+    endpoints: [
+      { method: 'GET', path: '/v1/files', description: 'List uploaded files' },
+      { method: 'POST', path: '/v1/files', description: 'Upload a file' },
+      { method: 'GET', path: '/v1/files/{file_id}', description: 'Retrieve file metadata' },
+      { method: 'GET', path: '/v1/files/{file_id}/content', description: 'Download file content' },
+      { method: 'DELETE', path: '/v1/files/{file_id}', description: 'Delete a file from active listings' },
+      { method: 'GET', path: '/v1/skills', description: 'List custom and built-in skills' },
+      { method: 'POST', path: '/v1/skills', description: 'Upload a Skill package' },
+      { method: 'GET', path: '/v1/skills/{skill_id}', description: 'Retrieve Skill metadata' },
+      { method: 'DELETE', path: '/v1/skills/{skill_id}', description: 'Delete a custom Skill' },
+    ],
+  },
+  {
+    title: 'Runtime resources',
+    description: 'Execution environments, credential vaults, persistent memory, and API access.',
+    endpoints: [
+      { method: 'GET', path: '/v1/environments', description: 'List environments' },
+      { method: 'POST', path: '/v1/environments', description: 'Create an environment template' },
+      { method: 'GET', path: '/v1/environments/{environment_id}', description: 'Retrieve an environment' },
+      { method: 'PUT', path: '/v1/environments/{environment_id}', description: 'Update an environment' },
+      { method: 'POST', path: '/v1/environments/{environment_id}/archive', description: 'Archive an environment' },
+      { method: 'GET', path: '/v1/credential-vaults', description: 'List credential vaults' },
+      { method: 'POST', path: '/v1/credential-vaults', description: 'Create a credential vault' },
+      { method: 'GET', path: '/v1/credential-vaults/{vault_id}', description: 'Retrieve a credential vault' },
+      { method: 'GET', path: '/v1/credential-vaults/{vault_id}/credentials', description: 'List credentials in a vault' },
+      { method: 'POST', path: '/v1/credential-vaults/{vault_id}/credentials', description: 'Add a credential to a vault' },
+      { method: 'POST', path: '/v1/credential-vaults/{vault_id}/credentials/{credential_id}/archive', description: 'Archive a credential' },
+      { method: 'DELETE', path: '/v1/credential-vaults/{vault_id}/credentials/{credential_id}', description: 'Delete a credential' },
+      { method: 'GET', path: '/v1/memory_stores', description: 'List memory stores' },
+      { method: 'POST', path: '/v1/memory_stores', description: 'Create a memory store' },
+      { method: 'GET', path: '/v1/memory_stores/{memory_store_id}', description: 'Retrieve a memory store' },
+      { method: 'GET', path: '/v1/memory_stores/{memory_store_id}/memories', description: 'List memories in a store' },
+      { method: 'POST', path: '/v1/memory_stores/{memory_store_id}/memories', description: 'Create a memory entry' },
+      { method: 'PUT', path: '/v1/memory_stores/{memory_store_id}/memories/{memory_id}', description: 'Update a memory entry' },
+      { method: 'DELETE', path: '/v1/memory_stores/{memory_store_id}/memories/{memory_id}', description: 'Delete a memory entry' },
+      { method: 'POST', path: '/v1/memory_stores/{memory_store_id}/archive', description: 'Archive a memory store' },
+      { method: 'GET', path: '/v1/api-keys', description: 'List dashboard/API keys' },
+      { method: 'POST', path: '/v1/api-keys', description: 'Create a bearer API key' },
+      { method: 'DELETE', path: '/v1/api-keys/{key_id}', description: 'Delete a managed API key' },
+    ],
+  },
+  {
+    title: 'Operations',
+    description: 'Local runtime health, logs, metrics, workspace metadata, and process controls.',
+    endpoints: [
+      { method: 'GET', path: '/v1/x/health', description: 'Read service health' },
+      { method: 'GET', path: '/v1/x/runtime', description: 'Read runtime capabilities' },
+      { method: 'GET', path: '/v1/x/workspace', description: 'Read workspace paths and target' },
+      { method: 'GET', path: '/v1/x/templates', description: 'List built-in agent templates' },
+      { method: 'GET', path: '/v1/x/mcp/status', description: 'Read MCP server status' },
+      { method: 'GET', path: '/v1/x/logs', description: 'Tail recent runtime logs' },
+      { method: 'GET', path: '/v1/x/metrics', description: 'Prometheus-style metrics' },
+      { method: 'POST', path: '/v1/x/reload', description: 'Reload local config' },
+      { method: 'POST', path: '/v1/x/restart', description: 'Request runtime restart' },
+      { method: 'POST', path: '/v1/x/worker/claim', description: 'Self-hosted worker claim endpoint' },
+      { method: 'POST', path: '/v1/x/worker/complete', description: 'Self-hosted worker completion endpoint' },
+    ],
+  },
+];
+
+function SettingsApiReference({ data, setView }: { data: ConsoleData; setView: (view: ViewId) => void }) {
+  const baseUrl = typeof window === 'undefined' ? 'http://127.0.0.1:3000' : window.location.origin;
+  const authEnabled = data.runtime?.auth_enabled ?? false;
+  const firstAgentId = data.agents[0]?.id ?? 'agent_...';
+  const firstEnvironmentId = data.environments[0]?.id ?? 'env_...';
+  const firstSessionId = data.sessions[0]?.id ?? 'sess_...';
+  const authCurl = authEnabled ? "  -H 'Authorization: Bearer ma_...' \\\n" : '';
+  const sdkAuth = authEnabled ? "\n  apiKey: process.env.MANAGED_AGENTS_API_KEY," : '';
+  const sessionCurl = [
+    `curl -sS -X POST '${baseUrl}/v1/sessions' \\`,
+    "  -H 'Content-Type: application/json' \\",
+    authCurl.trimEnd(),
+    `  -d '{"agent":"${firstAgentId}","environment_id":"${firstEnvironmentId}","title":"API smoke test"}'`,
+    '',
+    `curl -N -X POST '${baseUrl}/v1/sessions/${firstSessionId}/messages' \\`,
+    "  -H 'Content-Type: application/json' \\",
+    authCurl.trimEnd(),
+    "  -d '{\"content\":\"Hello from the API\",\"stream\":true}'",
+  ].filter(Boolean).join('\n');
+  const sdkSnippet = `import { ManagedAgentsClient } from 'managed-agents/sdk';
+
+const client = new ManagedAgentsClient({
+  baseUrl: '${baseUrl}',${sdkAuth}
+});
+
+const session = await client.sessions.create({
+  agent: '${firstAgentId}',
+  environment_id: '${firstEnvironmentId}',
+  title: 'SDK smoke test',
+});
+
+for await (const event of client.sessions.chat(session.id, 'Hello')) {
+  if (event.type === 'agent.message_chunk') {
+    process.stdout.write(event.delta ?? '');
+  }
+}`;
+  const skillUploadSnippet = [
+    'zip -r code-review-assistant.zip code-review-assistant',
+    '',
+    `curl -sS -X POST '${baseUrl}/v1/skills' \\`,
+    authCurl.trimEnd(),
+    "  -F 'files=@code-review-assistant.zip'",
+  ].filter(Boolean).join('\n');
+  const skillJsonSnippet = `{
+  "files": [
+    {
+      "path": "code-review-assistant/SKILL.md",
+      "content": "---\\nname: code-review-assistant\\ndescription: Review TypeScript changes for correctness, tests, and API compatibility.\\n---\\n\\nUse this skill when reviewing code changes."
+    }
+  ],
+  "display_title": "Code review assistant"
+}`;
+  const skillAttachSnippet = `name: Incident commander
+description: Triages a Sentry alert, opens a Linear incident ticket, and runs the Slack war room.
+model:
+  id: claude-opus-4-8
+  speed: standard
+system: |-
+  You are an on-call incident commander.
+tools:
+  - type: agent_toolset_20260401
+skills:
+  - type: custom
+    skill_id: skill_...
+metadata:
+  template: incident-commander`;
+
+  return (
+    <section className="stack apiReference">
+      <div className="pageIntro">
+        <div>
+          <h1>API reference</h1>
+          <p>Use these endpoints to automate managed-agents from local scripts, SDKs, CI jobs, and external tools.</p>
+        </div>
+        <button className="button secondary" type="button" onClick={() => setView('api-keys')}>
+          <KeyRound size={16} /> Manage API keys
+        </button>
+      </div>
+
+      <SummaryStrip items={[
+        { label: 'Base URL', value: baseUrl, icon: <Globe size={18} /> },
+        { label: 'API prefix', value: '/v1', icon: <Terminal size={18} /> },
+        { label: 'Auth', value: authEnabled ? 'Bearer token required' : 'disabled locally', icon: <KeyRound size={18} /> },
+        { label: 'Streaming', value: 'Server-sent events', icon: <Activity size={18} /> },
+      ]} />
+
+      <div className="workspaceGrid">
+        <div className="panel subtlePanel">
+          <h2>Current runtime</h2>
+          <p>These values are read from the running local service.</p>
+          <KeyValuePanel rows={[
+            ['Dashboard', `${baseUrl}/dashboard`],
+            ['Health check', `${baseUrl}/v1/x/health`],
+            ['Authentication', authEnabled ? 'Authorization: Bearer <api-key>' : 'Not required for this runtime'],
+            ['API keys', 'Settings / API keys'],
+          ]} />
+        </div>
+        <div className="panel subtlePanel">
+          <h2>Recommended flow</h2>
+          <p>Create resources through the Console, then copy IDs into API calls.</p>
+          <KeyValuePanel rows={[
+            ['Agent sample', firstAgentId],
+            ['Environment sample', firstEnvironmentId],
+            ['Session sample', firstSessionId],
+            ['Skill package', 'top-level folder with SKILL.md'],
+          ]} />
+        </div>
+      </div>
+
+      <div className="apiReferenceGrid">
+        {API_ENDPOINT_GROUPS.map((group) => (
+          <div className="panel subtlePanel endpointGroup" key={group.title}>
+            <h2>{group.title}</h2>
+            <p>{group.description}</p>
+            <div className="endpointList">
+              {group.endpoints.map((endpoint) => (
+                <div className="endpointRow" key={`${endpoint.method}:${endpoint.path}`}>
+                  <span className={`methodPill method${endpoint.method}`}>{endpoint.method}</span>
+                  <code>{endpoint.path}</code>
+                  <small>{endpoint.description}</small>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="workspaceGrid">
+        <ApiSnippet title="Create a session and stream a message" value={sessionCurl} />
+        <ApiSnippet title="TypeScript SDK" value={sdkSnippet} />
+      </div>
+
+      <div className="panel subtlePanel">
+        <div className="panelHeader">
+          <div>
+            <h2>Skills API</h2>
+            <p>Skills are reusable instruction packages. Upload a zip, .skill file, directory upload, or JSON file list.</p>
+          </div>
+          <ResourceBadge label="8 MB max" />
+        </div>
+        <div className="skillReferenceGrid">
+          <div>
+            <h3>Package shape</h3>
+            <pre className="metricsPreview">code-review-assistant/{'\n'}  SKILL.md{'\n'}  references/checklist.md</pre>
+            <p className="mutedLine">All files must be inside one top-level directory. <code>SKILL.md</code> must be at that directory root and start with YAML frontmatter containing <code>name</code> and <code>description</code>.</p>
+          </div>
+          <div>
+            <h3>Attach to an agent</h3>
+            <pre className="metricsPreview">{skillAttachSnippet}</pre>
+          </div>
+        </div>
+      </div>
+
+      <div className="workspaceGrid">
+        <ApiSnippet title="Upload a Skill package" value={skillUploadSnippet} />
+        <ApiSnippet title="Create a Skill with JSON" value={skillJsonSnippet} />
+      </div>
+    </section>
+  );
+}
+
+function ApiSnippet({ title, value }: { title: string; value: string }) {
+  return (
+    <div className="panel subtlePanel snippetPanel">
+      <div className="snippetHeader">
+        <h2>{title}</h2>
+        <button className="iconButton" type="button" title="Copy snippet" aria-label={`Copy ${title}`} onClick={() => copyText(value)}>
+          <Copy size={16} />
+        </button>
+      </div>
+      <pre className="metricsPreview apiSnippet">{value}</pre>
+    </div>
+  );
+}
+
+function SettingsView({
+  data,
+  section,
+  onRefresh,
+  setView,
+}: {
+  data: ConsoleData;
+  section: SettingsSection;
+  onRefresh: () => void;
+  setView: (view: ViewId) => void;
+}) {
+  const [active, setActive] = useState<SettingsSection>(section);
+
+  useEffect(() => {
+    setActive(section);
+  }, [section]);
+
+  return (
+    <section className="settingsShell">
+      <aside className="settingsSidebar" aria-label="Settings sections">
+        <div className="settingsSearch">
+          <Search size={16} />
+          <input aria-label="Search settings" placeholder="Search settings..." disabled />
+        </div>
+        {SETTINGS_GROUPS.map((group) => (
+          <div className="settingsNavGroup" key={group}>
+            <div className="settingsGroupLabel">{group}</div>
+            <div className="settingsNav">
+              {SETTINGS_SECTIONS.filter((item) => item.group === group).map((item) => {
+                const Icon = item.icon;
+                const nextView: ViewId = item.id === 'general' ? 'settings' : item.id;
+                return (
+                  <button
+                    type="button"
+                    key={item.id}
+                    className={`settingsNavItem ${active === item.id ? 'active' : ''}`}
+                    onClick={() => {
+                      setActive(item.id);
+                      setView(nextView);
+                    }}
+                  >
+                    <Icon size={18} />
+                    <span>{item.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </aside>
+      <div className="settingsContent">
+        {active === 'general' ? <SettingsGeneral data={data} setView={setView} /> : null}
+        {active === 'workspace' ? <WorkspaceView data={data} /> : null}
+        {active === 'models' ? <SettingsModels data={data} /> : null}
+        {active === 'loop-engine' ? <SettingsLoopEngine data={data} /> : null}
+        {active === 'storage' ? <SettingsStorage data={data} /> : null}
+        {active === 'sandbox' ? <SettingsSandbox data={data} /> : null}
+        {active === 'api-keys' ? <ApiKeys data={data} onRefresh={onRefresh} /> : null}
+        {active === 'api-reference' ? <SettingsApiReference data={data} setView={setView} /> : null}
+        {active === 'logs' ? <SettingsLogs data={data} /> : null}
+        {active === 'monitoring' ? <Observability data={data} /> : null}
+      </div>
+    </section>
+  );
+}
+
+function SettingsGeneral({ data, setView }: { data: ConsoleData; setView: (view: ViewId) => void }) {
+  const cards: Array<{ id: ViewId; title: string; body: string; icon: ReactNode; meta: string | number }> = [
+    { id: 'models', title: 'Models', body: 'Provider model IDs, base URLs, and API key state.', icon: <Brain size={20} />, meta: data.runtime?.models.length ?? 0 },
+    { id: 'loop-engine', title: 'Loop engine', body: 'Agent turn loop, tool execution, and session processing.', icon: <Gauge size={20} />, meta: data.sessions.filter((session) => session.status === 'running').length },
+    { id: 'storage', title: 'Storage', body: 'SQLite state, uploaded files, memory, and runtime paths.', icon: <Database size={20} />, meta: data.files.length + data.memoryStores.length },
+    { id: 'sandbox', title: 'Sandbox', body: 'Environment templates and execution isolation providers.', icon: <Shield size={20} />, meta: data.environments.length },
+    { id: 'api-keys', title: 'API keys', body: 'Bearer tokens for local API access and dashboard auth.', icon: <KeyRound size={20} />, meta: data.apiKeys.filter((key) => key.status === 'active').length },
+    { id: 'api-reference', title: 'API reference', body: 'HTTP endpoints, SDK snippets, and Skill upload examples.', icon: <Keyboard size={20} />, meta: '/v1' },
+    { id: 'logs', title: 'Logs', body: 'Runtime logs, refresh, and process restart controls.', icon: <FileText size={20} />, meta: data.runtime?.status ?? 'starting' },
+    { id: 'monitoring', title: 'Monitoring', body: 'Metrics endpoint and workspace activity counters.', icon: <Activity size={20} />, meta: data.sessions.length },
+  ];
+  return (
+    <section className="stack">
+      <div className="pageIntro">
+        <div>
+          <h1>Settings</h1>
+          <p>Configure models, loop engine behavior, storage, sandboxing, access, logs, and monitoring from one place.</p>
+        </div>
+      </div>
+      <SummaryStrip items={[
+        { label: 'Workspace', value: data.workspace?.name ?? 'local', icon: <Box size={18} /> },
+        { label: 'Target', value: data.workspace?.target ?? 'local', icon: <Layers size={18} /> },
+        { label: 'Runtime', value: data.runtime?.status ?? 'starting', icon: <Terminal size={18} /> },
+        { label: 'Auth', value: data.runtime?.auth_enabled ? 'enabled' : 'disabled', icon: <KeyRound size={18} /> },
+      ]} />
+      <div className="workspaceGrid">
+        <div className="panel subtlePanel">
+          <h2>Project</h2>
+          <p>Runtime records are stored outside the source tree, while seed directories stay in the project.</p>
+          <KeyValuePanel rows={[
+            ['Workspace', data.workspace?.name],
+            ['Root folder', pathName(data.workspace?.root) || data.workspace?.name],
+            ['Configuration folder', workspaceConfigDir(data.workspace)],
+            ['Memory', data.runtime?.memory],
+          ]} />
+        </div>
+        <div className="panel subtlePanel">
+          <h2>Capabilities</h2>
+          <p>Live summary reported by the local runtime.</p>
+          <KeyValuePanel rows={[
+            ['Models', data.runtime?.models.length ?? 0],
+            ['Sandboxes', data.runtime?.sandbox_providers.join(', ') || 'none'],
+            ['API auth', data.runtime?.auth_enabled ? 'enabled' : 'disabled'],
+            ['Database', runtimeDatabasePath(data.workspace) ? 'SQLite' : 'not resolved'],
+          ]} />
+        </div>
+      </div>
+      <div className="settingsOverviewGrid">
+        {cards.map((card) => (
+          <button className="settingsOverviewCard" type="button" key={card.id} onClick={() => setView(card.id)}>
+            <span className="settingsOverviewIcon">{card.icon}</span>
+            <span>
+              <strong>{card.title}</strong>
+              <small>{card.body}</small>
+            </span>
+            <em>{card.meta}</em>
+          </button>
+        ))}
+      </div>
+    </section>
+  );
 }
 
 function AgentModal({ template, data, onClose, onSaved }: { template?: Template; data: ConsoleData; onClose: () => void; onSaved: () => void }) {

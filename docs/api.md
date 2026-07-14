@@ -3,6 +3,11 @@
 The runtime exposes a JSON HTTP API under `/v1`. The local Console and SDK use
 the same API.
 
+The Dashboard also includes a live reference page at `Settings > API reference`.
+It shows the active base URL, current authentication mode, endpoint groups,
+copyable `curl` and SDK snippets, and Skill upload examples from the running
+runtime.
+
 ## Base URL
 
 ```text
@@ -437,6 +442,8 @@ Extension endpoints expose local runtime operations.
 | `GET` | `/v1/x/workspace` | Workspace paths and metadata. |
 | `GET` | `/v1/x/templates` | Built-in agent templates. |
 | `POST` | `/v1/x/reload` | Reload file-backed agents. |
+| `POST` | `/v1/x/restart` | Restart the local runtime process when the server was started through the CLI. |
+| `GET` | `/v1/x/logs?limit=200&level=info&q=term` | Recent in-process structured runtime logs. |
 | `GET` | `/v1/x/metrics` | Prometheus metrics, when enabled. |
 | `GET` | `/v1/x/mcp/status?session_id=...` | MCP connection status for a session. |
 
@@ -461,3 +468,23 @@ configuration metadata only:
 ```
 
 The runtime never returns raw API keys or resolved secret values to the Console.
+
+`GET /v1/x/logs` returns a standard page envelope with the most recent log
+entries captured by the current process. `level` is a minimum severity filter
+(`debug`, `info`, `warn`, or `error`), and `q` searches the rendered log line.
+The in-memory buffer is intended for local operations and is reset when the
+runtime restarts.
+
+`POST /v1/x/restart` schedules a local runtime restart and returns:
+
+```json
+{
+  "restarting": true,
+  "status": "scheduled"
+}
+```
+
+Embedded test servers or custom hosts that do not provide a restart hook return
+`501 unsupported`. When available, restart stops accepting requests, drains the
+session manager, closes SQLite, and starts a new process with the same command
+line arguments.

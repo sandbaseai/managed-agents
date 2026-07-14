@@ -270,7 +270,7 @@ that can safely restart or rebind the runtime.
 ## Console
 
 The Console is a React/Vite application built into `dist/console` and served
-from `/ui`. It provides:
+from `/dashboard`. It provides:
 
 - Quickstart templates
 - agent list and agent creation

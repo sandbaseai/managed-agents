@@ -4,7 +4,7 @@
  * Verifies:
  * - auth disabled by default (no keys) → all routes open
  * - auth enabled (keys configured) → /v1 routes require Bearer token
- * - public paths (/, /ui, /ui/assets/*, /v1/x/health) stay open even when auth is enabled
+ * - public paths (/, /dashboard, /dashboard/assets/*, /v1/x/health) stay open even when auth is enabled
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -130,11 +130,14 @@ describe('API authentication', () => {
     });
 
     it('keeps the console shell and static assets public', async () => {
-      const shell = await ctx.app.request('/ui');
+      const shell = await ctx.app.request('/dashboard');
       expect(shell.status).not.toBe(401);
 
-      const asset = await ctx.app.request('/ui/assets/app.js');
+      const asset = await ctx.app.request('/dashboard/assets/app.js');
       expect(asset.status).not.toBe(401);
+
+      const legacyShell = await ctx.app.request('/ui');
+      expect(legacyShell.status).not.toBe(401);
     });
 
     it('is case-insensitive on the Bearer scheme', async () => {
