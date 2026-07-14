@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig({
   plugins: [react()],
-  base: '/ui/',
+  base: '/dashboard/',
   root: __dirname,
   build: {
     outDir: '../../dist/console',

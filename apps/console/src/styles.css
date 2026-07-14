@@ -1,21 +1,21 @@
 :root {
   color-scheme: light;
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --bg: #fbfbfa;
-  --sidebar-bg: #f7f7f5;
+  --bg: #faf9f7;
+  --sidebar-bg: #f4f3f0;
   --surface: #ffffff;
-  --surface-muted: #f4f4f2;
-  --surface-hover: #f0f0ee;
-  --surface-active: #ececea;
-  --border: #deded8;
-  --border-subtle: #ebeae6;
-  --text: #151514;
-  --text-soft: #4e4b47;
-  --muted: #807c75;
-  --muted-soft: #aaa59d;
-  --accent: #7868e6;
+  --surface-muted: #f3f2ee;
+  --surface-hover: #eeeeea;
+  --surface-active: #e9e8e4;
+  --border: #dedbd3;
+  --border-subtle: #e9e6de;
+  --text: #171614;
+  --text-soft: #514e48;
+  --muted: #7d786f;
+  --muted-soft: #aaa49a;
+  --accent: #6b5de6;
   --accent-soft: #f1efff;
-  --accent-border: #ddd7ff;
+  --accent-border: #dad5ff;
   --success: #167029;
   --success-soft: #d8f0d4;
   --info: #1f5f9e;
@@ -204,36 +204,52 @@ button {
 }
 
 .consoleNotice {
-  min-height: 50px;
+  min-height: 36px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 14px;
-  margin: 16px 24px 0;
-  padding: 0 14px;
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius);
-  background: var(--surface);
-  position: sticky;
-  top: 12px;
+  gap: 10px;
+  margin: 14px 32px 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  position: relative;
   z-index: 5;
+  box-shadow: none;
+}
+
+.runtimeConnection {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  max-width: 100%;
+  border: 1px solid var(--border-subtle);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  color: var(--text-soft);
+  padding: 0 12px;
+  font-size: 13px;
+  font-weight: 640;
+  min-width: 0;
   box-shadow: var(--shadow-control);
 }
 
-.consoleNotice div {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  color: var(--text);
-  min-width: 0;
-}
-
-.consoleNotice svg {
-  color: var(--muted);
+.runtimeStatusDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
   flex: none;
+  background: var(--warning);
+  box-shadow: 0 0 0 3px var(--warning-soft);
 }
 
-.consoleNotice span {
+.runtimeConnection.connected .runtimeStatusDot {
+  background: var(--success);
+  box-shadow: 0 0 0 3px var(--success-soft);
+}
+
+.runtimeConnection span:last-child {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1705,6 +1721,297 @@ select:focus {
   color: var(--muted);
 }
 
+.settingsShell {
+  min-height: calc(100vh - 50px);
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  background: var(--bg);
+}
+
+.settingsSidebar {
+  border-right: 1px solid var(--border-subtle);
+  background: var(--sidebar-bg);
+  padding: 22px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.settingsSearch {
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  padding: 0 12px;
+  color: var(--muted);
+  box-shadow: var(--shadow-control);
+}
+
+.settingsSearch input {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  min-height: 36px;
+}
+
+.settingsGroupLabel {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 680;
+  padding: 0 10px;
+}
+
+.settingsNavGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.settingsNav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.settingsNavItem {
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text-soft);
+  padding: 0 12px;
+  text-align: left;
+  font-size: 14px;
+  font-weight: 610;
+}
+
+.settingsNavItem:hover {
+  background: var(--surface-hover);
+}
+
+.settingsNavItem.active {
+  background: var(--surface-active);
+  color: var(--text);
+}
+
+.settingsContent {
+  min-width: 0;
+}
+
+.settingsContent > .stack {
+  padding-top: 30px;
+}
+
+.settingsOverviewGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.settingsOverviewCard {
+  min-height: 116px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 18px;
+  text-align: left;
+  box-shadow: var(--shadow-control);
+}
+
+.settingsOverviewCard:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-hover);
+}
+
+.settingsOverviewIcon {
+  width: 38px;
+  height: 38px;
+  border-radius: var(--radius);
+  background: var(--surface-muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-soft);
+}
+
+.settingsOverviewCard strong,
+.settingsOverviewCard small {
+  display: block;
+}
+
+.settingsOverviewCard strong {
+  font-size: 15px;
+  font-weight: 720;
+}
+
+.settingsOverviewCard small {
+  margin-top: 6px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.settingsOverviewCard em {
+  min-width: 34px;
+  min-height: 28px;
+  border-radius: 999px;
+  background: var(--surface-muted);
+  color: var(--text-soft);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 10px;
+  font-style: normal;
+  font-weight: 680;
+}
+
+.apiReferenceGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.apiReference,
+.apiReference .panel,
+.apiReference .summaryStrip,
+.apiReference .summaryItem,
+.apiReference .workspaceGrid,
+.apiReference .tablePanel,
+.apiReference .kvRow,
+.apiReference .metricsPreview {
+  min-width: 0;
+}
+
+.apiReference .summaryItem strong,
+.apiReference .kvRow strong,
+.apiReference code {
+  overflow-wrap: anywhere;
+}
+
+.endpointGroup {
+  gap: 14px;
+}
+
+.endpointList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.endpointRow {
+  min-height: 42px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+  background: var(--surface);
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  gap: 8px 12px;
+  align-items: center;
+  padding: 10px 12px;
+}
+
+.endpointRow code {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: normal;
+  color: var(--text);
+}
+
+.endpointRow small {
+  grid-column: 2;
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.methodPill {
+  width: 54px;
+  min-height: 24px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 760;
+  letter-spacing: 0;
+  color: var(--text);
+  background: var(--surface-muted);
+}
+
+.methodGET {
+  color: #1f5f8d;
+  background: #dbeafe;
+}
+
+.methodPOST {
+  color: #1b6b42;
+  background: #dcfce7;
+}
+
+.methodPUT {
+  color: #7a4b00;
+  background: #fef3c7;
+}
+
+.methodDELETE {
+  color: #9f1d1d;
+  background: #fee2e2;
+}
+
+.snippetPanel {
+  min-width: 0;
+}
+
+.snippetHeader {
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.snippetHeader h2 {
+  min-width: 0;
+}
+
+.apiSnippet {
+  max-height: 360px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.skillReferenceGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+  gap: 14px;
+}
+
+.skillReferenceGrid > * {
+  min-width: 0;
+}
+
+.skillReferenceGrid h3 {
+  font-size: 15px;
+  font-weight: 720;
+  margin-bottom: 8px;
+}
+
+.skillReferenceGrid .mutedLine {
+  margin-top: 10px;
+  line-height: 1.45;
+}
+
 .agentTable th {
   background: var(--surface);
   font-size: 13px;
@@ -2287,6 +2594,46 @@ select:focus {
   border-radius: var(--radius);
   overflow: hidden;
   box-shadow: none;
+}
+
+.sessionComposer {
+  position: sticky;
+  bottom: 18px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  padding: 12px;
+  box-shadow: var(--shadow-popover);
+  backdrop-filter: blur(10px);
+  z-index: 4;
+}
+
+.sessionComposer textarea {
+  width: 100%;
+  min-height: 48px;
+  max-height: 150px;
+  resize: vertical;
+  border: 0;
+  border-radius: calc(var(--radius) - 2px);
+  background: var(--surface-muted);
+  color: var(--text);
+  padding: 12px 14px;
+  line-height: 1.45;
+}
+
+.sessionComposer textarea:focus {
+  outline: 2px solid var(--accent-border);
+  background: var(--surface);
+}
+
+.sessionComposerError {
+  grid-column: 1 / -1;
+  color: var(--danger);
+  font-size: 13px;
 }
 
 .eventMiniMap {
@@ -3587,8 +3934,14 @@ select:focus {
   .resourceGrid,
   .summaryStrip,
   .metricGrid,
-  .workspaceGrid {
+  .workspaceGrid,
+  .apiReferenceGrid,
+  .skillReferenceGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .settingsShell {
+    grid-template-columns: 220px minmax(0, 1fr);
   }
 
   .claudeTemplateGrid {
@@ -3619,6 +3972,7 @@ select:focus {
     border-bottom: 1px solid var(--border);
     padding: 12px;
     gap: 10px;
+    overflow: hidden;
   }
 
   .nav {
@@ -3678,6 +4032,35 @@ select:focus {
     min-height: 44px;
   }
 
+  .settingsShell {
+    grid-template-columns: 1fr;
+  }
+
+  .settingsSidebar {
+    border-right: 0;
+    border-bottom: 1px solid var(--border-subtle);
+    overflow-x: auto;
+  }
+
+  .settingsNav {
+    flex-direction: row;
+    overflow-x: auto;
+    padding-bottom: 2px;
+  }
+
+  .settingsNavGroup {
+    flex: 0 0 auto;
+    min-width: 190px;
+  }
+
+  .settingsGroupLabel {
+    padding-left: 4px;
+  }
+
+  .settingsNavItem {
+    flex: 0 0 auto;
+  }
+
   .quickstart,
   .stack,
   .resourceGrid,
@@ -3693,9 +4076,11 @@ select:focus {
   .formGrid,
   .toolGrid,
   .skillPicker,
-  .claudeTemplateGrid,
-  .metricGrid,
-  .workspaceGrid {
+    .claudeTemplateGrid,
+    .metricGrid,
+    .workspaceGrid,
+    .apiReferenceGrid,
+    .skillReferenceGrid {
     grid-template-columns: 1fr;
   }
 
@@ -3784,6 +4169,11 @@ select:focus {
 
   .eventPane {
     grid-template-columns: 1fr;
+  }
+
+  .sessionComposer {
+    grid-template-columns: 1fr;
+    bottom: 10px;
   }
 
   .memoryBrowser,

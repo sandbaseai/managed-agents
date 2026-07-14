@@ -148,13 +148,19 @@ describe('Managed Agents API', () => {
     });
   });
 
-  describe('GET /ui', () => {
+  describe('GET /dashboard', () => {
     it('requires the built Console artifact', async () => {
-      const res = await app.request('/ui');
+      const res = await app.request('/dashboard');
       expect(res.status).toBe(503);
       expect(res.headers.get('content-type')).toContain('text/html');
       const html = await res.text();
-      expect(html).toContain('Console not built');
+      expect(html).toContain('Dashboard not built');
+    });
+
+    it('redirects the legacy /ui path to /dashboard', async () => {
+      const res = await app.request('/ui');
+      expect(res.status).toBe(308);
+      expect(res.headers.get('location')).toBe('/dashboard');
     });
   });
 

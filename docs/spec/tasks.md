@@ -33,7 +33,7 @@ This document tracks public implementation status for `managed-agents`.
 - [x] Structured logging and runtime metrics.
 - [x] TypeScript SDK for agents, sessions, events, messages, and SSE tailing.
 - [x] CLI commands for init, start, list, reload, chat, and templates.
-- [x] React/Vite Console at `/ui`.
+- [x] React/Vite Dashboard at `/dashboard`.
 - [x] Standard agent fields: `system`, `agent_toolset_20260401`, and
       `permission_policy`.
 - [x] Standard event pagination with `after_id`.

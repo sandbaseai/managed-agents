@@ -3,6 +3,11 @@
 The runtime exposes a JSON HTTP API under `/v1`. The local Console and SDK use
 the same API.
 
+The Dashboard also includes a live reference page at `Settings > API reference`.
+It shows the active base URL, current authentication mode, endpoint groups,
+copyable `curl` and SDK snippets, and Skill upload examples from the running
+runtime.
+
 ## Base URL
 
 ```text

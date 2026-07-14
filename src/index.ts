@@ -449,7 +449,7 @@ async function startServer(opts: { port: string; host: string; dataDir?: string;
   }, (info) => {
     console.log(`\n  managed-agents v${VERSION}\n`);
     console.log(`  API:       http://${host}:${info.port}/v1`);
-    console.log(`  Console:   http://${host}:${info.port}/ui`);
+    console.log(`  Dashboard: http://${host}:${info.port}/dashboard`);
     console.log(`  Health:    http://${host}:${info.port}/v1/x/health`);
     console.log(`  Agents:    ${agents.length} loaded`);
     console.log(`  Skills:    ${skills.length} loaded`);
