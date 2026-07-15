@@ -13,6 +13,29 @@ export function Toolbar({ query, onQuery, placeholder, actions }: { query: strin
   );
 }
 
+export function FilterSelect({
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  options: Array<{ value: string; label: string }>;
+}) {
+  return (
+    <label className="filterSelect">
+      <span>{label}</span>
+      <select value={value} onChange={(event) => onChange(event.target.value)} aria-label={label}>
+        {options.map((option) => (
+          <option value={option.value} key={option.value}>{option.label}</option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
 export function SummaryStrip({ items }: { items: Array<{ label: string; value: ReactNode; icon: ReactNode }> }) {
   return (
     <div className="summaryStrip">

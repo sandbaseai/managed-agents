@@ -2,7 +2,7 @@ import { ChangeEvent, DragEvent, FormEvent, useEffect, useMemo, useRef, useState
 import { AlertTriangle, Download, FileText, Plus, Search, Trash2, Upload, X, Zap } from 'lucide-react';
 import { postForm } from '../../api';
 import type { ConsoleData, Skill, WorkspaceFile } from '../../types';
-import { EmptyState } from '../Common';
+import { EmptyState, FilterSelect } from '../Common';
 import { Modal } from '../Modal';
 import { formatBytes, formatDateShort, formatDateWithYear, shortId } from '../../lib/format';
 
@@ -52,14 +52,16 @@ export function Skills({ data, onRefresh }: { data: ConsoleData; onRefresh: () =
           <Search size={17} />
           <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search by name or exact ID" />
         </label>
-        <label className="filterSelect">
-          <span>Source</span>
-          <select value={source} onChange={(event) => setSource(event.target.value as 'all' | Skill['source'])}>
-            <option value="all">All</option>
-            <option value="anthropic">Anthropic</option>
-            <option value="custom">Custom</option>
-          </select>
-        </label>
+        <FilterSelect
+          label="Source"
+          value={source}
+          onChange={(value) => setSource(value as 'all' | Skill['source'])}
+          options={[
+            { value: 'all', label: 'All' },
+            { value: 'anthropic', label: 'Anthropic' },
+            { value: 'custom', label: 'Custom' },
+          ]}
+        />
       </div>
 
       <div className="skillsLayout">

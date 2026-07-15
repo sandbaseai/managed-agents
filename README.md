@@ -90,7 +90,6 @@ Then create and run an agent workspace outside the source checkout:
 mkdir ../my-agents
 cd ../my-agents
 node ../managed-agents/dist/index.js init
-# edit managed-agents.config.yaml and set your provider API key
 node ../managed-agents/dist/index.js start
 ```
 
@@ -107,28 +106,9 @@ npx managed-agents init
 If you are running from a source checkout, replace `npx managed-agents` with
 `node /path/to/managed-agents/dist/index.js`.
 
-Configure a model in `managed-agents.config.yaml`. For Anthropic:
-
-```yaml
-models:
-  - name: default
-    provider: anthropic
-    model: claude-opus-4-8
-    api_key: ${ANTHROPIC_API_KEY}
-
-environments:
-  local:
-    sandbox_provider: local
-    timeout: 300
-```
-
-For an OpenAI-compatible endpoint, use `provider: openai`, set `model` to the
-provider model name, and optionally set `base_url`.
-
 Start the runtime:
 
 ```bash
-export ANTHROPIC_API_KEY=...
 npx managed-agents start
 # source checkout:
 # node /path/to/managed-agents/dist/index.js start
@@ -140,11 +120,21 @@ Open the Dashboard:
 http://127.0.0.1:3000/dashboard
 ```
 
+Open `Settings > Models` and add a model provider. A provider stores the runtime
+name, provider type, model id, base URL, and API key in SQLite. Mark one
+provider as default; agents that use `model: default` will run through that
+provider. No source-controlled file changes are required for normal local use.
+
 The API is available at:
 
 ```text
 http://127.0.0.1:3000/v1
 ```
+
+Inside the Dashboard, open `Settings > API reference` for a Claude-style
+developer reference page. It shows the active base URL, authentication mode,
+grouped endpoints, parameter descriptions, return fields, and copyable `curl`
+and TypeScript SDK examples generated from your running runtime.
 
 ## Workspace Layout
 
@@ -223,11 +213,11 @@ metadata:
   template: incident-commander
 ```
 
-Use `model: default` for the common path. The value is the configured model
-registry name in `managed-agents.config.yaml`; that registry entry maps to the
-provider model id such as `claude-opus-4-8`, `gpt-4o`, or an OpenAI-compatible
-model name. API clients may also send a model configuration object when they
-need additional controls such as `speed`.
+Use `model: default` for the common path. The Dashboard default provider maps
+that name to a concrete provider model id such as `claude-opus-4-8`, `gpt-4o`,
+or an OpenAI-compatible model name. Provider settings are stored in SQLite under
+the runtime data directory. API clients may also send a model configuration
+object when they need additional controls such as `speed`.
 
 ## Dashboard
 
@@ -470,7 +460,7 @@ const session = await client.sessions.create({
   title: 'SDK smoke test',
 });
 
-for await (const event of client.sessions.message(session.id, 'Hello')) {
+for await (const event of client.sessions.chat(session.id, 'Hello')) {
   if (event.type === 'agent.message_chunk') {
     process.stdout.write(event.delta ?? '');
   }
@@ -544,8 +534,9 @@ npm run dev:console
 The Dashboard's `Settings > Logs` page can restart the CLI-managed server and
 display the current process log buffer. Runtime configuration is organized
 under `Settings > Models`, `Settings > Loop engine`, `Settings > Storage`, and
-`Settings > Sandbox`. The same log controls are available through
-`POST /v1/x/restart` and `GET /v1/x/logs`.
+`Settings > Sandbox`. Model providers created in `Settings > Models` are stored
+in SQLite and applied to new agent runs immediately. The same log controls are
+available through `POST /v1/x/restart` and `GET /v1/x/logs`.
 
 ## Release Checks
 

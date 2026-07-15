@@ -20,7 +20,9 @@ describe('ModelRegistry runtime introspection', () => {
       model: 'gpt-4o',
       api_key_state: 'configured',
       base_url_state: 'missing_env',
+      is_default: true,
     }]);
     expect(JSON.stringify(models)).not.toContain('secret-value');
+    expect(JSON.stringify(models)).not.toContain('MISSING_BASE_URL');
   });
 });

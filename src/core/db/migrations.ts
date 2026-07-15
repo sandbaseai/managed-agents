@@ -415,6 +415,95 @@ ALTER TABLE credential_vaults_next RENAME TO credential_vaults;
 CREATE INDEX idx_credential_vaults_status_created ON credential_vaults(status, created_at DESC);
 `;
 
+const M016_MODEL_PROVIDER_SETTINGS = `
+ALTER TABLE models ADD COLUMN api_key TEXT;
+ALTER TABLE models ADD COLUMN is_default INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE models ADD COLUMN updated_at TEXT;
+
+UPDATE models
+SET updated_at = created_at
+WHERE updated_at IS NULL;
+
+UPDATE models
+SET is_default = 1
+WHERE name = (
+  SELECT name FROM models ORDER BY created_at ASC LIMIT 1
+)
+AND NOT EXISTS (
+  SELECT 1 FROM models WHERE is_default = 1
+);
+
+CREATE UNIQUE INDEX idx_models_default
+  ON models(is_default)
+  WHERE is_default = 1;
+`;
+
+const M017_MEMORY_PROVIDER_SETTINGS = `
+CREATE TABLE memory_providers (
+  name TEXT PRIMARY KEY,
+  provider TEXT NOT NULL,
+  connection_url TEXT,
+  api_key TEXT,
+  config TEXT NOT NULL DEFAULT '{}',
+  is_default INTEGER NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'active',
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+INSERT INTO memory_providers (
+  name, provider, connection_url, api_key, config, is_default, status, created_at, updated_at
+)
+VALUES (
+  'local-sqlite', 'sqlite', NULL, NULL, '{}', 1, 'active', datetime('now'), datetime('now')
+);
+
+CREATE UNIQUE INDEX idx_memory_providers_default
+  ON memory_providers(is_default)
+  WHERE is_default = 1;
+`;
+
+const M018_STORAGE_PROVIDER_SETTINGS = `
+CREATE TABLE storage_providers (
+  name TEXT PRIMARY KEY,
+  role TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  connection_url TEXT,
+  bucket TEXT,
+  region TEXT,
+  base_path TEXT,
+  access_key TEXT,
+  secret_key TEXT,
+  config TEXT NOT NULL DEFAULT '{}',
+  is_default INTEGER NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'active',
+  initialized_at TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+INSERT INTO storage_providers (
+  name, role, provider, connection_url, bucket, region, base_path, access_key, secret_key,
+  config, is_default, status, initialized_at, created_at, updated_at
+)
+VALUES
+  (
+    'metadata-sqlite', 'metadata', 'sqlite', NULL, NULL, NULL, NULL, NULL, NULL,
+    '{}', 1, 'active', datetime('now'), datetime('now'), datetime('now')
+  ),
+  (
+    'local-artifacts', 'artifact', 'local_filesystem', NULL, NULL, NULL, 'files', NULL, NULL,
+    '{}', 1, 'active', datetime('now'), datetime('now'), datetime('now')
+  );
+
+CREATE UNIQUE INDEX idx_storage_providers_default_role
+  ON storage_providers(role, is_default)
+  WHERE is_default = 1;
+
+CREATE INDEX idx_storage_providers_role
+  ON storage_providers(role, created_at DESC);
+`;
+
 export const MIGRATIONS: Migration[] = [
   { version: 1, name: '001_initial', sql: M001_INITIAL },
   { version: 2, name: '002_memory', sql: M002_MEMORY },
@@ -431,4 +520,7 @@ export const MIGRATIONS: Migration[] = [
   { version: 13, name: '013_standard_object_ids', sql: M013_STANDARD_OBJECT_IDS },
   { version: 14, name: '014_environment_object_ids', sql: M014_ENVIRONMENT_OBJECT_IDS },
   { version: 15, name: '015_credential_vault_object_ids', sql: M015_CREDENTIAL_VAULT_OBJECT_IDS },
+  { version: 16, name: '016_model_provider_settings', sql: M016_MODEL_PROVIDER_SETTINGS },
+  { version: 17, name: '017_memory_provider_settings', sql: M017_MEMORY_PROVIDER_SETTINGS },
+  { version: 18, name: '018_storage_provider_settings', sql: M018_STORAGE_PROVIDER_SETTINGS },
 ];

@@ -43,7 +43,7 @@ import {
 import { Dispatch, FormEvent, ReactNode, SetStateAction, useEffect, useMemo, useState } from 'react';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { clearStoredApiKey, deleteJson, getJson, getPage, getStoredApiKey, getText, postJson, putJson, setStoredApiKey } from './api';
-import { EmptyState, KeyValuePanel, LoadingState, RequiredMark, ResourceBadge, StatusPill, SummaryStrip, Toolbar } from './components/Common';
+import { EmptyState, FilterSelect, KeyValuePanel, LoadingState, RequiredMark, ResourceBadge, StatusPill, SummaryStrip, Toolbar } from './components/Common';
 import { Modal } from './components/Modal';
 import { Files, Skills } from './components/pages/BuildPages';
 import { useHashRoute } from './hooks/useHashRoute';
@@ -69,6 +69,11 @@ import type {
   RuntimeConfigState,
   RuntimeLogEntry,
   RuntimeLogLevel,
+  RuntimeMemoryProvider,
+  RuntimeModel,
+  RuntimeStorageProvider,
+  RuntimeStorageProviderKind,
+  RuntimeStorageProviderRole,
   Session,
   SessionEvent,
   SessionResourceDraft,
@@ -153,6 +158,8 @@ function emptyData(): ConsoleData {
     apiKeys: [],
     skills: [],
     templates: [],
+    memoryProviders: [],
+    storageProviders: [],
     runtime: null,
     workspace: null,
   };
@@ -191,6 +198,8 @@ export function App() {
         apiKeys,
         skills,
         templates,
+        memoryProviders,
+        storageProviders,
         runtime,
         workspace,
       ] = await Promise.all([
@@ -203,6 +212,8 @@ export function App() {
         getPage<ApiKey>('/v1/api-keys'),
         getPage<Skill>('/v1/skills'),
         getPage<Template>('/v1/x/templates'),
+        getPage<RuntimeMemoryProvider>('/v1/x/memory-providers'),
+        getPage<RuntimeStorageProvider>('/v1/x/storage-providers'),
         getJson<Runtime>('/v1/x/runtime'),
         getJson<Workspace>('/v1/x/workspace'),
       ]);
@@ -216,6 +227,8 @@ export function App() {
         apiKeys: apiKeys.data,
         skills: skills.data,
         templates: templates.data,
+        memoryProviders: memoryProviders.data,
+        storageProviders: storageProviders.data,
         runtime,
         workspace,
       });
@@ -560,9 +573,12 @@ function View(props: {
 
 function Agents({ data, onNewAgent, onOpenAgent }: { data: ConsoleData; onNewAgent: () => void; onOpenAgent: (agent: Agent) => void }) {
   const [query, setQuery] = useState('');
+  const [status, setStatus] = useState('active');
   const agents = data.agents.filter((agent) => {
     const q = query.toLowerCase();
-    return agent.id.toLowerCase().includes(q) || agent.name.toLowerCase().includes(q) || agent.description.toLowerCase().includes(q) || agent.model.toLowerCase().includes(q);
+    const matchesStatus = status === 'all' || (status === 'active' ? !agent.archived_at : status === 'archived' ? !!agent.archived_at : agent.status === status);
+    const matchesQuery = agent.id.toLowerCase().includes(q) || agent.name.toLowerCase().includes(q) || agent.description.toLowerCase().includes(q) || agent.model.toLowerCase().includes(q);
+    return matchesStatus && matchesQuery;
   });
   return (
     <section className="stack">
@@ -582,8 +598,17 @@ function Agents({ data, onNewAgent, onOpenAgent }: { data: ConsoleData; onNewAge
         placeholder="Search by name or exact ID"
         actions={(
           <>
-            <button className="filterButton" type="button">Created <strong>All time</strong> <ChevronDown size={15} /></button>
-            <button className="filterButton" type="button">Status <strong>Active</strong> <ChevronDown size={15} /></button>
+            <FilterSelect label="Created" value="all" onChange={() => undefined} options={[{ value: 'all', label: 'All time' }]} />
+            <FilterSelect
+              label="Status"
+              value={status}
+              onChange={setStatus}
+              options={[
+                { value: 'active', label: 'Active' },
+                { value: 'all', label: 'All' },
+                { value: 'archived', label: 'Archived' },
+              ]}
+            />
           </>
         )}
       />
@@ -783,9 +808,12 @@ function AgentConfigTab({ agent }: { agent: Agent }) {
 
 function AgentSessionsTab({ sessions, onOpenSession }: { sessions: Session[]; onOpenSession: (session: Session) => void }) {
   const [query, setQuery] = useState('');
+  const [status, setStatus] = useState('all');
   const filtered = sessions.filter((session) => {
     const q = query.toLowerCase();
-    return session.id.toLowerCase().includes(q) || (session.title ?? '').toLowerCase().includes(q);
+    const matchesStatus = status === 'all' || session.status === status;
+    const matchesQuery = session.id.toLowerCase().includes(q) || (session.title ?? '').toLowerCase().includes(q);
+    return matchesStatus && matchesQuery;
   });
   return (
     <div className="detailStack">
@@ -795,10 +823,21 @@ function AgentSessionsTab({ sessions, onOpenSession }: { sessions: Session[]; on
         placeholder="Search by session ID"
         actions={(
           <>
-            <button className="filterButton" type="button">Created <strong>All time</strong> <ChevronDown size={15} /></button>
-            <button className="filterButton" type="button">Version <strong>All</strong> <ChevronDown size={15} /></button>
-            <button className="filterButton" type="button">Deployment <strong>All</strong> <ChevronDown size={15} /></button>
-            <button className="filterButton" type="button">Status <strong>All</strong> <ChevronDown size={15} /></button>
+            <FilterSelect label="Created" value="all" onChange={() => undefined} options={[{ value: 'all', label: 'All time' }]} />
+            <FilterSelect label="Version" value="all" onChange={() => undefined} options={[{ value: 'all', label: 'All' }]} />
+            <FilterSelect label="Deployment" value="all" onChange={() => undefined} options={[{ value: 'all', label: 'All' }]} />
+            <FilterSelect
+              label="Status"
+              value={status}
+              onChange={setStatus}
+              options={[
+                { value: 'all', label: 'All' },
+                { value: 'idle', label: 'Idle' },
+                { value: 'running', label: 'Running' },
+                { value: 'failed', label: 'Failed' },
+                { value: 'terminated', label: 'Terminated' },
+              ]}
+            />
           </>
         )}
       />
@@ -858,9 +897,14 @@ function MetricCard({ title, value, subtitle }: { title: string; value: ReactNod
 
 function Sessions({ data, onNewSession, onOpenSession }: { data: ConsoleData; onNewSession: () => void; onOpenSession: (session: Session) => void }) {
   const [query, setQuery] = useState('');
+  const [status, setStatus] = useState('active');
+  const [agentId, setAgentId] = useState('all');
   const sessions = data.sessions.filter((session) => {
     const q = query.toLowerCase();
-    return session.id.toLowerCase().includes(q) || session.agent.name.toLowerCase().includes(q) || (session.title ?? '').toLowerCase().includes(q);
+    const matchesStatus = status === 'all' || (status === 'active' ? !session.archived_at : session.status === status);
+    const matchesAgent = agentId === 'all' || session.agent.id === agentId;
+    const matchesQuery = session.id.toLowerCase().includes(q) || session.agent.name.toLowerCase().includes(q) || (session.title ?? '').toLowerCase().includes(q);
+    return matchesStatus && matchesAgent && matchesQuery;
   });
   return (
     <section className="stack">
@@ -880,10 +924,30 @@ function Sessions({ data, onNewSession, onOpenSession }: { data: ConsoleData; on
         placeholder="Search by session ID"
         actions={(
           <>
-            <button className="filterButton" type="button">Created <strong>All time</strong> <ChevronDown size={15} /></button>
-            <button className="filterButton" type="button">Agent <strong>All</strong> <ChevronDown size={15} /></button>
-            <button className="filterButton" type="button">Deployment <strong>All</strong> <ChevronDown size={15} /></button>
-            <button className="filterButton" type="button">Status <strong>Active</strong> <ChevronDown size={15} /></button>
+            <FilterSelect label="Created" value="all" onChange={() => undefined} options={[{ value: 'all', label: 'All time' }]} />
+            <FilterSelect
+              label="Agent"
+              value={agentId}
+              onChange={setAgentId}
+              options={[
+                { value: 'all', label: 'All' },
+                ...data.agents.map((agent) => ({ value: agent.id, label: agent.name })),
+              ]}
+            />
+            <FilterSelect label="Deployment" value="all" onChange={() => undefined} options={[{ value: 'all', label: 'All' }]} />
+            <FilterSelect
+              label="Status"
+              value={status}
+              onChange={setStatus}
+              options={[
+                { value: 'active', label: 'Active' },
+                { value: 'all', label: 'All' },
+                { value: 'idle', label: 'Idle' },
+                { value: 'running', label: 'Running' },
+                { value: 'failed', label: 'Failed' },
+                { value: 'terminated', label: 'Terminated' },
+              ]}
+            />
           </>
         )}
       />
@@ -1180,9 +1244,12 @@ function SessionDetail({
 
 function Environments({ data, onNew, onOpenEnvironment }: { data: ConsoleData; onNew: () => void; onOpenEnvironment: (environment: Environment) => void }) {
   const [query, setQuery] = useState('');
+  const [status, setStatus] = useState('all');
   const environments = data.environments.filter((environment) => {
     const q = query.toLowerCase();
-    return environment.id.toLowerCase().includes(q) || environment.name.toLowerCase().includes(q) || environment.description.toLowerCase().includes(q);
+    const matchesStatus = status === 'all' || environment.status === status;
+    const matchesQuery = environment.id.toLowerCase().includes(q) || environment.name.toLowerCase().includes(q) || environment.description.toLowerCase().includes(q);
+    return matchesStatus && matchesQuery;
   });
 
   return (
@@ -1206,7 +1273,18 @@ function Environments({ data, onNew, onOpenEnvironment }: { data: ConsoleData; o
         query={query}
         onQuery={setQuery}
         placeholder="Search by name or exact ID"
-        actions={<button className="filterButton" type="button">Status <strong>All</strong> <ChevronDown size={15} /></button>}
+        actions={(
+          <FilterSelect
+            label="Status"
+            value={status}
+            onChange={setStatus}
+            options={[
+              { value: 'all', label: 'All' },
+              { value: 'active', label: 'Active' },
+              { value: 'archived', label: 'Archived' },
+            ]}
+          />
+        )}
       />
       <div className="tablePanel environmentsTablePanel">
         <table className="resourceTable">
@@ -1596,9 +1674,12 @@ function SetupStep({ index, title, body, code }: { index: number; title: string;
 
 function CredentialVaults({ data, onNew, onOpenVault }: { data: ConsoleData; onNew: () => void; onOpenVault: (vault: Vault) => void }) {
   const [query, setQuery] = useState('');
+  const [status, setStatus] = useState('all');
   const vaults = data.vaults.filter((vault) => {
     const q = query.toLowerCase();
-    return vault.id.toLowerCase().includes(q) || vault.name.toLowerCase().includes(q);
+    const matchesStatus = status === 'all' || vault.status === status;
+    const matchesQuery = vault.id.toLowerCase().includes(q) || vault.name.toLowerCase().includes(q);
+    return matchesStatus && matchesQuery;
   });
   return (
     <section className="stack">
@@ -1619,7 +1700,18 @@ function CredentialVaults({ data, onNew, onOpenVault }: { data: ConsoleData; onN
         query={query}
         onQuery={setQuery}
         placeholder="Search by name or exact ID"
-        actions={<button className="filterButton" type="button">Status <strong>All</strong> <ChevronDown size={15} /></button>}
+        actions={(
+          <FilterSelect
+            label="Status"
+            value={status}
+            onChange={setStatus}
+            options={[
+              { value: 'all', label: 'All' },
+              { value: 'active', label: 'Active' },
+              { value: 'archived', label: 'Archived' },
+            ]}
+          />
+        )}
       />
       <div className="tablePanel resourceTablePanel">
         <table className="resourceTable">
@@ -1666,13 +1758,16 @@ function CredentialVaultDetail({
   const [menuOpen, setMenuOpen] = useState(false);
   const [credentialMenuId, setCredentialMenuId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
+  const [status, setStatus] = useState('all');
   const credentials = vault.credentials.filter((credential) => {
     const q = query.toLowerCase();
-    return credential.id.toLowerCase().includes(q)
+    const matchesStatus = status === 'all' || credential.status === status;
+    const matchesQuery = credential.id.toLowerCase().includes(q)
       || credential.name.toLowerCase().includes(q)
       || credentialAuthLabel(credential.auth_type).toLowerCase().includes(q)
       || credential.mcp_server_url.toLowerCase().includes(q)
       || credential.variable_name.toLowerCase().includes(q);
+    return matchesStatus && matchesQuery;
   });
 
   const archiveVault = async () => {
@@ -1729,7 +1824,18 @@ function CredentialVaultDetail({
           query={query}
           onQuery={setQuery}
           placeholder="Search credentials"
-          actions={<button className="filterButton" type="button">Status <strong>All</strong> <ChevronDown size={15} /></button>}
+          actions={(
+            <FilterSelect
+              label="Status"
+              value={status}
+              onChange={setStatus}
+              options={[
+                { value: 'all', label: 'All' },
+                { value: 'active', label: 'Active' },
+                { value: 'archived', label: 'Archived' },
+              ]}
+            />
+          )}
         />
         <div className="tablePanel">
           <table>
@@ -1793,9 +1899,12 @@ function CredentialAuthCell({ credential }: { credential: VaultCredential }) {
 
 function MemoryStores({ data, onNew, onOpenMemoryStore }: { data: ConsoleData; onNew: () => void; onOpenMemoryStore: (store: MemoryStore) => void }) {
   const [query, setQuery] = useState('');
+  const [status, setStatus] = useState('active');
   const stores = data.memoryStores.filter((store) => {
     const q = query.toLowerCase();
-    return store.id.toLowerCase().includes(q) || store.name.toLowerCase().includes(q) || store.description.toLowerCase().includes(q);
+    const matchesStatus = status === 'all' || (status === 'active' ? !store.archived_at : status === 'archived' ? !!store.archived_at : store.status === status);
+    const matchesQuery = store.id.toLowerCase().includes(q) || store.name.toLowerCase().includes(q) || store.description.toLowerCase().includes(q);
+    return matchesStatus && matchesQuery;
   });
   return (
     <section className="stack">
@@ -1818,8 +1927,17 @@ function MemoryStores({ data, onNew, onOpenMemoryStore }: { data: ConsoleData; o
         placeholder="Search by name or exact ID"
         actions={(
           <>
-            <button className="filterButton" type="button">Created <strong>All time</strong> <ChevronDown size={15} /></button>
-            <button className="filterButton" type="button">Status <strong>Active</strong> <ChevronDown size={15} /></button>
+            <FilterSelect label="Created" value="all" onChange={() => undefined} options={[{ value: 'all', label: 'All time' }]} />
+            <FilterSelect
+              label="Status"
+              value={status}
+              onChange={setStatus}
+              options={[
+                { value: 'active', label: 'Active' },
+                { value: 'all', label: 'All' },
+                { value: 'archived', label: 'Archived' },
+              ]}
+            />
           </>
         )}
       />
@@ -2202,34 +2320,55 @@ function RuntimeView({ data }: { data: ConsoleData }) {
   );
 }
 
-function SettingsModels({ data }: { data: ConsoleData }) {
+function SettingsModels({ data, onRefresh }: { data: ConsoleData; onRefresh: () => void }) {
   const models = data.runtime?.models ?? [];
-  const configured = models.filter((model) => model.api_key_state === 'configured').length;
+  const [modalOpen, setModalOpen] = useState(false);
+  const [savingDefault, setSavingDefault] = useState('');
+  const setDefault = async (model: RuntimeModel) => {
+    setSavingDefault(model.name);
+    try {
+      await postJson(`/v1/x/model-providers/${encodeURIComponent(model.name)}/default`, {});
+      await onRefresh();
+    } finally {
+      setSavingDefault('');
+    }
+  };
+
   return (
     <section className="stack">
       <div className="pageIntro">
         <div>
-          <h1>Models</h1>
-          <p>Configure provider model IDs, API keys, and OpenAI-compatible base URLs.</p>
+          <h1>Model providers</h1>
+          <p>Add OpenAI-compatible, Anthropic, or local providers for agent runs. The default provider is used when an agent does not specify another model.</p>
         </div>
+        <button className="primaryButton" type="button" onClick={() => setModalOpen(true)}>
+          <Plus size={16} />Add provider
+        </button>
       </div>
-      <SummaryStrip items={[
-        { label: 'Registered models', value: models.length, icon: <Brain size={18} /> },
-        { label: 'Keys configured', value: configured, icon: <KeyRound size={18} /> },
-        { label: 'Runtime status', value: data.runtime?.status ?? 'starting', icon: <Gauge size={18} /> },
-        { label: 'Config file', value: pathName(data.workspace?.configPath) || 'managed-agents.config.yaml', icon: <FileText size={18} /> },
-      ]} />
-      <div className="tablePanel">
+      <div className="tablePanel modelsProviderTable">
         <table>
-          <thead><tr><th>Name</th><th>Provider</th><th>Model ID</th><th>API key</th><th>Base URL</th></tr></thead>
+          <thead><tr><th>Name</th><th>Provider</th><th>Model ID</th><th>Base URL</th><th>API key</th><th>Default</th><th></th></tr></thead>
           <tbody>
             {models.map((model) => (
               <tr key={model.name}>
                 <td><strong>{model.name}</strong></td>
                 <td>{model.provider}</td>
                 <td><code>{model.model}</code></td>
+                <td><span className="monoValue">{model.base_url || '-'}</span></td>
                 <td><RuntimeConfigStatePill state={model.api_key_state} /></td>
-                <td><RuntimeConfigStatePill state={model.base_url_state} /></td>
+                <td>{model.is_default ? <span className="defaultProviderBadge"><Check size={13} />Default</span> : <span className="mutedValue">-</span>}</td>
+                <td className="rowActions">
+                  {!model.is_default ? (
+                    <button
+                      className="textButton"
+                      type="button"
+                      onClick={() => void setDefault(model)}
+                      disabled={savingDefault === model.name}
+                    >
+                      {savingDefault === model.name ? 'Saving...' : 'Set default'}
+                    </button>
+                  ) : null}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -2237,22 +2376,101 @@ function SettingsModels({ data }: { data: ConsoleData }) {
         {models.length === 0 ? (
           <EmptyState
             icon={<Brain size={22} />}
-            title="No models configured"
-            body="Add a model entry in managed-agents.config.yaml, then restart the runtime."
+            title="No model providers"
+            body="Add a provider with a model ID, base URL, and API key to run agent sessions."
           />
         ) : null}
       </div>
-      <div className="panel subtlePanel">
-        <h2>Configuration source</h2>
-        <p>Model settings are loaded at startup from the workspace config and environment variables.</p>
-        <KeyValuePanel rows={[
-          ['Config file', data.workspace?.configPath ?? 'managed-agents.config.yaml'],
-          ['Target', data.workspace?.target ?? 'local'],
-          ['Base URL field', 'models[].base_url'],
-          ['API key field', 'models[].api_key'],
-        ]} />
-      </div>
+      {modalOpen ? <ModelProviderModal
+        hasProviders={models.length > 0}
+        onClose={() => setModalOpen(false)}
+        onSaved={async () => {
+          setModalOpen(false);
+          await onRefresh();
+        }}
+      /> : null}
     </section>
+  );
+}
+
+function ModelProviderModal({
+  hasProviders,
+  onClose,
+  onSaved,
+}: {
+  hasProviders: boolean;
+  onClose: () => void;
+  onSaved: () => void | Promise<void>;
+}) {
+  const [name, setName] = useState('default');
+  const [provider, setProvider] = useState('openai');
+  const [model, setModel] = useState('');
+  const [baseUrl, setBaseUrl] = useState('');
+  const [apiKey, setApiKey] = useState('');
+  const [isDefault, setIsDefault] = useState(!hasProviders);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    setError('');
+    setSaving(true);
+    try {
+      await postJson('/v1/x/model-providers', {
+        name,
+        provider,
+        model,
+        base_url: baseUrl,
+        api_key: apiKey,
+        is_default: isDefault || !hasProviders,
+      });
+      await onSaved();
+    } catch (err: any) {
+      setError(err?.message ?? 'Could not add model provider');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal title="Add model provider" onClose={onClose} size="medium">
+      <form className="formStack" onSubmit={submit}>
+        {error ? <div className="formError">{error}</div> : null}
+        <label>
+          <span>Name <RequiredMark /></span>
+          <input value={name} maxLength={80} onChange={(event) => setName(event.target.value)} placeholder="default" required />
+          <span className="formHint">A local label used in agents and templates.</span>
+        </label>
+        <label>
+          <span>Provider <RequiredMark /></span>
+          <select value={provider} onChange={(event) => setProvider(event.target.value)}>
+            <option value="openai">OpenAI compatible</option>
+            <option value="anthropic">Anthropic</option>
+            <option value="ollama">Ollama</option>
+          </select>
+        </label>
+        <label>
+          <span>Model ID <RequiredMark /></span>
+          <input value={model} onChange={(event) => setModel(event.target.value)} placeholder="gpt-4o-mini" required />
+        </label>
+        <label>
+          <span>Base URL</span>
+          <input value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} placeholder="https://api.openai.com/v1" />
+        </label>
+        <label>
+          <span>API key</span>
+          <input value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder="sk-..." type="password" />
+        </label>
+        <label className="checkRow">
+          <input type="checkbox" checked={isDefault || !hasProviders} disabled={!hasProviders} onChange={(event) => setIsDefault(event.target.checked)} />
+          <span>Use as default provider</span>
+        </label>
+        <div className="modalActions">
+          <button className="secondaryButton" type="button" onClick={onClose}>Cancel</button>
+          <button className="primaryButton" type="submit" disabled={saving}>{saving ? 'Adding...' : 'Add provider'}</button>
+        </div>
+      </form>
+    </Modal>
   );
 }
 
@@ -2426,85 +2644,75 @@ function SettingsLoopEngine({ data }: { data: ConsoleData }) {
   );
 }
 
-function SettingsStorage({ data }: { data: ConsoleData }) {
+function SettingsStorage({ data, onRefresh }: { data: ConsoleData; onRefresh: () => void }) {
+  const providers = data.storageProviders.length > 0 ? data.storageProviders : data.runtime?.storage_providers ?? [];
+  const metadataProviders = providers.filter((provider) => provider.role === 'metadata');
+  const artifactProviders = providers.filter((provider) => provider.role === 'artifact');
   const databasePath = runtimeDatabasePath(data.workspace);
   const dataDir = data.workspace?.directories?.data ?? data.workspace?.dataDir;
   const normalizedDataDir = dataDir?.replace(/\/$/, '');
+  const [modalRole, setModalRole] = useState<RuntimeStorageProviderRole | null>(null);
+  const [savingDefault, setSavingDefault] = useState('');
+  const [initializing, setInitializing] = useState('');
+
+  const setDefault = async (provider: RuntimeStorageProvider) => {
+    setSavingDefault(provider.name);
+    try {
+      await postJson(`/v1/x/storage-providers/${encodeURIComponent(provider.name)}/default`, {});
+      await onRefresh();
+    } finally {
+      setSavingDefault('');
+    }
+  };
+
+  const initialize = async (provider: RuntimeStorageProvider) => {
+    setInitializing(provider.name);
+    try {
+      await postJson(`/v1/x/storage-providers/${encodeURIComponent(provider.name)}/initialize`, {});
+      await onRefresh();
+    } finally {
+      setInitializing('');
+    }
+  };
+
   return (
     <section className="stack">
       <div className="pageIntro">
         <div>
           <h1>Storage</h1>
-          <p>Select storage provider plugins for metadata, files, skills, events, and runtime state.</p>
+          <p>Configure metadata and artifact storage providers. Implemented adapters can be initialized and selected as workspace defaults.</p>
         </div>
       </div>
-      <div className="pluginSettingsGrid">
-        <PluginSettingsPanel
+      <div className="storageProviderStack">
+        <StorageProviderSection
+          role="metadata"
           icon={<Database size={18} />}
           title="Metadata storage"
-          description="Persists agents, sessions, environments, vaults, API keys, and audit metadata."
-        >
-          <PluginSelectField
-            label="Metadata provider"
-            value={databasePath ? 'sqlite' : 'unresolved'}
-            options={[
-              { value: 'sqlite', label: 'SQLite' },
-              { value: 'unresolved', label: 'Not resolved' },
-              { value: 'postgres-plugin', label: 'Postgres plugin', disabled: true },
-            ]}
-          />
-          <PluginSelectField
-            label="Event store"
-            value="sqlite-event-log"
-            options={[
-              { value: 'sqlite-event-log', label: 'SQLite event log' },
-              { value: 'streaming-event-store', label: 'Streaming event store plugin', disabled: true },
-            ]}
-          />
-          <PluginSelectField
-            label="Audit trail"
-            value="sqlite-audit-log"
-            options={[
-              { value: 'sqlite-audit-log', label: 'SQLite audit log' },
-              { value: 'external-audit-plugin', label: 'External audit plugin', disabled: true },
-            ]}
-          />
-        </PluginSettingsPanel>
-        <PluginSettingsPanel
+          description="Persists agents, sessions, environments, vaults, API keys, events, and audit metadata."
+          providers={metadataProviders}
+          savingDefault={savingDefault}
+          initializing={initializing}
+          onAdd={() => setModalRole('metadata')}
+          onInitialize={initialize}
+          onSetDefault={setDefault}
+        />
+        <StorageProviderSection
+          role="artifact"
           icon={<FileText size={18} />}
           title="Artifact storage"
-          description="Stores uploaded files, skill bundles, temporary resources, and local cache content."
-        >
-          <PluginSelectField
-            label="File provider"
-            value="local-filesystem"
-            options={[
-              { value: 'local-filesystem', label: 'Local filesystem' },
-              { value: 's3-plugin', label: 'S3-compatible plugin', disabled: true },
-            ]}
-          />
-          <PluginSelectField
-            label="Skill bundle provider"
-            value="local-filesystem"
-            options={[
-              { value: 'local-filesystem', label: 'Local filesystem' },
-              { value: 'registry-backed-skills', label: 'Registry-backed skills plugin', disabled: true },
-            ]}
-          />
-          <PluginSelectField
-            label="Cache provider"
-            value="local-filesystem"
-            options={[
-              { value: 'local-filesystem', label: 'Local filesystem' },
-              { value: 'distributed-cache-plugin', label: 'Distributed cache plugin', disabled: true },
-            ]}
-          />
-        </PluginSettingsPanel>
+          description="Stores uploaded files, skill bundles, memory content, temporary resources, and local cache content."
+          providers={artifactProviders}
+          savingDefault={savingDefault}
+          initializing={initializing}
+          onAdd={() => setModalRole('artifact')}
+          onInitialize={initialize}
+          onSetDefault={setDefault}
+        />
       </div>
       <div className="workspaceGrid">
         <div className="panel subtlePanel">
           <h2>Current paths</h2>
-          <p>Mutable runtime records live outside the source tree by default.</p>
+          <p>Built-in providers keep mutable runtime records outside the source tree by default.</p>
           <KeyValuePanel rows={[
             ['Runtime data directory', dataDir],
             ['SQLite database', databasePath],
@@ -2518,102 +2726,440 @@ function SettingsStorage({ data }: { data: ConsoleData }) {
           <WorkspacePathsPanel workspace={data.workspace} />
         </div>
       </div>
+      {modalRole ? (
+        <StorageProviderModal
+          role={modalRole}
+          onClose={() => setModalRole(null)}
+          onSaved={() => {
+            setModalRole(null);
+            onRefresh();
+          }}
+        />
+      ) : null}
     </section>
   );
 }
 
-function SettingsMemory({ data }: { data: ConsoleData }) {
-  const memoryProvider = data.runtime?.memory || 'disabled';
+function StorageProviderSection({
+  role,
+  icon,
+  title,
+  description,
+  providers,
+  savingDefault,
+  initializing,
+  onAdd,
+  onInitialize,
+  onSetDefault,
+}: {
+  role: RuntimeStorageProviderRole;
+  icon: ReactNode;
+  title: string;
+  description: string;
+  providers: RuntimeStorageProvider[];
+  savingDefault: string;
+  initializing: string;
+  onAdd: () => void;
+  onInitialize: (provider: RuntimeStorageProvider) => Promise<void>;
+  onSetDefault: (provider: RuntimeStorageProvider) => Promise<void>;
+}) {
   return (
-    <section className="stack">
-      <div className="pageIntro">
+    <div className="storageProviderSection">
+      <div className="storageProviderHeader">
+        <span className="pluginSettingsIcon">{icon}</span>
         <div>
-          <h1>Memory</h1>
-          <p>Select the memory provider plugin used by sessions that attach memory stores.</p>
+          <h2>{title}</h2>
+          <p>{description}</p>
         </div>
+        <button className="secondaryButton" type="button" onClick={onAdd}>
+          <Plus size={15} />Add provider
+        </button>
       </div>
-      <div className="pluginSettingsGrid">
-        <PluginSettingsPanel
-          icon={<Brain size={18} />}
-          title="Memory provider"
-          description="Controls long-term memory mounting, read/write access, and prompt context injection."
-          badge={memoryProvider === 'disabled' ? 'Disabled' : 'Built-in'}
-        >
-          <PluginSelectField
-            label="Provider"
-            value={memoryProvider}
-            options={[
-              { value: 'disabled', label: 'Disabled' },
-              { value: 'local-memory-store', label: 'Local memory store provider' },
-              { value: 'vector-memory-plugin', label: 'Vector memory plugin', disabled: true },
-            ]}
-          />
-          <PluginSelectField
-            label="Mount strategy"
-            value="session-resource-mount"
-            options={[
-              { value: 'session-resource-mount', label: 'Session resource mount' },
-              { value: 'agent-default-memory', label: 'Agent default memory plugin', disabled: true },
-            ]}
-          />
-          <PluginSelectField
-            label="Prompt injection"
-            value="store-description"
-            options={[
-              { value: 'store-description', label: 'Store name and description' },
-              { value: 'retrieval-summary-plugin', label: 'Retrieval summary plugin', disabled: true },
-            ]}
-          />
-        </PluginSettingsPanel>
-        <PluginSettingsPanel
-          icon={<Database size={18} />}
-          title="Memory persistence"
-          description="Defines where memory store metadata and memory files are written."
-        >
-          <PluginSelectField
-            label="Metadata provider"
-            value="sqlite"
-            options={[
-              { value: 'sqlite', label: 'SQLite' },
-              { value: 'external-metadata-plugin', label: 'External metadata plugin', disabled: true },
-            ]}
-          />
-          <PluginSelectField
-            label="Content provider"
-            value="local-filesystem"
-            options={[
-              { value: 'local-filesystem', label: 'Local filesystem' },
-              { value: 'object-storage-plugin', label: 'Object storage plugin', disabled: true },
-            ]}
-          />
-          <PluginSelectField
-            label="Default access"
-            value="read-write"
-            options={[
-              { value: 'read-write', label: 'Read & write' },
-              { value: 'read-only', label: 'Read only' },
-            ]}
-          />
-        </PluginSettingsPanel>
-      </div>
-      <div className="tablePanel">
+      <div className="tablePanel storageProviderTable">
         <table>
-          <thead><tr><th>ID</th><th>Name</th><th>Provider</th><th>Status</th><th>Updated</th></tr></thead>
+          <thead>
+            <tr><th>Name</th><th>Provider</th><th>Location</th><th>State</th><th>Default</th><th>Updated</th><th></th></tr>
+          </thead>
           <tbody>
-            {data.memoryStores.map((store) => (
-              <tr key={store.id}>
-                <td><code>{truncateMiddle(store.id, 18)}</code></td>
-                <td><strong>{store.name}</strong></td>
-                <td><code>{store.provider}</code></td>
-                <td><StatusPill status={store.status} /></td>
-                <td>{formatDateShort(store.updated_at)}</td>
+            {providers.map((provider) => (
+              <tr key={provider.name}>
+                <td>
+                  <div className="stackTiny">
+                    <strong>{provider.name}</strong>
+                    <span className="mutedValue">{role === 'metadata' ? 'Metadata' : 'Artifact'} provider</span>
+                  </div>
+                </td>
+                <td>
+                  <div className="stackTiny">
+                    <strong>{provider.provider_label}</strong>
+                    {!provider.runtime_capable ? <span className="adapterRequiredBadge">Adapter required</span> : null}
+                  </div>
+                </td>
+                <td><span className="monoValue">{storageProviderLocation(provider)}</span></td>
+                <td><StorageProviderStateBadge provider={provider} /></td>
+                <td>{provider.is_default ? <span className="defaultProviderBadge"><Check size={13} />Default</span> : <span className="mutedValue">-</span>}</td>
+                <td>{formatDateShort(provider.updated_at)}</td>
+                <td className="rowActions">
+                  {provider.status === 'init_required' && provider.runtime_capable ? (
+                    <button className="ghostButton" type="button" onClick={() => void onInitialize(provider)} disabled={initializing === provider.name}>
+                      {initializing === provider.name ? 'Initializing...' : 'Initialize'}
+                    </button>
+                  ) : null}
+                  {!provider.is_default && provider.status === 'active' && provider.runtime_capable ? (
+                    <button className="ghostButton" type="button" onClick={() => void onSetDefault(provider)} disabled={savingDefault === provider.name}>
+                      {savingDefault === provider.name ? 'Saving...' : 'Set default'}
+                    </button>
+                  ) : null}
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
-        {data.memoryStores.length === 0 ? <div className="emptyValue">No memory stores created yet</div> : null}
+        {providers.length === 0 ? (
+          <EmptyState
+            icon={role === 'metadata' ? <Database size={28} /> : <FileText size={28} />}
+            title={`No ${role} providers`}
+            body="Add a provider to configure storage for this workspace."
+            action={<button className="secondaryButton" type="button" onClick={onAdd}><Plus size={15} />Add provider</button>}
+          />
+        ) : null}
       </div>
+    </div>
+  );
+}
+
+function StorageProviderStateBadge({ provider }: { provider: RuntimeStorageProvider }) {
+  if (provider.status === 'active') return <span className="status active">active</span>;
+  if (provider.status === 'init_required') return <span className="providerStateBadge pending">init required</span>;
+  return <span className="providerStateBadge adapter">adapter required</span>;
+}
+
+function StorageProviderModal({
+  role,
+  onClose,
+  onSaved,
+}: {
+  role: RuntimeStorageProviderRole;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const providerOptions: Array<{ value: RuntimeStorageProviderKind; label: string }> = role === 'metadata'
+    ? [
+      { value: 'sqlite', label: 'SQLite' },
+      { value: 'postgres', label: 'Postgres' },
+      { value: 'mysql', label: 'MySQL' },
+    ]
+    : [
+      { value: 'local_filesystem', label: 'Local filesystem' },
+      { value: 's3', label: 'S3-compatible' },
+    ];
+  const [provider, setProvider] = useState<RuntimeStorageProviderKind>(providerOptions[0].value);
+  const [name, setName] = useState(`${role}-${providerOptions[0].value}`);
+  const [connectionUrl, setConnectionUrl] = useState('');
+  const [bucket, setBucket] = useState('');
+  const [region, setRegion] = useState('');
+  const [basePath, setBasePath] = useState(role === 'artifact' ? 'files' : '');
+  const [accessKey, setAccessKey] = useState('');
+  const [secretKey, setSecretKey] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const runtimeCapable = provider === 'sqlite' || provider === 'local_filesystem';
+  const needsConnection = provider === 'postgres' || provider === 'mysql';
+  const needsBucket = provider === 's3';
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    setSaving(true);
+    setError('');
+    try {
+      await postJson('/v1/x/storage-providers', {
+        name,
+        role,
+        provider,
+        connection_url: connectionUrl || undefined,
+        bucket: bucket || undefined,
+        region: region || undefined,
+        base_path: basePath || undefined,
+        access_key: accessKey || undefined,
+        secret_key: secretKey || undefined,
+      });
+      onSaved();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal title={`Add ${role} storage provider`} subtitle="Create the provider first, then initialize it before routing sessions to it." onClose={onClose} size="medium">
+      <form className="formStack" onSubmit={submit}>
+        {error ? <div className="formError">{error}</div> : null}
+        <label>
+          <span>Name <RequiredMark /></span>
+          <input value={name} onChange={(event) => setName(event.target.value)} placeholder={`${role}-${provider}`} required />
+        </label>
+        <label>
+          <span>Provider</span>
+          <select value={provider} onChange={(event) => setProvider(event.target.value as RuntimeStorageProviderKind)}>
+            {providerOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
+        </label>
+        {needsConnection ? (
+          <label>
+            <span>Connection URL <RequiredMark /></span>
+            <input value={connectionUrl} onChange={(event) => setConnectionUrl(event.target.value)} placeholder={`${provider}://user:password@host:5432/database`} required />
+            <small>Use environment placeholders such as {'${DATABASE_URL}'} to avoid storing raw secrets.</small>
+          </label>
+        ) : null}
+        {role === 'metadata' && provider === 'sqlite' ? (
+          <p className="formHint">SQLite is runtime-capable. Initialize it after saving to create metadata tables, then set it as default.</p>
+        ) : null}
+        {role === 'artifact' ? (
+          <div className="storageModalGrid">
+            {needsBucket ? (
+              <label>
+                <span>Bucket <RequiredMark /></span>
+                <input value={bucket} onChange={(event) => setBucket(event.target.value)} placeholder="agent-artifacts" required />
+              </label>
+            ) : null}
+            {needsBucket ? (
+              <label>
+                <span>Region</span>
+                <input value={region} onChange={(event) => setRegion(event.target.value)} placeholder="us-east-1" />
+              </label>
+            ) : null}
+            <label>
+              <span>Base path</span>
+              <input value={basePath} onChange={(event) => setBasePath(event.target.value)} placeholder={provider === 's3' ? 'managed-agents/' : 'files'} />
+            </label>
+            {needsBucket ? (
+              <>
+                <label>
+                  <span>Access key</span>
+                  <input value={accessKey} onChange={(event) => setAccessKey(event.target.value)} placeholder="${S3_ACCESS_KEY_ID}" />
+                </label>
+                <label>
+                  <span>Secret key</span>
+                  <input value={secretKey} onChange={(event) => setSecretKey(event.target.value)} placeholder="${S3_SECRET_ACCESS_KEY}" type="password" />
+                </label>
+              </>
+            ) : null}
+          </div>
+        ) : null}
+        {!runtimeCapable ? (
+          <div className="noticeBox">
+            This provider can be saved now, but it requires a runtime adapter before initialization or default routing is available.
+          </div>
+        ) : null}
+        {runtimeCapable && role === 'artifact' ? (
+          <p className="formHint">Local artifact storage is runtime-capable. Initialize it after saving to create directories, then set it as default.</p>
+        ) : null}
+        <div className="modalActions">
+          <button className="secondaryButton" type="button" onClick={onClose}>Cancel</button>
+          <button className="primaryButton" type="submit" disabled={saving}>{saving ? 'Adding...' : 'Add provider'}</button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function storageProviderLocation(provider: RuntimeStorageProvider) {
+  if (provider.provider === 'sqlite') return provider.connection_url ?? 'runtime SQLite database';
+  if (provider.provider === 'local_filesystem') return provider.base_path ?? 'runtime data directory';
+  if (provider.provider === 's3') return [provider.bucket, provider.region].filter(Boolean).join(' / ') || 'S3 bucket';
+  return provider.connection_url ?? 'external database';
+}
+
+function SettingsMemory({ data, onRefresh }: { data: ConsoleData; onRefresh: () => void }) {
+  const providers = data.memoryProviders.length > 0 ? data.memoryProviders : data.runtime?.memory_providers ?? [];
+  const defaultProvider = providers.find((provider) => provider.is_default);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [savingDefault, setSavingDefault] = useState('');
+
+  const setDefault = async (provider: RuntimeMemoryProvider) => {
+    setSavingDefault(provider.name);
+    try {
+      await postJson(`/v1/x/memory-providers/${encodeURIComponent(provider.name)}/default`, {});
+      await onRefresh();
+    } finally {
+      setSavingDefault('');
+    }
+  };
+
+  return (
+    <section className="stack">
+      <div className="pageIntro">
+        <div>
+          <h1>Context memory</h1>
+          <p>Configure provider backends used for session context memory. Memory stores remain the resources that agents attach to sessions.</p>
+        </div>
+        <button className="primaryButton" type="button" onClick={() => setModalOpen(true)}>
+          <Plus size={16} />Add provider
+        </button>
+      </div>
+      <div className="tablePanel memoryProviderTable">
+        <table>
+          <thead><tr><th>Name</th><th>Type</th><th>Connection</th><th>API key</th><th>Default</th><th>Updated</th><th></th></tr></thead>
+          <tbody>
+            {providers.map((provider) => (
+              <tr key={provider.name}>
+                <td><strong>{provider.name}</strong></td>
+                <td>
+                  <div className="stackTiny">
+                    <span>{provider.provider_label}</span>
+                    {!provider.runtime_capable ? <span className="adapterRequiredBadge">Adapter required</span> : null}
+                  </div>
+                </td>
+                <td><span className="monoValue">{provider.connection_url || '-'}</span></td>
+                <td><RuntimeConfigStatePill state={provider.api_key_state} /></td>
+                <td>{provider.is_default ? <span className="defaultProviderBadge"><Check size={13} />Default</span> : <span className="mutedValue">-</span>}</td>
+                <td>{formatDateShort(provider.updated_at)}</td>
+                <td className="rowActions">
+                  {!provider.is_default && provider.runtime_capable ? (
+                    <button
+                      className="textButton"
+                      type="button"
+                      onClick={() => void setDefault(provider)}
+                      disabled={savingDefault === provider.name}
+                    >
+                      {savingDefault === provider.name ? 'Saving...' : 'Set default'}
+                    </button>
+                  ) : null}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {providers.length === 0 ? (
+          <EmptyState
+            icon={<Brain size={22} />}
+            title="No memory providers"
+            body="Add a provider to enable context memory for sessions that attach memory stores."
+          />
+        ) : null}
+      </div>
+      <div className="workspaceGrid">
+        <div className="panel subtlePanel">
+          <h2>Default context provider</h2>
+          <p>The default provider is used when a session attaches a memory store without selecting a provider explicitly.</p>
+          <KeyValuePanel rows={[
+            ['Provider', defaultProvider?.name],
+            ['Type', defaultProvider?.provider_label],
+            ['Runtime status', defaultProvider?.runtime_capable ? 'available' : 'adapter required'],
+            ['Store mount strategy', 'Session resource mount'],
+            ['Default access', 'Read & write'],
+          ]} />
+        </div>
+        <div className="panel subtlePanel">
+          <h2>Memory stores</h2>
+          <p>Stores are named resources that can be mounted into sessions. Provider settings control where context memory is backed.</p>
+          <KeyValuePanel rows={[
+            ['Stores', data.memoryStores.length],
+            ['Active stores', data.memoryStores.filter((store) => store.status === 'active').length],
+            ['Metadata store', 'SQLite'],
+            ['Content store', data.workspace?.directories?.data ? 'Local filesystem' : 'Not resolved'],
+          ]} />
+        </div>
+      </div>
+      {modalOpen ? <MemoryProviderModal
+        hasProviders={providers.length > 0}
+        onClose={() => setModalOpen(false)}
+        onSaved={async () => {
+          setModalOpen(false);
+          await onRefresh();
+        }}
+      /> : null}
     </section>
+  );
+}
+
+function MemoryProviderModal({
+  hasProviders,
+  onClose,
+  onSaved,
+}: {
+  hasProviders: boolean;
+  onClose: () => void;
+  onSaved: () => void | Promise<void>;
+}) {
+  const [name, setName] = useState('context-memory');
+  const [provider, setProvider] = useState<RuntimeMemoryProvider['provider']>('sqlite');
+  const [connectionUrl, setConnectionUrl] = useState('');
+  const [apiKey, setApiKey] = useState('');
+  const [isDefault, setIsDefault] = useState(!hasProviders);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const adapterRequired = provider === 'database' || provider === 'mem0' || provider === 'memu';
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    setError('');
+    setSaving(true);
+    try {
+      await postJson('/v1/x/memory-providers', {
+        name,
+        provider,
+        connection_url: connectionUrl,
+        api_key: apiKey,
+        is_default: (isDefault || !hasProviders) && !adapterRequired,
+      });
+      await onSaved();
+    } catch (err: any) {
+      setError(err?.message ?? 'Could not add memory provider');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal title="Add memory provider" onClose={onClose} size="medium">
+      <form className="formStack" onSubmit={submit}>
+        {error ? <div className="formError">{error}</div> : null}
+        <label>
+          <span>Name <RequiredMark /></span>
+          <input value={name} maxLength={80} onChange={(event) => setName(event.target.value)} placeholder="context-memory" required />
+          <span className="formHint">A local provider label used by sessions and future plugin adapters.</span>
+        </label>
+        <label>
+          <span>Provider <RequiredMark /></span>
+          <select value={provider} onChange={(event) => setProvider(event.target.value as RuntimeMemoryProvider['provider'])}>
+            <option value="sqlite">SQLite</option>
+            <option value="in_memory">In-memory</option>
+            <option value="database">External database</option>
+            <option value="mem0">mem0</option>
+            <option value="memu">MemU</option>
+          </select>
+          {adapterRequired ? <span className="formHint">This provider can be registered now and becomes selectable as default when its runtime adapter is installed.</span> : null}
+        </label>
+        <label>
+          <span>Connection URL {provider === 'database' ? <RequiredMark /> : null}</span>
+          <input
+            value={connectionUrl}
+            onChange={(event) => setConnectionUrl(event.target.value)}
+            placeholder={provider === 'database' ? 'postgres://user:pass@host:5432/db' : 'Optional'}
+            required={provider === 'database'}
+          />
+        </label>
+        <label>
+          <span>API key</span>
+          <input value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder="Optional" type="password" />
+        </label>
+        <label className="checkRow">
+          <input
+            type="checkbox"
+            checked={(isDefault || !hasProviders) && !adapterRequired}
+            disabled={!hasProviders || adapterRequired}
+            onChange={(event) => setIsDefault(event.target.checked)}
+          />
+          <span>Use as default context memory provider</span>
+        </label>
+        <div className="modalActions">
+          <button className="secondaryButton" type="button" onClick={onClose}>Cancel</button>
+          <button className="primaryButton" type="submit" disabled={saving}>{saving ? 'Adding...' : 'Add provider'}</button>
+        </div>
+      </form>
+    </Modal>
   );
 }
 
@@ -3133,97 +3679,231 @@ type EndpointGroup = {
   endpoints: Array<{ method: string; path: string; description: string }>;
 };
 
-const API_ENDPOINT_GROUPS: EndpointGroup[] = [
+type ApiDocField = {
+  name: string;
+  type: string;
+  description: string;
+  required?: boolean;
+};
+
+type ApiDocEndpoint = {
+  id: string;
+  group: string;
+  title: string;
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE';
+  path: string;
+  summary: string;
+  headers?: ApiDocField[];
+  parameters?: ApiDocField[];
+  response: ApiDocField[];
+};
+
+const API_REFERENCE_DOCS: ApiDocEndpoint[] = [
   {
-    title: 'Agents',
-    description: 'Create, update, version, and archive managed agent definitions.',
-    endpoints: [
-      { method: 'GET', path: '/v1/agents', description: 'List agents' },
-      { method: 'POST', path: '/v1/agents', description: 'Create an agent from the standard YAML/JSON shape' },
-      { method: 'GET', path: '/v1/agents/{agent_id}', description: 'Retrieve an agent' },
-      { method: 'PUT', path: '/v1/agents/{agent_id}', description: 'Save a new agent version' },
-      { method: 'GET', path: '/v1/agents/{agent_id}/versions', description: 'List agent versions' },
-      { method: 'POST', path: '/v1/agents/{agent_id}/archive', description: 'Archive an agent' },
+    id: 'sessions-create',
+    group: 'Sessions',
+    title: 'Create session',
+    method: 'POST',
+    path: '/v1/sessions',
+    summary: 'Create an executable agent session in an environment. Sessions persist a resumable event log and can be continued through messages or raw events.',
+    parameters: [
+      { name: 'agent', type: 'string | object', required: true, description: 'Agent id, or an object with an id and optional version.' },
+      { name: 'environment_id', type: 'string', required: true, description: 'Environment template used to prepare the session runtime.' },
+      { name: 'title', type: 'string', description: 'Optional human-readable session title.' },
+      { name: 'resources', type: 'array', description: 'Files, GitHub repositories, or memory stores mounted into the session.' },
+      { name: 'vault_ids', type: 'string[]', description: 'Credential vault ids available to tools during this session.' },
+      { name: 'metadata', type: 'object', description: 'Opaque key-value tags for audit and external bookkeeping.' },
+    ],
+    response: [
+      { name: 'id', type: 'string', description: 'Server-generated sess_... identifier.' },
+      { name: 'status', type: 'idle | running | error | archived', description: 'Current session lifecycle state.' },
+      { name: 'agent', type: 'object', description: 'Pinned agent id, name, and version used by this session.' },
+      { name: 'usage', type: 'object', description: 'Input and output token counters recorded by the runtime.' },
+      { name: 'created_at', type: 'datetime', description: 'RFC 3339 creation timestamp.' },
     ],
   },
   {
-    title: 'Sessions',
-    description: 'Run agents, send events, stream replies, inspect transcripts, and stop runs.',
-    endpoints: [
-      { method: 'GET', path: '/v1/sessions', description: 'List sessions' },
-      { method: 'POST', path: '/v1/sessions', description: 'Create a session' },
-      { method: 'GET', path: '/v1/sessions/{session_id}', description: 'Retrieve a session' },
-      { method: 'POST', path: '/v1/sessions/{session_id}/messages', description: 'Send a user message and optionally stream SSE' },
-      { method: 'POST', path: '/v1/sessions/{session_id}/events', description: 'Send raw session events' },
-      { method: 'GET', path: '/v1/sessions/{session_id}/events', description: 'List recorded events' },
-      { method: 'GET', path: '/v1/sessions/{session_id}/events/stream', description: 'Tail the live SSE event stream' },
-      { method: 'POST', path: '/v1/sessions/{session_id}/stop', description: 'Interrupt and terminate a session' },
+    id: 'sessions-message',
+    group: 'Sessions',
+    title: 'Send message',
+    method: 'POST',
+    path: '/v1/sessions/{session_id}/messages',
+    summary: 'Append a user message and run the agent loop. Set stream to true for Server-Sent Events compatible with browser clients and SDK iterators.',
+    parameters: [
+      { name: 'content', type: 'string | content[]', required: true, description: 'User message text or structured content blocks.' },
+      { name: 'stream', type: 'boolean', description: 'When true, returns an SSE stream of session and agent events.' },
+      { name: 'metadata', type: 'object', description: 'Optional event-level metadata.' },
+    ],
+    response: [
+      { name: 'event', type: 'SSE event', description: 'Streaming event when stream is true.' },
+      { name: 'session', type: 'object', description: 'Updated session envelope for non-streaming calls.' },
     ],
   },
   {
-    title: 'Build resources',
-    description: 'Files and Skills that can be mounted into sessions or attached to agents.',
-    endpoints: [
-      { method: 'GET', path: '/v1/files', description: 'List uploaded files' },
-      { method: 'POST', path: '/v1/files', description: 'Upload a file' },
-      { method: 'GET', path: '/v1/files/{file_id}', description: 'Retrieve file metadata' },
-      { method: 'GET', path: '/v1/files/{file_id}/content', description: 'Download file content' },
-      { method: 'DELETE', path: '/v1/files/{file_id}', description: 'Delete a file from active listings' },
-      { method: 'GET', path: '/v1/skills', description: 'List custom and built-in skills' },
-      { method: 'POST', path: '/v1/skills', description: 'Upload a Skill package' },
-      { method: 'GET', path: '/v1/skills/{skill_id}', description: 'Retrieve Skill metadata' },
-      { method: 'DELETE', path: '/v1/skills/{skill_id}', description: 'Delete a custom Skill' },
+    id: 'agents-create',
+    group: 'Agents',
+    title: 'Create agent',
+    method: 'POST',
+    path: '/v1/agents',
+    summary: 'Create a managed agent definition using the Claude-style runtime shape. Console-created agents are stored in SQLite and versioned on update.',
+    parameters: [
+      { name: 'name', type: 'string', required: true, description: 'Human-readable agent name.' },
+      { name: 'description', type: 'string', description: 'Short agent purpose shown in lists and details.' },
+      { name: 'model', type: 'string | object', required: true, description: 'Model id string, or object with id and speed.' },
+      { name: 'system', type: 'string', required: true, description: 'System prompt used to drive the agent.' },
+      { name: 'mcp_servers', type: 'array', description: 'MCP server definitions referenced by mcp_toolset entries.' },
+      { name: 'tools', type: 'array', description: 'Built-in and MCP toolsets with permission policy configuration.' },
+      { name: 'skills', type: 'array', description: 'Skill references attached to this agent.' },
+      { name: 'metadata', type: 'object', description: 'Opaque agent metadata.' },
+    ],
+    response: [
+      { name: 'id', type: 'string', description: 'Server-generated agent_... identifier.' },
+      { name: 'version', type: 'number', description: 'Initial version, incremented by updates.' },
+      { name: 'status', type: 'active | archived', description: 'Current agent state.' },
+      { name: 'created_at', type: 'datetime', description: 'RFC 3339 creation timestamp.' },
     ],
   },
   {
-    title: 'Runtime resources',
-    description: 'Execution environments, credential vaults, persistent memory, and API access.',
-    endpoints: [
-      { method: 'GET', path: '/v1/environments', description: 'List environments' },
-      { method: 'POST', path: '/v1/environments', description: 'Create an environment template' },
-      { method: 'GET', path: '/v1/environments/{environment_id}', description: 'Retrieve an environment' },
-      { method: 'PUT', path: '/v1/environments/{environment_id}', description: 'Update an environment' },
-      { method: 'POST', path: '/v1/environments/{environment_id}/archive', description: 'Archive an environment' },
-      { method: 'GET', path: '/v1/credential-vaults', description: 'List credential vaults' },
-      { method: 'POST', path: '/v1/credential-vaults', description: 'Create a credential vault' },
-      { method: 'GET', path: '/v1/credential-vaults/{vault_id}', description: 'Retrieve a credential vault' },
-      { method: 'GET', path: '/v1/credential-vaults/{vault_id}/credentials', description: 'List credentials in a vault' },
-      { method: 'POST', path: '/v1/credential-vaults/{vault_id}/credentials', description: 'Add a credential to a vault' },
-      { method: 'POST', path: '/v1/credential-vaults/{vault_id}/credentials/{credential_id}/archive', description: 'Archive a credential' },
-      { method: 'DELETE', path: '/v1/credential-vaults/{vault_id}/credentials/{credential_id}', description: 'Delete a credential' },
-      { method: 'GET', path: '/v1/memory_stores', description: 'List memory stores' },
-      { method: 'POST', path: '/v1/memory_stores', description: 'Create a memory store' },
-      { method: 'GET', path: '/v1/memory_stores/{memory_store_id}', description: 'Retrieve a memory store' },
-      { method: 'GET', path: '/v1/memory_stores/{memory_store_id}/memories', description: 'List memories in a store' },
-      { method: 'POST', path: '/v1/memory_stores/{memory_store_id}/memories', description: 'Create a memory entry' },
-      { method: 'PUT', path: '/v1/memory_stores/{memory_store_id}/memories/{memory_id}', description: 'Update a memory entry' },
-      { method: 'DELETE', path: '/v1/memory_stores/{memory_store_id}/memories/{memory_id}', description: 'Delete a memory entry' },
-      { method: 'POST', path: '/v1/memory_stores/{memory_store_id}/archive', description: 'Archive a memory store' },
-      { method: 'GET', path: '/v1/api-keys', description: 'List dashboard/API keys' },
-      { method: 'POST', path: '/v1/api-keys', description: 'Create a bearer API key' },
-      { method: 'DELETE', path: '/v1/api-keys/{key_id}', description: 'Delete a managed API key' },
+    id: 'skills-create',
+    group: 'Skills',
+    title: 'Create skill',
+    method: 'POST',
+    path: '/v1/skills',
+    summary: 'Upload a reusable Skill package. A valid package contains one top-level folder with SKILL.md at its root.',
+    parameters: [
+      { name: 'files', type: 'multipart file[] | JSON file[]', required: true, description: 'Zip, .skill file, directory upload, or JSON file list.' },
+      { name: 'display_title', type: 'string', description: 'Optional human label not included in model prompts.' },
+    ],
+    response: [
+      { name: 'id', type: 'string', description: 'Server-generated skill_... identifier for custom uploads.' },
+      { name: 'display_title', type: 'string', description: 'Human-readable title.' },
+      { name: 'latest_version', type: 'string', description: 'Latest uploaded version identifier.' },
+      { name: 'source', type: 'custom | anthropic', description: 'Skill origin.' },
     ],
   },
   {
-    title: 'Operations',
-    description: 'Local runtime health, logs, metrics, workspace metadata, and process controls.',
-    endpoints: [
-      { method: 'GET', path: '/v1/x/health', description: 'Read service health' },
-      { method: 'GET', path: '/v1/x/runtime', description: 'Read runtime capabilities' },
-      { method: 'GET', path: '/v1/x/workspace', description: 'Read workspace paths and target' },
-      { method: 'GET', path: '/v1/x/templates', description: 'List built-in agent templates' },
-      { method: 'GET', path: '/v1/x/mcp/status', description: 'Read MCP server status' },
-      { method: 'GET', path: '/v1/x/logs', description: 'Tail recent runtime logs' },
-      { method: 'GET', path: '/v1/x/metrics', description: 'Prometheus-style metrics' },
-      { method: 'POST', path: '/v1/x/reload', description: 'Reload local config' },
-      { method: 'POST', path: '/v1/x/restart', description: 'Request runtime restart' },
-      { method: 'POST', path: '/v1/x/worker/claim', description: 'Self-hosted worker claim endpoint' },
-      { method: 'POST', path: '/v1/x/worker/complete', description: 'Self-hosted worker completion endpoint' },
+    id: 'files-upload',
+    group: 'Files',
+    title: 'Upload file',
+    method: 'POST',
+    path: '/v1/files',
+    summary: 'Upload files once and mount them into sessions as resources. Metadata is stored in SQLite; bytes live in the runtime data directory.',
+    parameters: [
+      { name: 'file', type: 'multipart file', required: true, description: 'File payload for multipart uploads.' },
+      { name: 'name', type: 'string', description: 'Filename for JSON uploads.' },
+      { name: 'content', type: 'string', description: 'JSON upload content, encoded as utf8 or base64.' },
+    ],
+    response: [
+      { name: 'id', type: 'string', description: 'Server-generated file_... identifier.' },
+      { name: 'filename', type: 'string', description: 'Original or supplied filename.' },
+      { name: 'size_bytes', type: 'number', description: 'Stored file size.' },
+      { name: 'created_at', type: 'datetime', description: 'RFC 3339 upload timestamp.' },
+    ],
+  },
+  {
+    id: 'environments-create',
+    group: 'Environments',
+    title: 'Create environment',
+    method: 'POST',
+    path: '/v1/environments',
+    summary: 'Create a reusable environment template for session containers, package policy, sandboxing, and network access.',
+    parameters: [
+      { name: 'name', type: 'string', required: true, description: 'Human-readable environment name.' },
+      { name: 'hosting_type', type: 'cloud | self_hosted', description: 'Where session work is expected to run.' },
+      { name: 'network', type: 'object', description: 'Limited or unrestricted network policy.' },
+      { name: 'packages', type: 'array', description: 'Package manager and package declarations available in this environment.' },
+      { name: 'metadata', type: 'object', description: 'Opaque environment tags.' },
+    ],
+    response: [
+      { name: 'id', type: 'string', description: 'Server-generated env_... identifier.' },
+      { name: 'status', type: 'active | archived', description: 'Current environment state.' },
+      { name: 'hosting_type', type: 'cloud | self_hosted', description: 'Configured hosting mode.' },
+    ],
+  },
+  {
+    id: 'vaults-credential-create',
+    group: 'Credential vaults',
+    title: 'Add credential',
+    method: 'POST',
+    path: '/v1/credential-vaults/{vault_id}/credentials',
+    summary: 'Add an OAuth, bearer token, or environment variable credential to a workspace vault.',
+    parameters: [
+      { name: 'auth_type', type: 'mcp_oauth | bearer_token | environment_variable', required: true, description: 'Credential type and injection mode.' },
+      { name: 'name', type: 'string', description: 'Optional human-readable label.' },
+      { name: 'value', type: 'string', description: 'Secret value. Stored encrypted and never returned in list responses.' },
+      { name: 'network', type: 'object', description: 'Allowed hosts and access mode for this credential.' },
+      { name: 'injection_locations', type: 'array', description: 'Request header or body injection locations.' },
+    ],
+    response: [
+      { name: 'id', type: 'string', description: 'Server-generated vcrd_... identifier.' },
+      { name: 'value_hint', type: 'string', description: 'Masked hint for the stored secret.' },
+      { name: 'status', type: 'active | archived', description: 'Current credential state.' },
+    ],
+  },
+  {
+    id: 'memory-create',
+    group: 'Memory stores',
+    title: 'Create memory',
+    method: 'POST',
+    path: '/v1/memory_stores/{memory_store_id}/memories',
+    summary: 'Write a persistent memory entry into a mounted store. Memory paths are slash-prefixed and rendered as a tree in the Console.',
+    parameters: [
+      { name: 'path', type: 'string', required: true, description: 'Absolute memory path, such as /notes/release.' },
+      { name: 'content', type: 'string', required: true, description: 'Memory text content.' },
+      { name: 'metadata', type: 'object', description: 'Optional bookkeeping tags.' },
+    ],
+    response: [
+      { name: 'id', type: 'string', description: 'Server-generated mem_... identifier.' },
+      { name: 'path', type: 'string', description: 'Normalized memory path.' },
+      { name: 'updated_at', type: 'datetime', description: 'Last write timestamp.' },
+    ],
+  },
+  {
+    id: 'api-keys-create',
+    group: 'API keys',
+    title: 'Create API key',
+    method: 'POST',
+    path: '/v1/api-keys',
+    summary: 'Create a local bearer token for shared dashboard or API access. The full secret is returned once.',
+    parameters: [
+      { name: 'name', type: 'string', required: true, description: 'Human-readable key label.' },
+      { name: 'metadata', type: 'object', description: 'Optional key tags.' },
+    ],
+    response: [
+      { name: 'id', type: 'string', description: 'Server-generated key_... identifier.' },
+      { name: 'key_prefix', type: 'string', description: 'Safe display prefix.' },
+      { name: 'secret_key', type: 'string', description: 'Full bearer token, returned only on create.' },
+    ],
+  },
+  {
+    id: 'logs-list',
+    group: 'Operations',
+    title: 'List runtime logs',
+    method: 'GET',
+    path: '/v1/x/logs',
+    summary: 'Read recent structured runtime logs from the current process. Use this for local operations and troubleshooting.',
+    parameters: [
+      { name: 'limit', type: 'number', description: 'Maximum log lines to return.' },
+      { name: 'level', type: 'debug | info | warn | error', description: 'Minimum severity filter.' },
+      { name: 'q', type: 'string', description: 'Text search against the rendered log message.' },
+    ],
+    response: [
+      { name: 'data', type: 'RuntimeLogEntry[]', description: 'Recent structured log lines.' },
+      { name: 'has_more', type: 'boolean', description: 'Whether older rows exist outside the page.' },
     ],
   },
 ];
 
-function SettingsApiReference({ data, setView }: { data: ConsoleData; setView: (view: ViewId) => void }) {
+const API_ENDPOINT_GROUPS: EndpointGroup[] = Array.from(new Set(API_REFERENCE_DOCS.map((endpoint) => endpoint.group)))
+  .map((group) => ({
+    title: group,
+    description: API_REFERENCE_DOCS.find((endpoint) => endpoint.group === group)?.summary ?? '',
+    endpoints: API_REFERENCE_DOCS
+      .filter((endpoint) => endpoint.group === group)
+      .map((endpoint) => ({ method: endpoint.method, path: endpoint.path, description: endpoint.title })),
+  }));
+
+function SettingsApiReference({ data }: { data: ConsoleData }) {
   const baseUrl = typeof window === 'undefined' ? 'http://127.0.0.1:3000' : window.location.origin;
   const authEnabled = data.runtime?.auth_enabled ?? false;
   const firstAgentId = data.agents[0]?.id ?? 'agent_...';
@@ -3289,6 +3969,64 @@ skills:
     skill_id: skill_...
 metadata:
   template: incident-commander`;
+  const [activeEndpointId, setActiveEndpointId] = useState('sessions-create');
+  const activeEndpoint = API_REFERENCE_DOCS.find((endpoint) => endpoint.id === activeEndpointId) ?? API_REFERENCE_DOCS[0];
+  const headers = activeEndpoint.headers ?? [
+    { name: 'Content-Type', type: 'application/json', description: 'Required for JSON request bodies.', required: activeEndpoint.method !== 'GET' },
+    { name: 'Authorization', type: 'Bearer token', description: authEnabled ? 'Required when local API authentication is enabled.' : 'Optional while local API authentication is disabled.' },
+    { name: 'anthropic-beta', type: 'string', description: 'Accepted for Claude Managed Agents-compatible clients.' },
+  ];
+  const endpointExample = activeEndpoint.id === 'sessions-create' ? sessionCurl
+    : activeEndpoint.id === 'sessions-message' ? [
+      `curl -N -X POST '${baseUrl}/v1/sessions/${firstSessionId}/messages' \\`,
+      "  -H 'Content-Type: application/json' \\",
+      authCurl.trimEnd(),
+      "  -d '{\"content\":\"Hello from the API\",\"stream\":true}'",
+    ].filter(Boolean).join('\n')
+      : activeEndpoint.id === 'agents-create' ? [
+        `curl -sS -X POST '${baseUrl}/v1/agents' \\`,
+        "  -H 'Content-Type: application/json' \\",
+        authCurl.trimEnd(),
+        "  -d '{",
+        '    "name": "assistant",',
+        '    "description": "Helps with development tasks.",',
+        '    "model": { "id": "claude-opus-4-8", "speed": "standard" },',
+        '    "system": "You are a helpful assistant.",',
+        '    "tools": [{ "type": "agent_toolset_20260401" }],',
+        '    "skills": []',
+        "  }'",
+      ].filter(Boolean).join('\n')
+        : activeEndpoint.id === 'skills-create' ? skillUploadSnippet
+          : activeEndpoint.id === 'files-upload' ? [
+            `curl -sS -X POST '${baseUrl}/v1/files' \\`,
+            authCurl.trimEnd(),
+            "  -F 'file=@notes.txt'",
+          ].filter(Boolean).join('\n')
+            : activeEndpoint.id === 'environments-create' ? [
+              `curl -sS -X POST '${baseUrl}/v1/environments' \\`,
+              "  -H 'Content-Type: application/json' \\",
+              authCurl.trimEnd(),
+              "  -d '{\"name\":\"local-dev\",\"hosting_type\":\"self_hosted\",\"network\":{\"type\":\"limited\"}}'",
+            ].filter(Boolean).join('\n')
+              : activeEndpoint.id === 'vaults-credential-create' ? [
+                `curl -sS -X POST '${baseUrl}/v1/credential-vaults/vlt_.../credentials' \\`,
+                "  -H 'Content-Type: application/json' \\",
+                authCurl.trimEnd(),
+                "  -d '{\"auth_type\":\"environment_variable\",\"variable_name\":\"GITHUB_TOKEN\",\"value\":\"ghp_example\"}'",
+              ].filter(Boolean).join('\n')
+                : activeEndpoint.id === 'memory-create' ? [
+                  `curl -sS -X POST '${baseUrl}/v1/memory_stores/memstore_.../memories' \\`,
+                  "  -H 'Content-Type: application/json' \\",
+                  authCurl.trimEnd(),
+                  "  -d '{\"path\":\"/notes/release\",\"content\":\"Keep release notes concise.\"}'",
+                ].filter(Boolean).join('\n')
+                  : activeEndpoint.id === 'api-keys-create' ? [
+                    `curl -sS -X POST '${baseUrl}/v1/api-keys' \\`,
+                    "  -H 'Content-Type: application/json' \\",
+                    authCurl.trimEnd(),
+                    "  -d '{\"name\":\"Local Console\"}'",
+                  ].filter(Boolean).join('\n')
+                    : `curl -sS '${baseUrl}${activeEndpoint.path}'`;
 
   return (
     <section className="stack apiReference">
@@ -3297,104 +4035,141 @@ metadata:
           <h1>API reference</h1>
           <p>Use these endpoints to automate managed-agents from local scripts, SDKs, CI jobs, and external tools.</p>
         </div>
-        <button className="button secondary" type="button" onClick={() => setView('api-keys')}>
-          <KeyRound size={16} /> Manage API keys
-        </button>
       </div>
 
-      <SummaryStrip items={[
-        { label: 'Base URL', value: baseUrl, icon: <Globe size={18} /> },
-        { label: 'API prefix', value: '/v1', icon: <Terminal size={18} /> },
-        { label: 'Auth', value: authEnabled ? 'Bearer token required' : 'disabled locally', icon: <KeyRound size={18} /> },
-        { label: 'Streaming', value: 'Server-sent events', icon: <Activity size={18} /> },
-      ]} />
+      <div className="apiDocsShell">
+        <aside className="apiDocsNav" aria-label="API endpoints">
+          <div className="apiDocsSearch">
+            <Search size={15} />
+            <span>Search endpoints...</span>
+          </div>
+          <div className="apiDocsRuntime">
+            <span>Base URL</span>
+            <code>{baseUrl}</code>
+          </div>
+          {API_ENDPOINT_GROUPS.map((group) => (
+            <div className="apiDocsNavGroup" key={group.title}>
+              <strong>{group.title}</strong>
+              {API_REFERENCE_DOCS.filter((endpoint) => endpoint.group === group.title).map((endpoint) => (
+                <button
+                  type="button"
+                  key={endpoint.id}
+                  className={`apiDocsNavItem ${endpoint.id === activeEndpoint.id ? 'active' : ''}`}
+                  onClick={() => setActiveEndpointId(endpoint.id)}
+                >
+                  <span className={`methodSquare method${endpoint.method}`}>{endpoint.method}</span>
+                  <span>{endpoint.title}</span>
+                </button>
+              ))}
+            </div>
+          ))}
+        </aside>
 
-      <div className="workspaceGrid">
-        <div className="panel subtlePanel">
-          <h2>Current runtime</h2>
-          <p>These values are read from the running local service.</p>
-          <KeyValuePanel rows={[
-            ['Dashboard', `${baseUrl}/dashboard`],
-            ['Health check', `${baseUrl}/v1/x/health`],
-            ['Authentication', authEnabled ? 'Authorization: Bearer <api-key>' : 'Not required for this runtime'],
-            ['API keys', 'Settings / API keys'],
-          ]} />
-        </div>
-        <div className="panel subtlePanel">
-          <h2>Recommended flow</h2>
-          <p>Create resources through the Console, then copy IDs into API calls.</p>
-          <KeyValuePanel rows={[
-            ['Agent sample', firstAgentId],
-            ['Environment sample', firstEnvironmentId],
-            ['Session sample', firstSessionId],
-            ['Skill package', 'top-level folder with SKILL.md'],
-          ]} />
-        </div>
-      </div>
+        <article className="apiDocsArticle">
+          <div className="apiDocsArticleHeader">
+            <div>
+              <h2>{activeEndpoint.title}</h2>
+              <div className="apiDocsPath">
+                <span className={`methodPill method${activeEndpoint.method}`}>{activeEndpoint.method}</span>
+                <code>{activeEndpoint.path}</code>
+              </div>
+            </div>
+            <button className="button secondary" type="button" onClick={() => copyText(`${activeEndpoint.method} ${activeEndpoint.path}`)}>
+              <Copy size={15} /> Copy endpoint
+            </button>
+          </div>
+          <p className="apiDocsSummary">{activeEndpoint.summary}</p>
 
-      <div className="apiReferenceGrid">
-        {API_ENDPOINT_GROUPS.map((group) => (
-          <div className="panel subtlePanel endpointGroup" key={group.title}>
-            <h2>{group.title}</h2>
-            <p>{group.description}</p>
-            <div className="endpointList">
-              {group.endpoints.map((endpoint) => (
-                <div className="endpointRow" key={`${endpoint.method}:${endpoint.path}`}>
-                  <span className={`methodPill method${endpoint.method}`}>{endpoint.method}</span>
-                  <code>{endpoint.path}</code>
-                  <small>{endpoint.description}</small>
+          <section className="apiDocsSection">
+            <h3>Header parameters</h3>
+            <div className="apiParamList">
+              {headers.map((field) => (
+                <div className="apiParamRow" key={field.name}>
+                  <div>
+                    <strong>{field.name}</strong>
+                    {field.required ? <span>required</span> : <span>optional</span>}
+                  </div>
+                  <p><code>{field.type}</code> {field.description}</p>
                 </div>
               ))}
             </div>
-          </div>
-        ))}
-      </div>
+          </section>
 
-      <div className="workspaceGrid">
-        <ApiSnippet title="Create a session and stream a message" value={sessionCurl} />
-        <ApiSnippet title="TypeScript SDK" value={sdkSnippet} />
-      </div>
+          <section className="apiDocsSection">
+            <h3>{activeEndpoint.method === 'GET' ? 'Query parameters' : 'Body parameters'}</h3>
+            <div className="apiParamList">
+              {(activeEndpoint.parameters ?? []).map((field) => (
+                <div className="apiParamRow" key={field.name}>
+                  <div>
+                    <strong>{field.name}</strong>
+                    {field.required ? <span>required</span> : <span>optional</span>}
+                  </div>
+                  <p><code>{field.type}</code> {field.description}</p>
+                </div>
+              ))}
+            </div>
+          </section>
 
-      <div className="panel subtlePanel">
-        <div className="panelHeader">
-          <div>
-            <h2>Skills API</h2>
-            <p>Skills are reusable instruction packages. Upload a zip, .skill file, directory upload, or JSON file list.</p>
-          </div>
-          <ResourceBadge label="8 MB max" />
-        </div>
-        <div className="skillReferenceGrid">
-          <div>
-            <h3>Package shape</h3>
+          <section className="apiDocsSection">
+            <h3>Returns</h3>
+            <div className="apiParamList">
+              {activeEndpoint.response.map((field) => (
+                <div className="apiParamRow" key={field.name}>
+                  <div>
+                    <strong>{field.name}</strong>
+                    <span>{field.type}</span>
+                  </div>
+                  <p>{field.description}</p>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section className="apiDocsSection">
+            <h3>Skills package notes</h3>
+            <p>Skill uploads follow Claude's package rule: one top-level folder containing <code>SKILL.md</code> at its root. The runtime derives the custom skill name from that package metadata and generates a random <code>skill_...</code> id.</p>
             <pre className="metricsPreview">code-review-assistant/{'\n'}  SKILL.md{'\n'}  references/checklist.md</pre>
-            <p className="mutedLine">All files must be inside one top-level directory. <code>SKILL.md</code> must be at that directory root and start with YAML frontmatter containing <code>name</code> and <code>description</code>.</p>
-          </div>
-          <div>
-            <h3>Attach to an agent</h3>
-            <pre className="metricsPreview">{skillAttachSnippet}</pre>
-          </div>
-        </div>
-      </div>
+          </section>
 
-      <div className="workspaceGrid">
-        <ApiSnippet title="Upload a Skill package" value={skillUploadSnippet} />
-        <ApiSnippet title="Create a Skill with JSON" value={skillJsonSnippet} />
+          <section className="apiDocsSection apiDocsExamples" aria-label="API examples">
+            <h3>Examples</h3>
+            <div className="apiDocsExampleGrid">
+              <div className="apiDocsCodeCard">
+                <div className="snippetHeader">
+                  <h2>Example request</h2>
+                  <button className="iconButton" type="button" title="Copy request" aria-label="Copy request" onClick={() => copyText(endpointExample)}>
+                    <Copy size={15} />
+                  </button>
+                </div>
+                <pre className="metricsPreview apiSnippet">{endpointExample}</pre>
+              </div>
+              <div className="apiDocsCodeCard">
+                <div className="snippetHeader">
+                  <h2>TypeScript SDK</h2>
+                  <button className="iconButton" type="button" title="Copy SDK snippet" aria-label="Copy SDK snippet" onClick={() => copyText(sdkSnippet)}>
+                    <Copy size={15} />
+                  </button>
+                </div>
+                <pre className="metricsPreview apiSnippet">{sdkSnippet}</pre>
+              </div>
+              <div className="apiDocsCodeCard">
+                <div className="snippetHeader">
+                  <h2>Skill JSON upload</h2>
+                  <button className="iconButton" type="button" title="Copy Skill JSON" aria-label="Copy Skill JSON" onClick={() => copyText(skillJsonSnippet)}>
+                    <Copy size={15} />
+                  </button>
+                </div>
+                <pre className="metricsPreview apiSnippet">{skillJsonSnippet}</pre>
+              </div>
+              <div className="apiDocsCodeCard">
+                <h2>Agent skill reference</h2>
+                <pre className="metricsPreview apiSnippet">{skillAttachSnippet}</pre>
+              </div>
+            </div>
+          </section>
+        </article>
       </div>
     </section>
-  );
-}
-
-function ApiSnippet({ title, value }: { title: string; value: string }) {
-  return (
-    <div className="panel subtlePanel snippetPanel">
-      <div className="snippetHeader">
-        <h2>{title}</h2>
-        <button className="iconButton" type="button" title="Copy snippet" aria-label={`Copy ${title}`} onClick={() => copyText(value)}>
-          <Copy size={16} />
-        </button>
-      </div>
-      <pre className="metricsPreview apiSnippet">{value}</pre>
-    </div>
   );
 }
 
@@ -3457,13 +4232,13 @@ function SettingsView({
       <div className="settingsContent">
         {active === 'general' ? <SettingsGeneral data={data} setView={setView} /> : null}
         {active === 'workspace' ? <WorkspaceView data={data} /> : null}
-        {active === 'models' ? <SettingsModels data={data} /> : null}
+        {active === 'models' ? <SettingsModels data={data} onRefresh={onRefresh} /> : null}
         {active === 'loop-engine' ? <SettingsLoopEngine data={data} /> : null}
-        {active === 'storage' ? <SettingsStorage data={data} /> : null}
-        {active === 'memory' ? <SettingsMemory data={data} /> : null}
+        {active === 'storage' ? <SettingsStorage data={data} onRefresh={onRefresh} /> : null}
+        {active === 'memory' ? <SettingsMemory data={data} onRefresh={onRefresh} /> : null}
         {active === 'sandbox' ? <SettingsSandbox data={data} /> : null}
         {active === 'api-keys' ? <ApiKeys data={data} onRefresh={onRefresh} /> : null}
-        {active === 'api-reference' ? <SettingsApiReference data={data} setView={setView} /> : null}
+        {active === 'api-reference' ? <SettingsApiReference data={data} /> : null}
         {active === 'logs' ? <SettingsLogs data={data} /> : null}
         {active === 'monitoring' ? <Observability data={data} /> : null}
       </div>
