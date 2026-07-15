@@ -21,6 +21,7 @@ import { importAgentSeeds, loadActiveAgentsFromDb, loadAgentDefinitionById, refr
 import { loadSkills } from './core/skills/loader.js';
 import { BUILTIN_SKILLS } from './core/skills/catalog.js';
 import { importSkillSeeds, loadCustomSkillsFromDb } from './core/skills/store.js';
+import { listModelProviders, seedModelProviders } from './core/model/providers.js';
 import { installTemplate, createTemplate, listTemplates, resolveTemplateSource } from './core/templates/templates.js';
 import { ModelRegistry } from './model/registry.js';
 import { LocalSandboxProvider } from './sandbox/local-provider.js';
@@ -114,8 +115,10 @@ program
     console.log('  1. Build:   npm run build');
     console.log('  2. Package: ship dist/ + agents/ + skills/ + managed-agents.config.yaml');
     console.log('  3. Run:     node dist/index.js start --port $PORT');
-    console.log('  4. Or containerize with any Node 22+ base image.\n');
-    console.log('Use environments.cloud in your config for cloud-specific models/keys.');
+    console.log('  4. Add model providers in Dashboard Settings > Models, or seed a new');
+    console.log('     workspace from managed-agents.config.yaml.');
+    console.log('  5. Or containerize with any Node 22+ base image.\n');
+    console.log('Runtime provider settings are stored in SQLite under the data directory.');
   });
 
 const template = program.command('template').description('Manage solution templates');
@@ -209,6 +212,7 @@ async function startServer(opts: { port: string; host: string; dataDir?: string;
   // Load config file
   const modelRegistry = new ModelRegistry();
   let configApiKeys: string[] = [];
+  let configModels: ModelConfig[] = [];
   let memory: MemoryProvider | undefined;
   if (existsSync(configPath)) {
     const configContent = readFileSync(configPath, 'utf-8');
@@ -236,15 +240,14 @@ async function startServer(opts: { port: string; host: string; dataDir?: string;
     const merged = new Map<string, any>();
     for (const m of baseModels) merged.set(m.name, m);
     for (const m of overrideModels) merged.set(m.name, { ...merged.get(m.name), ...m });
-    for (const m of merged.values()) {
-      modelRegistry.register({
+    configModels = [...merged.values()].map((m) => ({
         name: m.name,
         provider: m.provider,
         model: m.model,
         base_url: m.base_url,
         api_key: m.api_key,
-      } as ModelConfig);
-    }
+        is_default: Boolean(m.is_default),
+      }) as ModelConfig);
 
     // Load environments
     if (config.environments && typeof config.environments === 'object') {
@@ -260,6 +263,17 @@ async function startServer(opts: { port: string; host: string; dataDir?: string;
         }
       }
     }
+  }
+
+// Dashboard-managed model providers are stored in SQLite and are the runtime
+// source of truth. Config models can optionally bootstrap a new local project.
+  seedModelProviders(db, configModels);
+  for (const model of listModelProviders(db)) {
+    modelRegistry.register(model);
+  }
+  const defaultModel = listModelProviders(db).find((model) => model.is_default);
+  if (defaultModel) {
+    modelRegistry.setDefault(defaultModel.name);
   }
 
   // Load agents
@@ -431,6 +445,9 @@ async function startServer(opts: { port: string; host: string; dataDir?: string;
       memory: memory ? memory.name : 'disabled',
       authEnabled: apiKeys.length > 0,
     },
+    listRuntimeModels: () => modelRegistry.listRuntimeInfo(),
+    registerModelProvider: (config) => modelRegistry.register(config),
+    setDefaultRuntimeModel: (name) => modelRegistry.setDefault(name),
     skills,
     getMcpStatus: (sessionId) => executor.getMcpStatus(sessionId),
     reloadAgents: () => {
@@ -597,7 +614,7 @@ environments:
   console.log('  agents/assistant.yaml');
   console.log('  skills/');
   console.log('  managed-agents.config.yaml');
-  console.log('\nNext: configure your model provider key, then start the runtime:');
+  console.log('\nNext: start the runtime, then add a model provider in Dashboard Settings > Models:');
   console.log('  managed-agents start');
   if (process.argv[1]) {
     console.log(`  # source checkout: node ${process.argv[1]} start`);

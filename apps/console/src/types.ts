@@ -246,8 +246,51 @@ export type RuntimeModel = {
   name: string;
   provider: string;
   model: string;
+  base_url?: string;
   api_key_state: RuntimeConfigState;
   base_url_state: RuntimeConfigState;
+  is_default: boolean;
+};
+
+export type RuntimeMemoryProviderKind = 'in_memory' | 'sqlite' | 'database' | 'mem0' | 'memu';
+export type RuntimeMemoryProviderStatus = 'active' | 'adapter_required';
+
+export type RuntimeMemoryProvider = {
+  name: string;
+  provider: RuntimeMemoryProviderKind;
+  provider_label: string;
+  connection_url?: string;
+  connection_url_state: RuntimeConfigState;
+  api_key_state: RuntimeConfigState;
+  is_default: boolean;
+  status: RuntimeMemoryProviderStatus;
+  runtime_capable: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type RuntimeStorageProviderRole = 'metadata' | 'artifact';
+export type RuntimeStorageProviderKind = 'sqlite' | 'postgres' | 'mysql' | 'local_filesystem' | 's3';
+export type RuntimeStorageProviderStatus = 'active' | 'init_required' | 'adapter_required';
+
+export type RuntimeStorageProvider = {
+  name: string;
+  role: RuntimeStorageProviderRole;
+  provider: RuntimeStorageProviderKind;
+  provider_label: string;
+  connection_url?: string;
+  connection_url_state: RuntimeConfigState;
+  bucket?: string;
+  region?: string;
+  base_path?: string;
+  access_key_state: RuntimeConfigState;
+  secret_key_state: RuntimeConfigState;
+  is_default: boolean;
+  status: RuntimeStorageProviderStatus;
+  runtime_capable: boolean;
+  initialized_at?: string;
+  created_at: string;
+  updated_at: string;
 };
 
 export type Runtime = {
@@ -257,6 +300,8 @@ export type Runtime = {
   models: RuntimeModel[];
   sandbox_providers: string[];
   memory: string;
+  memory_providers: RuntimeMemoryProvider[];
+  storage_providers: RuntimeStorageProvider[];
   auth_enabled: boolean;
 };
 
@@ -299,6 +344,8 @@ export type ConsoleData = {
   apiKeys: ApiKey[];
   skills: Skill[];
   templates: Template[];
+  memoryProviders: RuntimeMemoryProvider[];
+  storageProviders: RuntimeStorageProvider[];
   runtime: Runtime | null;
   workspace: Workspace | null;
 };

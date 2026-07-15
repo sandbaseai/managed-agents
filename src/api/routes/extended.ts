@@ -13,6 +13,26 @@ import { dirname } from 'node:path';
 import type { ServerDeps } from '../server.js';
 import type { LogLevel } from '@/core/observability/logger.js';
 import { getAgentSkillIds, getEnabledToolNames } from '@/core/agent/standard.js';
+import {
+  createModelProvider,
+  listModelProviders,
+  setDefaultModelProvider,
+  toRuntimeModelInfo,
+} from '@/core/model/providers.js';
+import {
+  createMemoryProvider,
+  listMemoryProviders,
+  setDefaultMemoryProvider,
+  toRuntimeMemoryProviderInfo,
+} from '@/core/memory/providers.js';
+import {
+  createStorageProvider,
+  initializeStorageProvider,
+  listStorageProviders,
+  setDefaultStorageProvider,
+  toRuntimeStorageProviderInfo,
+  type StorageProviderRole,
+} from '@/core/storage/providers.js';
 
 const LOG_LEVELS = new Set<LogLevel>(['debug', 'info', 'warn', 'error']);
 
@@ -143,11 +163,148 @@ export function extendedRoutes(deps: ServerDeps) {
       status: 'running',
       agents_loaded: deps.agents.length,
       skills_loaded: deps.skills?.length ?? 0,
-      models: deps.runtime?.models ?? [],
+      models: runtimeModels(deps),
       sandbox_providers: deps.runtime?.sandboxProviders ?? [],
       memory: deps.runtime?.memory ?? 'disabled',
+      memory_providers: listMemoryProviders(deps.db).map(toRuntimeMemoryProviderInfo),
+      storage_providers: listStorageProviders(deps.db).map(toRuntimeStorageProviderInfo),
       auth_enabled: authEnabled,
     });
+  });
+
+  app.get('/model-providers', (c) => {
+    const data = listModelProviders(deps.db).map(toRuntimeModelInfo);
+    return c.json({
+      data,
+      has_more: false,
+      first_id: data[0]?.name ?? null,
+      last_id: data.at(-1)?.name ?? null,
+    });
+  });
+
+  app.post('/model-providers', async (c) => {
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: { type: 'invalid_request', message: 'Request body must be JSON' } }, 400);
+    }
+
+    try {
+      const record = createModelProvider(deps.db, body as Record<string, unknown>);
+      deps.registerModelProvider?.(record);
+      if (record.is_default) {
+        deps.setDefaultRuntimeModel?.(record.name);
+      }
+      return c.json(toRuntimeModelInfo(record), 201);
+    } catch (err: any) {
+      return c.json({ error: { type: 'invalid_request', message: err?.message ?? 'Invalid model provider' } }, 400);
+    }
+  });
+
+  app.post('/model-providers/:name/default', (c) => {
+    const name = decodeURIComponent(c.req.param('name'));
+    const record = setDefaultModelProvider(deps.db, name);
+    if (!record) {
+      return c.json({ error: { type: 'not_found', message: 'Model provider not found' } }, 404);
+    }
+    deps.setDefaultRuntimeModel?.(record.name);
+    return c.json(toRuntimeModelInfo(record));
+  });
+
+  app.get('/memory-providers', (c) => {
+    const data = listMemoryProviders(deps.db).map(toRuntimeMemoryProviderInfo);
+    return c.json({
+      data,
+      has_more: false,
+      first_id: data[0]?.name ?? null,
+      last_id: data.at(-1)?.name ?? null,
+    });
+  });
+
+  app.post('/memory-providers', async (c) => {
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: { type: 'invalid_request', message: 'Request body must be JSON' } }, 400);
+    }
+
+    try {
+      const record = createMemoryProvider(deps.db, body as Record<string, unknown>);
+      return c.json(toRuntimeMemoryProviderInfo(record), 201);
+    } catch (err: any) {
+      return c.json({ error: { type: 'invalid_request', message: err?.message ?? 'Invalid memory provider' } }, 400);
+    }
+  });
+
+  app.post('/memory-providers/:name/default', (c) => {
+    const name = decodeURIComponent(c.req.param('name'));
+    try {
+      const record = setDefaultMemoryProvider(deps.db, name);
+      if (!record) {
+        return c.json({ error: { type: 'not_found', message: 'Memory provider not found' } }, 404);
+      }
+      return c.json(toRuntimeMemoryProviderInfo(record));
+    } catch (err: any) {
+      return c.json({ error: { type: 'invalid_request', message: err?.message ?? 'Invalid memory provider' } }, 400);
+    }
+  });
+
+  app.get('/storage-providers', (c) => {
+    const role = normalizeStorageProviderRole(c.req.query('role'));
+    if (c.req.query('role') && !role) {
+      return c.json({ error: { type: 'invalid_request', message: 'role must be metadata or artifact' } }, 400);
+    }
+    const data = listStorageProviders(deps.db, role).map(toRuntimeStorageProviderInfo);
+    return c.json({
+      data,
+      has_more: false,
+      first_id: data[0]?.name ?? null,
+      last_id: data.at(-1)?.name ?? null,
+    });
+  });
+
+  app.post('/storage-providers', async (c) => {
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: { type: 'invalid_request', message: 'Request body must be JSON' } }, 400);
+    }
+
+    try {
+      const record = createStorageProvider(deps.db, body as Record<string, unknown>);
+      return c.json(toRuntimeStorageProviderInfo(record), 201);
+    } catch (err: any) {
+      return c.json({ error: { type: 'invalid_request', message: err?.message ?? 'Invalid storage provider' } }, 400);
+    }
+  });
+
+  app.post('/storage-providers/:name/initialize', (c) => {
+    const name = decodeURIComponent(c.req.param('name'));
+    try {
+      const record = initializeStorageProvider(deps.db, name);
+      if (!record) {
+        return c.json({ error: { type: 'not_found', message: 'Storage provider not found' } }, 404);
+      }
+      return c.json(toRuntimeStorageProviderInfo(record));
+    } catch (err: any) {
+      return c.json({ error: { type: 'invalid_request', message: err?.message ?? 'Invalid storage provider' } }, 400);
+    }
+  });
+
+  app.post('/storage-providers/:name/default', (c) => {
+    const name = decodeURIComponent(c.req.param('name'));
+    try {
+      const record = setDefaultStorageProvider(deps.db, name);
+      if (!record) {
+        return c.json({ error: { type: 'not_found', message: 'Storage provider not found' } }, 404);
+      }
+      return c.json(toRuntimeStorageProviderInfo(record));
+    } catch (err: any) {
+      return c.json({ error: { type: 'invalid_request', message: err?.message ?? 'Invalid storage provider' } }, 400);
+    }
   });
 
   app.get('/templates', (c) => {
@@ -170,8 +327,20 @@ function parsePositiveInteger(value: string | undefined): number | undefined {
   return Math.trunc(parsed);
 }
 
+function normalizeStorageProviderRole(value: string | undefined): StorageProviderRole | undefined {
+  if (value === 'metadata' || value === 'artifact') return value;
+  return undefined;
+}
+
+function runtimeModels(deps: ServerDeps) {
+  return deps.listRuntimeModels?.() ?? deps.runtime?.models ?? [];
+}
+
 function defaultTemplateModel(deps: ServerDeps) {
-  return deps.runtime?.models.find((model) => model.name.trim().length > 0)?.name ?? 'default';
+  const models = runtimeModels(deps);
+  return models.find((model) => model.is_default)?.name
+    ?? models.find((model) => model.name.trim().length > 0)?.name
+    ?? 'default';
 }
 
 function builtInTemplates(defaultModelName: string) {

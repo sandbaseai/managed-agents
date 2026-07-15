@@ -47,6 +47,7 @@
   --danger-soft: #ffe9ea;
   --warning: #c95e00;
   --warning-soft: #ffefe7;
+  --warning-text: #8a3d00;
   --shadow-control: 0 0 0 0 transparent;
   --shadow-popover: 0 0 0 0 transparent;
   --shadow-modal: 0 0 0 0 transparent;
@@ -633,7 +634,7 @@ label.filterSelect {
   min-width: 0;
   height: var(--height-default);
   min-height: var(--height-default);
-  max-width: 180px;
+  max-width: none;
   display: inline-flex;
   flex-direction: row;
   align-items: center;
@@ -660,8 +661,8 @@ label.filterSelect select {
   z-index: 1;
   height: calc(var(--height-default) - 2px);
   min-height: 0;
-  min-width: 44px;
-  max-width: 104px;
+  min-width: 58px;
+  max-width: none;
   border: 0;
   border-radius: 0;
   outline: 0;
@@ -672,7 +673,7 @@ label.filterSelect select {
   font-weight: 610;
   line-height: 1;
   cursor: pointer;
-  padding: 0;
+  padding: 0 20px 0 0;
   box-shadow: none;
   appearance: auto;
   -webkit-appearance: menulist;
@@ -844,6 +845,277 @@ tr[role="button"]:hover td,
 
 .compactToolbar .filterSelect {
   flex: 0 0 auto;
+}
+
+.toolbar label.filterSelect,
+.compactToolbar label.filterSelect {
+  flex: 0 0 auto;
+}
+
+.modelsProviderTable {
+  max-width: 100%;
+  overflow: visible;
+}
+
+.modelsProviderTable table {
+  table-layout: fixed;
+}
+
+.modelsProviderTable th:nth-child(1),
+.modelsProviderTable td:nth-child(1) {
+  width: 16%;
+}
+
+.modelsProviderTable th:nth-child(2),
+.modelsProviderTable td:nth-child(2) {
+  width: 13%;
+}
+
+.modelsProviderTable th:nth-child(3),
+.modelsProviderTable td:nth-child(3) {
+  width: 22%;
+}
+
+.modelsProviderTable th:nth-child(4),
+.modelsProviderTable td:nth-child(4) {
+  width: 24%;
+}
+
+.modelsProviderTable th:nth-child(5),
+.modelsProviderTable td:nth-child(5) {
+  width: 11%;
+}
+
+.modelsProviderTable th:nth-child(6),
+.modelsProviderTable td:nth-child(6) {
+  width: 9%;
+}
+
+.modelsProviderTable th:nth-child(7),
+.modelsProviderTable td:nth-child(7) {
+  width: 104px;
+}
+
+.memoryProviderTable {
+  max-width: 100%;
+  overflow: visible;
+}
+
+.memoryProviderTable table {
+  table-layout: fixed;
+}
+
+.memoryProviderTable th:nth-child(1),
+.memoryProviderTable td:nth-child(1) {
+  width: 16%;
+}
+
+.memoryProviderTable th:nth-child(2),
+.memoryProviderTable td:nth-child(2) {
+  width: 17%;
+}
+
+.memoryProviderTable th:nth-child(3),
+.memoryProviderTable td:nth-child(3) {
+  width: 24%;
+}
+
+.memoryProviderTable th:nth-child(4),
+.memoryProviderTable td:nth-child(4) {
+  width: 11%;
+}
+
+.memoryProviderTable th:nth-child(5),
+.memoryProviderTable td:nth-child(5) {
+  width: 10%;
+}
+
+.memoryProviderTable th:nth-child(6),
+.memoryProviderTable td:nth-child(6) {
+  width: 12%;
+}
+
+.memoryProviderTable th:nth-child(7),
+.memoryProviderTable td:nth-child(7) {
+  width: 110px;
+}
+
+.storageProviderStack {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+.storageProviderSection {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.storageProviderHeader {
+  min-height: 58px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.storageProviderHeader h2 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 680;
+  letter-spacing: 0;
+}
+
+.storageProviderHeader p {
+  margin: 3px 0 0;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+
+.storageProviderTable {
+  max-width: 100%;
+  overflow: auto;
+  border: 0;
+  border-radius: 0;
+}
+
+.storageProviderTable table {
+  min-width: 880px;
+  table-layout: fixed;
+}
+
+.storageProviderTable th:nth-child(1),
+.storageProviderTable td:nth-child(1) {
+  width: 17%;
+}
+
+.storageProviderTable th:nth-child(2),
+.storageProviderTable td:nth-child(2) {
+  width: 14%;
+}
+
+.storageProviderTable th:nth-child(3),
+.storageProviderTable td:nth-child(3) {
+  width: 25%;
+}
+
+.storageProviderTable th:nth-child(4),
+.storageProviderTable td:nth-child(4) {
+  width: 12%;
+}
+
+.storageProviderTable th:nth-child(5),
+.storageProviderTable td:nth-child(5) {
+  width: 11%;
+}
+
+.storageProviderTable th:nth-child(6),
+.storageProviderTable td:nth-child(6) {
+  width: 11%;
+}
+
+.storageProviderTable th:nth-child(7),
+.storageProviderTable td:nth-child(7) {
+  width: 120px;
+}
+
+.providerStateBadge {
+  display: inline-flex;
+  min-height: 24px;
+  align-items: center;
+  border-radius: 6px;
+  padding: 2px 8px;
+  font-size: var(--text-body-sm);
+  font-weight: 650;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.providerStateBadge.pending {
+  background: var(--warning-soft);
+  color: var(--warning-text);
+}
+
+.providerStateBadge.adapter {
+  background: var(--surface-muted);
+  color: var(--muted);
+}
+
+.storageModalGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.noticeBox {
+  border: 1px solid var(--warning);
+  border-radius: var(--radius);
+  background: var(--warning-soft);
+  color: var(--warning-text);
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.stackTiny {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.adapterRequiredBadge {
+  display: inline-flex;
+  width: max-content;
+  min-height: 22px;
+  align-items: center;
+  border-radius: 6px;
+  background: var(--surface-muted);
+  color: var(--muted);
+  padding: 0 7px;
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1;
+}
+
+.monoValue {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-body-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.defaultProviderBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 24px;
+  border-radius: 6px;
+  background: var(--success-soft);
+  color: var(--success-text);
+  padding: 2px 8px;
+  font-size: var(--text-body-sm);
+  font-weight: 650;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.rowActions {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.formStack .checkRow {
+  grid-template-columns: 18px minmax(0, 1fr);
 }
 
 .skillsLayout {
@@ -2078,9 +2350,24 @@ label.searchBox input {
 
 .apiDocsShell {
   display: grid;
-  grid-template-columns: 248px minmax(420px, 1fr) minmax(320px, 420px);
-  gap: 26px;
+  grid-template-columns: 236px minmax(0, 1fr);
+  gap: 28px;
   align-items: start;
+  max-width: 1180px;
+}
+
+.apiReference .pageIntro {
+  align-items: flex-start;
+}
+
+.apiReference .pageIntro h1 {
+  font-size: 24px;
+  line-height: 1.18;
+}
+
+.apiReference .pageIntro p {
+  max-width: 760px;
+  font-size: 13px;
 }
 
 .apiDocsNav {
@@ -2168,7 +2455,8 @@ label.searchBox input {
 }
 
 .apiDocsArticle {
-  padding: 8px 0 42px;
+  padding: 6px 0 42px;
+  max-width: 880px;
 }
 
 .apiDocsArticleHeader {
@@ -2179,14 +2467,14 @@ label.searchBox input {
 }
 
 .apiDocsArticle h2 {
-  font-size: 28px;
+  font-size: 24px;
   line-height: 1.15;
   font-weight: 760;
   letter-spacing: 0;
 }
 
 .apiDocsPath {
-  margin-top: 20px;
+  margin-top: 16px;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -2194,25 +2482,26 @@ label.searchBox input {
 }
 
 .apiDocsPath code {
-  font-size: 16px;
+  font-size: 14px;
   color: var(--text-soft);
 }
 
 .apiDocsSummary {
-  margin-top: 28px;
-  max-width: 760px;
+  margin-top: 22px;
+  max-width: 680px;
   color: var(--text-soft);
-  line-height: 1.6;
+  font-size: 13.5px;
+  line-height: 1.55;
 }
 
 .apiDocsSection {
-  margin-top: 38px;
+  margin-top: 32px;
   border-top: 1px solid var(--border-subtle);
-  padding-top: 22px;
+  padding-top: 20px;
 }
 
 .apiDocsSection h3 {
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 700;
   margin-bottom: 12px;
 }
@@ -2225,9 +2514,9 @@ label.searchBox input {
 
 .apiParamRow {
   display: grid;
-  grid-template-columns: minmax(180px, 240px) minmax(0, 1fr);
-  gap: 18px;
-  padding: 16px 0;
+  grid-template-columns: minmax(170px, 220px) minmax(0, 1fr);
+  gap: 16px;
+  padding: 14px 0;
   border-bottom: 1px solid var(--border-subtle);
 }
 
@@ -2251,7 +2540,8 @@ label.searchBox input {
 
 .apiParamRow p {
   color: var(--text-soft);
-  line-height: 1.5;
+  font-size: 13px;
+  line-height: 1.48;
 }
 
 .apiParamRow code {
@@ -2259,13 +2549,19 @@ label.searchBox input {
 }
 
 .apiDocsCodeRail {
-  position: sticky;
-  top: 20px;
-  max-height: calc(100vh - 68px);
-  overflow: auto;
-  display: flex;
-  flex-direction: column;
+  display: grid;
   gap: 14px;
+}
+
+.apiDocsExamples {
+  max-width: 100%;
+}
+
+.apiDocsExampleGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px;
+  max-width: 760px;
 }
 
 .apiDocsCodeCard {
@@ -2277,9 +2573,9 @@ label.searchBox input {
 }
 
 .apiDocsCodeCard > h2 {
-  padding: 12px 14px;
+  padding: 10px 12px;
   border-bottom: 1px solid var(--border-subtle);
-  font-size: 13px;
+  font-size: 12.5px;
 }
 
 .apiDocsCodeCard .metricsPreview {
@@ -2288,6 +2584,13 @@ label.searchBox input {
   margin: 0;
   background: #171717;
   color: #efeeec;
+  overflow-x: auto;
+}
+
+.apiSnippet {
+  max-height: 280px;
+  font-size: 12px;
+  line-height: 1.55;
 }
 
 .methodPill {
@@ -2341,9 +2644,10 @@ label.searchBox input {
 }
 
 .apiSnippet {
-  max-height: 360px;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
+  max-height: 300px;
+  white-space: pre;
+  overflow: auto;
+  overflow-wrap: normal;
 }
 
 .skillReferenceGrid {
@@ -4357,12 +4661,6 @@ label.searchBox input {
     grid-template-columns: 220px minmax(0, 1fr);
   }
 
-  .apiDocsCodeRail {
-    grid-column: 2;
-    position: static;
-    max-height: none;
-  }
-
   .settingsShell {
     grid-template-columns: 220px minmax(0, 1fr);
   }
@@ -4554,6 +4852,20 @@ label.searchBox input {
 
   .pluginSelectField small {
     grid-column: auto;
+  }
+
+  .storageProviderHeader {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .storageProviderHeader .secondaryButton {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+    width: 100%;
+  }
+
+  .storageModalGrid {
+    grid-template-columns: 1fr;
   }
 
   .templateGrid,

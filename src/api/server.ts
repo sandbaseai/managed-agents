@@ -26,7 +26,7 @@ import type { Logger, LogStore } from '@/core/observability/logger.js';
 import type { Metrics } from '@/core/observability/metrics.js';
 import type { Skill } from '@/core/skills/loader.js';
 import type { Database } from '@/core/db/database.js';
-import type { RuntimeModelInfo } from '@/types/model.js';
+import type { ModelConfig, RuntimeModelInfo } from '@/types/model.js';
 
 export interface ServerDeps {
   db: Database;
@@ -61,6 +61,12 @@ export interface ServerDeps {
     memory: string;
     authEnabled: boolean;
   };
+  /** Dynamic runtime model registry; used after dashboard-managed providers change. */
+  listRuntimeModels?: () => RuntimeModelInfo[];
+  /** Register a dashboard-managed model provider with the live model registry. */
+  registerModelProvider?: (config: ModelConfig) => void;
+  /** Mark the live runtime default model provider. */
+  setDefaultRuntimeModel?: (name: string) => void;
   skills?: Skill[];
   /** Override for tests. Undefined = auto-detect dist/console; null = disabled. */
   consoleRoot?: string | null;

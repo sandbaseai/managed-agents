@@ -69,6 +69,11 @@ import type {
   RuntimeConfigState,
   RuntimeLogEntry,
   RuntimeLogLevel,
+  RuntimeMemoryProvider,
+  RuntimeModel,
+  RuntimeStorageProvider,
+  RuntimeStorageProviderKind,
+  RuntimeStorageProviderRole,
   Session,
   SessionEvent,
   SessionResourceDraft,
@@ -153,6 +158,8 @@ function emptyData(): ConsoleData {
     apiKeys: [],
     skills: [],
     templates: [],
+    memoryProviders: [],
+    storageProviders: [],
     runtime: null,
     workspace: null,
   };
@@ -191,6 +198,8 @@ export function App() {
         apiKeys,
         skills,
         templates,
+        memoryProviders,
+        storageProviders,
         runtime,
         workspace,
       ] = await Promise.all([
@@ -203,6 +212,8 @@ export function App() {
         getPage<ApiKey>('/v1/api-keys'),
         getPage<Skill>('/v1/skills'),
         getPage<Template>('/v1/x/templates'),
+        getPage<RuntimeMemoryProvider>('/v1/x/memory-providers'),
+        getPage<RuntimeStorageProvider>('/v1/x/storage-providers'),
         getJson<Runtime>('/v1/x/runtime'),
         getJson<Workspace>('/v1/x/workspace'),
       ]);
@@ -216,6 +227,8 @@ export function App() {
         apiKeys: apiKeys.data,
         skills: skills.data,
         templates: templates.data,
+        memoryProviders: memoryProviders.data,
+        storageProviders: storageProviders.data,
         runtime,
         workspace,
       });
@@ -2307,34 +2320,55 @@ function RuntimeView({ data }: { data: ConsoleData }) {
   );
 }
 
-function SettingsModels({ data }: { data: ConsoleData }) {
+function SettingsModels({ data, onRefresh }: { data: ConsoleData; onRefresh: () => void }) {
   const models = data.runtime?.models ?? [];
-  const configured = models.filter((model) => model.api_key_state === 'configured').length;
+  const [modalOpen, setModalOpen] = useState(false);
+  const [savingDefault, setSavingDefault] = useState('');
+  const setDefault = async (model: RuntimeModel) => {
+    setSavingDefault(model.name);
+    try {
+      await postJson(`/v1/x/model-providers/${encodeURIComponent(model.name)}/default`, {});
+      await onRefresh();
+    } finally {
+      setSavingDefault('');
+    }
+  };
+
   return (
     <section className="stack">
       <div className="pageIntro">
         <div>
-          <h1>Models</h1>
-          <p>Configure provider model IDs, API keys, and OpenAI-compatible base URLs.</p>
+          <h1>Model providers</h1>
+          <p>Add OpenAI-compatible, Anthropic, or local providers for agent runs. The default provider is used when an agent does not specify another model.</p>
         </div>
+        <button className="primaryButton" type="button" onClick={() => setModalOpen(true)}>
+          <Plus size={16} />Add provider
+        </button>
       </div>
-      <SummaryStrip items={[
-        { label: 'Registered models', value: models.length, icon: <Brain size={18} /> },
-        { label: 'Keys configured', value: configured, icon: <KeyRound size={18} /> },
-        { label: 'Runtime status', value: data.runtime?.status ?? 'starting', icon: <Gauge size={18} /> },
-        { label: 'Config file', value: pathName(data.workspace?.configPath) || 'managed-agents.config.yaml', icon: <FileText size={18} /> },
-      ]} />
-      <div className="tablePanel">
+      <div className="tablePanel modelsProviderTable">
         <table>
-          <thead><tr><th>Name</th><th>Provider</th><th>Model ID</th><th>API key</th><th>Base URL</th></tr></thead>
+          <thead><tr><th>Name</th><th>Provider</th><th>Model ID</th><th>Base URL</th><th>API key</th><th>Default</th><th></th></tr></thead>
           <tbody>
             {models.map((model) => (
               <tr key={model.name}>
                 <td><strong>{model.name}</strong></td>
                 <td>{model.provider}</td>
                 <td><code>{model.model}</code></td>
+                <td><span className="monoValue">{model.base_url || '-'}</span></td>
                 <td><RuntimeConfigStatePill state={model.api_key_state} /></td>
-                <td><RuntimeConfigStatePill state={model.base_url_state} /></td>
+                <td>{model.is_default ? <span className="defaultProviderBadge"><Check size={13} />Default</span> : <span className="mutedValue">-</span>}</td>
+                <td className="rowActions">
+                  {!model.is_default ? (
+                    <button
+                      className="textButton"
+                      type="button"
+                      onClick={() => void setDefault(model)}
+                      disabled={savingDefault === model.name}
+                    >
+                      {savingDefault === model.name ? 'Saving...' : 'Set default'}
+                    </button>
+                  ) : null}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -2342,22 +2376,101 @@ function SettingsModels({ data }: { data: ConsoleData }) {
         {models.length === 0 ? (
           <EmptyState
             icon={<Brain size={22} />}
-            title="No models configured"
-            body="Add a model entry in managed-agents.config.yaml, then restart the runtime."
+            title="No model providers"
+            body="Add a provider with a model ID, base URL, and API key to run agent sessions."
           />
         ) : null}
       </div>
-      <div className="panel subtlePanel">
-        <h2>Configuration source</h2>
-        <p>Model settings are loaded at startup from the workspace config and environment variables.</p>
-        <KeyValuePanel rows={[
-          ['Config file', data.workspace?.configPath ?? 'managed-agents.config.yaml'],
-          ['Target', data.workspace?.target ?? 'local'],
-          ['Base URL field', 'models[].base_url'],
-          ['API key field', 'models[].api_key'],
-        ]} />
-      </div>
+      {modalOpen ? <ModelProviderModal
+        hasProviders={models.length > 0}
+        onClose={() => setModalOpen(false)}
+        onSaved={async () => {
+          setModalOpen(false);
+          await onRefresh();
+        }}
+      /> : null}
     </section>
+  );
+}
+
+function ModelProviderModal({
+  hasProviders,
+  onClose,
+  onSaved,
+}: {
+  hasProviders: boolean;
+  onClose: () => void;
+  onSaved: () => void | Promise<void>;
+}) {
+  const [name, setName] = useState('default');
+  const [provider, setProvider] = useState('openai');
+  const [model, setModel] = useState('');
+  const [baseUrl, setBaseUrl] = useState('');
+  const [apiKey, setApiKey] = useState('');
+  const [isDefault, setIsDefault] = useState(!hasProviders);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    setError('');
+    setSaving(true);
+    try {
+      await postJson('/v1/x/model-providers', {
+        name,
+        provider,
+        model,
+        base_url: baseUrl,
+        api_key: apiKey,
+        is_default: isDefault || !hasProviders,
+      });
+      await onSaved();
+    } catch (err: any) {
+      setError(err?.message ?? 'Could not add model provider');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal title="Add model provider" onClose={onClose} size="medium">
+      <form className="formStack" onSubmit={submit}>
+        {error ? <div className="formError">{error}</div> : null}
+        <label>
+          <span>Name <RequiredMark /></span>
+          <input value={name} maxLength={80} onChange={(event) => setName(event.target.value)} placeholder="default" required />
+          <span className="formHint">A local label used in agents and templates.</span>
+        </label>
+        <label>
+          <span>Provider <RequiredMark /></span>
+          <select value={provider} onChange={(event) => setProvider(event.target.value)}>
+            <option value="openai">OpenAI compatible</option>
+            <option value="anthropic">Anthropic</option>
+            <option value="ollama">Ollama</option>
+          </select>
+        </label>
+        <label>
+          <span>Model ID <RequiredMark /></span>
+          <input value={model} onChange={(event) => setModel(event.target.value)} placeholder="gpt-4o-mini" required />
+        </label>
+        <label>
+          <span>Base URL</span>
+          <input value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} placeholder="https://api.openai.com/v1" />
+        </label>
+        <label>
+          <span>API key</span>
+          <input value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder="sk-..." type="password" />
+        </label>
+        <label className="checkRow">
+          <input type="checkbox" checked={isDefault || !hasProviders} disabled={!hasProviders} onChange={(event) => setIsDefault(event.target.checked)} />
+          <span>Use as default provider</span>
+        </label>
+        <div className="modalActions">
+          <button className="secondaryButton" type="button" onClick={onClose}>Cancel</button>
+          <button className="primaryButton" type="submit" disabled={saving}>{saving ? 'Adding...' : 'Add provider'}</button>
+        </div>
+      </form>
+    </Modal>
   );
 }
 
@@ -2531,85 +2644,75 @@ function SettingsLoopEngine({ data }: { data: ConsoleData }) {
   );
 }
 
-function SettingsStorage({ data }: { data: ConsoleData }) {
+function SettingsStorage({ data, onRefresh }: { data: ConsoleData; onRefresh: () => void }) {
+  const providers = data.storageProviders.length > 0 ? data.storageProviders : data.runtime?.storage_providers ?? [];
+  const metadataProviders = providers.filter((provider) => provider.role === 'metadata');
+  const artifactProviders = providers.filter((provider) => provider.role === 'artifact');
   const databasePath = runtimeDatabasePath(data.workspace);
   const dataDir = data.workspace?.directories?.data ?? data.workspace?.dataDir;
   const normalizedDataDir = dataDir?.replace(/\/$/, '');
+  const [modalRole, setModalRole] = useState<RuntimeStorageProviderRole | null>(null);
+  const [savingDefault, setSavingDefault] = useState('');
+  const [initializing, setInitializing] = useState('');
+
+  const setDefault = async (provider: RuntimeStorageProvider) => {
+    setSavingDefault(provider.name);
+    try {
+      await postJson(`/v1/x/storage-providers/${encodeURIComponent(provider.name)}/default`, {});
+      await onRefresh();
+    } finally {
+      setSavingDefault('');
+    }
+  };
+
+  const initialize = async (provider: RuntimeStorageProvider) => {
+    setInitializing(provider.name);
+    try {
+      await postJson(`/v1/x/storage-providers/${encodeURIComponent(provider.name)}/initialize`, {});
+      await onRefresh();
+    } finally {
+      setInitializing('');
+    }
+  };
+
   return (
     <section className="stack">
       <div className="pageIntro">
         <div>
           <h1>Storage</h1>
-          <p>Select storage provider plugins for metadata, files, skills, events, and runtime state.</p>
+          <p>Configure metadata and artifact storage providers. Implemented adapters can be initialized and selected as workspace defaults.</p>
         </div>
       </div>
-      <div className="pluginSettingsGrid">
-        <PluginSettingsPanel
+      <div className="storageProviderStack">
+        <StorageProviderSection
+          role="metadata"
           icon={<Database size={18} />}
           title="Metadata storage"
-          description="Persists agents, sessions, environments, vaults, API keys, and audit metadata."
-        >
-          <PluginSelectField
-            label="Metadata provider"
-            value={databasePath ? 'sqlite' : 'unresolved'}
-            options={[
-              { value: 'sqlite', label: 'SQLite' },
-              { value: 'unresolved', label: 'Not resolved' },
-              { value: 'postgres-plugin', label: 'Postgres plugin', disabled: true },
-            ]}
-          />
-          <PluginSelectField
-            label="Event store"
-            value="sqlite-event-log"
-            options={[
-              { value: 'sqlite-event-log', label: 'SQLite event log' },
-              { value: 'streaming-event-store', label: 'Streaming event store plugin', disabled: true },
-            ]}
-          />
-          <PluginSelectField
-            label="Audit trail"
-            value="sqlite-audit-log"
-            options={[
-              { value: 'sqlite-audit-log', label: 'SQLite audit log' },
-              { value: 'external-audit-plugin', label: 'External audit plugin', disabled: true },
-            ]}
-          />
-        </PluginSettingsPanel>
-        <PluginSettingsPanel
+          description="Persists agents, sessions, environments, vaults, API keys, events, and audit metadata."
+          providers={metadataProviders}
+          savingDefault={savingDefault}
+          initializing={initializing}
+          onAdd={() => setModalRole('metadata')}
+          onInitialize={initialize}
+          onSetDefault={setDefault}
+        />
+        <StorageProviderSection
+          role="artifact"
           icon={<FileText size={18} />}
           title="Artifact storage"
-          description="Stores uploaded files, skill bundles, temporary resources, and local cache content."
-        >
-          <PluginSelectField
-            label="File provider"
-            value="local-filesystem"
-            options={[
-              { value: 'local-filesystem', label: 'Local filesystem' },
-              { value: 's3-plugin', label: 'S3-compatible plugin', disabled: true },
-            ]}
-          />
-          <PluginSelectField
-            label="Skill bundle provider"
-            value="local-filesystem"
-            options={[
-              { value: 'local-filesystem', label: 'Local filesystem' },
-              { value: 'registry-backed-skills', label: 'Registry-backed skills plugin', disabled: true },
-            ]}
-          />
-          <PluginSelectField
-            label="Cache provider"
-            value="local-filesystem"
-            options={[
-              { value: 'local-filesystem', label: 'Local filesystem' },
-              { value: 'distributed-cache-plugin', label: 'Distributed cache plugin', disabled: true },
-            ]}
-          />
-        </PluginSettingsPanel>
+          description="Stores uploaded files, skill bundles, memory content, temporary resources, and local cache content."
+          providers={artifactProviders}
+          savingDefault={savingDefault}
+          initializing={initializing}
+          onAdd={() => setModalRole('artifact')}
+          onInitialize={initialize}
+          onSetDefault={setDefault}
+        />
       </div>
       <div className="workspaceGrid">
         <div className="panel subtlePanel">
           <h2>Current paths</h2>
-          <p>Mutable runtime records live outside the source tree by default.</p>
+          <p>Built-in providers keep mutable runtime records outside the source tree by default.</p>
           <KeyValuePanel rows={[
             ['Runtime data directory', dataDir],
             ['SQLite database', databasePath],
@@ -2623,102 +2726,440 @@ function SettingsStorage({ data }: { data: ConsoleData }) {
           <WorkspacePathsPanel workspace={data.workspace} />
         </div>
       </div>
+      {modalRole ? (
+        <StorageProviderModal
+          role={modalRole}
+          onClose={() => setModalRole(null)}
+          onSaved={() => {
+            setModalRole(null);
+            onRefresh();
+          }}
+        />
+      ) : null}
     </section>
   );
 }
 
-function SettingsMemory({ data }: { data: ConsoleData }) {
-  const memoryProvider = data.runtime?.memory || 'disabled';
+function StorageProviderSection({
+  role,
+  icon,
+  title,
+  description,
+  providers,
+  savingDefault,
+  initializing,
+  onAdd,
+  onInitialize,
+  onSetDefault,
+}: {
+  role: RuntimeStorageProviderRole;
+  icon: ReactNode;
+  title: string;
+  description: string;
+  providers: RuntimeStorageProvider[];
+  savingDefault: string;
+  initializing: string;
+  onAdd: () => void;
+  onInitialize: (provider: RuntimeStorageProvider) => Promise<void>;
+  onSetDefault: (provider: RuntimeStorageProvider) => Promise<void>;
+}) {
   return (
-    <section className="stack">
-      <div className="pageIntro">
+    <div className="storageProviderSection">
+      <div className="storageProviderHeader">
+        <span className="pluginSettingsIcon">{icon}</span>
         <div>
-          <h1>Memory</h1>
-          <p>Select the memory provider plugin used by sessions that attach memory stores.</p>
+          <h2>{title}</h2>
+          <p>{description}</p>
         </div>
+        <button className="secondaryButton" type="button" onClick={onAdd}>
+          <Plus size={15} />Add provider
+        </button>
       </div>
-      <div className="pluginSettingsGrid">
-        <PluginSettingsPanel
-          icon={<Brain size={18} />}
-          title="Memory provider"
-          description="Controls long-term memory mounting, read/write access, and prompt context injection."
-          badge={memoryProvider === 'disabled' ? 'Disabled' : 'Built-in'}
-        >
-          <PluginSelectField
-            label="Provider"
-            value={memoryProvider}
-            options={[
-              { value: 'disabled', label: 'Disabled' },
-              { value: 'local-memory-store', label: 'Local memory store provider' },
-              { value: 'vector-memory-plugin', label: 'Vector memory plugin', disabled: true },
-            ]}
-          />
-          <PluginSelectField
-            label="Mount strategy"
-            value="session-resource-mount"
-            options={[
-              { value: 'session-resource-mount', label: 'Session resource mount' },
-              { value: 'agent-default-memory', label: 'Agent default memory plugin', disabled: true },
-            ]}
-          />
-          <PluginSelectField
-            label="Prompt injection"
-            value="store-description"
-            options={[
-              { value: 'store-description', label: 'Store name and description' },
-              { value: 'retrieval-summary-plugin', label: 'Retrieval summary plugin', disabled: true },
-            ]}
-          />
-        </PluginSettingsPanel>
-        <PluginSettingsPanel
-          icon={<Database size={18} />}
-          title="Memory persistence"
-          description="Defines where memory store metadata and memory files are written."
-        >
-          <PluginSelectField
-            label="Metadata provider"
-            value="sqlite"
-            options={[
-              { value: 'sqlite', label: 'SQLite' },
-              { value: 'external-metadata-plugin', label: 'External metadata plugin', disabled: true },
-            ]}
-          />
-          <PluginSelectField
-            label="Content provider"
-            value="local-filesystem"
-            options={[
-              { value: 'local-filesystem', label: 'Local filesystem' },
-              { value: 'object-storage-plugin', label: 'Object storage plugin', disabled: true },
-            ]}
-          />
-          <PluginSelectField
-            label="Default access"
-            value="read-write"
-            options={[
-              { value: 'read-write', label: 'Read & write' },
-              { value: 'read-only', label: 'Read only' },
-            ]}
-          />
-        </PluginSettingsPanel>
-      </div>
-      <div className="tablePanel">
+      <div className="tablePanel storageProviderTable">
         <table>
-          <thead><tr><th>ID</th><th>Name</th><th>Provider</th><th>Status</th><th>Updated</th></tr></thead>
+          <thead>
+            <tr><th>Name</th><th>Provider</th><th>Location</th><th>State</th><th>Default</th><th>Updated</th><th></th></tr>
+          </thead>
           <tbody>
-            {data.memoryStores.map((store) => (
-              <tr key={store.id}>
-                <td><code>{truncateMiddle(store.id, 18)}</code></td>
-                <td><strong>{store.name}</strong></td>
-                <td><code>{store.provider}</code></td>
-                <td><StatusPill status={store.status} /></td>
-                <td>{formatDateShort(store.updated_at)}</td>
+            {providers.map((provider) => (
+              <tr key={provider.name}>
+                <td>
+                  <div className="stackTiny">
+                    <strong>{provider.name}</strong>
+                    <span className="mutedValue">{role === 'metadata' ? 'Metadata' : 'Artifact'} provider</span>
+                  </div>
+                </td>
+                <td>
+                  <div className="stackTiny">
+                    <strong>{provider.provider_label}</strong>
+                    {!provider.runtime_capable ? <span className="adapterRequiredBadge">Adapter required</span> : null}
+                  </div>
+                </td>
+                <td><span className="monoValue">{storageProviderLocation(provider)}</span></td>
+                <td><StorageProviderStateBadge provider={provider} /></td>
+                <td>{provider.is_default ? <span className="defaultProviderBadge"><Check size={13} />Default</span> : <span className="mutedValue">-</span>}</td>
+                <td>{formatDateShort(provider.updated_at)}</td>
+                <td className="rowActions">
+                  {provider.status === 'init_required' && provider.runtime_capable ? (
+                    <button className="ghostButton" type="button" onClick={() => void onInitialize(provider)} disabled={initializing === provider.name}>
+                      {initializing === provider.name ? 'Initializing...' : 'Initialize'}
+                    </button>
+                  ) : null}
+                  {!provider.is_default && provider.status === 'active' && provider.runtime_capable ? (
+                    <button className="ghostButton" type="button" onClick={() => void onSetDefault(provider)} disabled={savingDefault === provider.name}>
+                      {savingDefault === provider.name ? 'Saving...' : 'Set default'}
+                    </button>
+                  ) : null}
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
-        {data.memoryStores.length === 0 ? <div className="emptyValue">No memory stores created yet</div> : null}
+        {providers.length === 0 ? (
+          <EmptyState
+            icon={role === 'metadata' ? <Database size={28} /> : <FileText size={28} />}
+            title={`No ${role} providers`}
+            body="Add a provider to configure storage for this workspace."
+            action={<button className="secondaryButton" type="button" onClick={onAdd}><Plus size={15} />Add provider</button>}
+          />
+        ) : null}
       </div>
+    </div>
+  );
+}
+
+function StorageProviderStateBadge({ provider }: { provider: RuntimeStorageProvider }) {
+  if (provider.status === 'active') return <span className="status active">active</span>;
+  if (provider.status === 'init_required') return <span className="providerStateBadge pending">init required</span>;
+  return <span className="providerStateBadge adapter">adapter required</span>;
+}
+
+function StorageProviderModal({
+  role,
+  onClose,
+  onSaved,
+}: {
+  role: RuntimeStorageProviderRole;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const providerOptions: Array<{ value: RuntimeStorageProviderKind; label: string }> = role === 'metadata'
+    ? [
+      { value: 'sqlite', label: 'SQLite' },
+      { value: 'postgres', label: 'Postgres' },
+      { value: 'mysql', label: 'MySQL' },
+    ]
+    : [
+      { value: 'local_filesystem', label: 'Local filesystem' },
+      { value: 's3', label: 'S3-compatible' },
+    ];
+  const [provider, setProvider] = useState<RuntimeStorageProviderKind>(providerOptions[0].value);
+  const [name, setName] = useState(`${role}-${providerOptions[0].value}`);
+  const [connectionUrl, setConnectionUrl] = useState('');
+  const [bucket, setBucket] = useState('');
+  const [region, setRegion] = useState('');
+  const [basePath, setBasePath] = useState(role === 'artifact' ? 'files' : '');
+  const [accessKey, setAccessKey] = useState('');
+  const [secretKey, setSecretKey] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const runtimeCapable = provider === 'sqlite' || provider === 'local_filesystem';
+  const needsConnection = provider === 'postgres' || provider === 'mysql';
+  const needsBucket = provider === 's3';
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    setSaving(true);
+    setError('');
+    try {
+      await postJson('/v1/x/storage-providers', {
+        name,
+        role,
+        provider,
+        connection_url: connectionUrl || undefined,
+        bucket: bucket || undefined,
+        region: region || undefined,
+        base_path: basePath || undefined,
+        access_key: accessKey || undefined,
+        secret_key: secretKey || undefined,
+      });
+      onSaved();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal title={`Add ${role} storage provider`} subtitle="Create the provider first, then initialize it before routing sessions to it." onClose={onClose} size="medium">
+      <form className="formStack" onSubmit={submit}>
+        {error ? <div className="formError">{error}</div> : null}
+        <label>
+          <span>Name <RequiredMark /></span>
+          <input value={name} onChange={(event) => setName(event.target.value)} placeholder={`${role}-${provider}`} required />
+        </label>
+        <label>
+          <span>Provider</span>
+          <select value={provider} onChange={(event) => setProvider(event.target.value as RuntimeStorageProviderKind)}>
+            {providerOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
+        </label>
+        {needsConnection ? (
+          <label>
+            <span>Connection URL <RequiredMark /></span>
+            <input value={connectionUrl} onChange={(event) => setConnectionUrl(event.target.value)} placeholder={`${provider}://user:password@host:5432/database`} required />
+            <small>Use environment placeholders such as {'${DATABASE_URL}'} to avoid storing raw secrets.</small>
+          </label>
+        ) : null}
+        {role === 'metadata' && provider === 'sqlite' ? (
+          <p className="formHint">SQLite is runtime-capable. Initialize it after saving to create metadata tables, then set it as default.</p>
+        ) : null}
+        {role === 'artifact' ? (
+          <div className="storageModalGrid">
+            {needsBucket ? (
+              <label>
+                <span>Bucket <RequiredMark /></span>
+                <input value={bucket} onChange={(event) => setBucket(event.target.value)} placeholder="agent-artifacts" required />
+              </label>
+            ) : null}
+            {needsBucket ? (
+              <label>
+                <span>Region</span>
+                <input value={region} onChange={(event) => setRegion(event.target.value)} placeholder="us-east-1" />
+              </label>
+            ) : null}
+            <label>
+              <span>Base path</span>
+              <input value={basePath} onChange={(event) => setBasePath(event.target.value)} placeholder={provider === 's3' ? 'managed-agents/' : 'files'} />
+            </label>
+            {needsBucket ? (
+              <>
+                <label>
+                  <span>Access key</span>
+                  <input value={accessKey} onChange={(event) => setAccessKey(event.target.value)} placeholder="${S3_ACCESS_KEY_ID}" />
+                </label>
+                <label>
+                  <span>Secret key</span>
+                  <input value={secretKey} onChange={(event) => setSecretKey(event.target.value)} placeholder="${S3_SECRET_ACCESS_KEY}" type="password" />
+                </label>
+              </>
+            ) : null}
+          </div>
+        ) : null}
+        {!runtimeCapable ? (
+          <div className="noticeBox">
+            This provider can be saved now, but it requires a runtime adapter before initialization or default routing is available.
+          </div>
+        ) : null}
+        {runtimeCapable && role === 'artifact' ? (
+          <p className="formHint">Local artifact storage is runtime-capable. Initialize it after saving to create directories, then set it as default.</p>
+        ) : null}
+        <div className="modalActions">
+          <button className="secondaryButton" type="button" onClick={onClose}>Cancel</button>
+          <button className="primaryButton" type="submit" disabled={saving}>{saving ? 'Adding...' : 'Add provider'}</button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function storageProviderLocation(provider: RuntimeStorageProvider) {
+  if (provider.provider === 'sqlite') return provider.connection_url ?? 'runtime SQLite database';
+  if (provider.provider === 'local_filesystem') return provider.base_path ?? 'runtime data directory';
+  if (provider.provider === 's3') return [provider.bucket, provider.region].filter(Boolean).join(' / ') || 'S3 bucket';
+  return provider.connection_url ?? 'external database';
+}
+
+function SettingsMemory({ data, onRefresh }: { data: ConsoleData; onRefresh: () => void }) {
+  const providers = data.memoryProviders.length > 0 ? data.memoryProviders : data.runtime?.memory_providers ?? [];
+  const defaultProvider = providers.find((provider) => provider.is_default);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [savingDefault, setSavingDefault] = useState('');
+
+  const setDefault = async (provider: RuntimeMemoryProvider) => {
+    setSavingDefault(provider.name);
+    try {
+      await postJson(`/v1/x/memory-providers/${encodeURIComponent(provider.name)}/default`, {});
+      await onRefresh();
+    } finally {
+      setSavingDefault('');
+    }
+  };
+
+  return (
+    <section className="stack">
+      <div className="pageIntro">
+        <div>
+          <h1>Context memory</h1>
+          <p>Configure provider backends used for session context memory. Memory stores remain the resources that agents attach to sessions.</p>
+        </div>
+        <button className="primaryButton" type="button" onClick={() => setModalOpen(true)}>
+          <Plus size={16} />Add provider
+        </button>
+      </div>
+      <div className="tablePanel memoryProviderTable">
+        <table>
+          <thead><tr><th>Name</th><th>Type</th><th>Connection</th><th>API key</th><th>Default</th><th>Updated</th><th></th></tr></thead>
+          <tbody>
+            {providers.map((provider) => (
+              <tr key={provider.name}>
+                <td><strong>{provider.name}</strong></td>
+                <td>
+                  <div className="stackTiny">
+                    <span>{provider.provider_label}</span>
+                    {!provider.runtime_capable ? <span className="adapterRequiredBadge">Adapter required</span> : null}
+                  </div>
+                </td>
+                <td><span className="monoValue">{provider.connection_url || '-'}</span></td>
+                <td><RuntimeConfigStatePill state={provider.api_key_state} /></td>
+                <td>{provider.is_default ? <span className="defaultProviderBadge"><Check size={13} />Default</span> : <span className="mutedValue">-</span>}</td>
+                <td>{formatDateShort(provider.updated_at)}</td>
+                <td className="rowActions">
+                  {!provider.is_default && provider.runtime_capable ? (
+                    <button
+                      className="textButton"
+                      type="button"
+                      onClick={() => void setDefault(provider)}
+                      disabled={savingDefault === provider.name}
+                    >
+                      {savingDefault === provider.name ? 'Saving...' : 'Set default'}
+                    </button>
+                  ) : null}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {providers.length === 0 ? (
+          <EmptyState
+            icon={<Brain size={22} />}
+            title="No memory providers"
+            body="Add a provider to enable context memory for sessions that attach memory stores."
+          />
+        ) : null}
+      </div>
+      <div className="workspaceGrid">
+        <div className="panel subtlePanel">
+          <h2>Default context provider</h2>
+          <p>The default provider is used when a session attaches a memory store without selecting a provider explicitly.</p>
+          <KeyValuePanel rows={[
+            ['Provider', defaultProvider?.name],
+            ['Type', defaultProvider?.provider_label],
+            ['Runtime status', defaultProvider?.runtime_capable ? 'available' : 'adapter required'],
+            ['Store mount strategy', 'Session resource mount'],
+            ['Default access', 'Read & write'],
+          ]} />
+        </div>
+        <div className="panel subtlePanel">
+          <h2>Memory stores</h2>
+          <p>Stores are named resources that can be mounted into sessions. Provider settings control where context memory is backed.</p>
+          <KeyValuePanel rows={[
+            ['Stores', data.memoryStores.length],
+            ['Active stores', data.memoryStores.filter((store) => store.status === 'active').length],
+            ['Metadata store', 'SQLite'],
+            ['Content store', data.workspace?.directories?.data ? 'Local filesystem' : 'Not resolved'],
+          ]} />
+        </div>
+      </div>
+      {modalOpen ? <MemoryProviderModal
+        hasProviders={providers.length > 0}
+        onClose={() => setModalOpen(false)}
+        onSaved={async () => {
+          setModalOpen(false);
+          await onRefresh();
+        }}
+      /> : null}
     </section>
+  );
+}
+
+function MemoryProviderModal({
+  hasProviders,
+  onClose,
+  onSaved,
+}: {
+  hasProviders: boolean;
+  onClose: () => void;
+  onSaved: () => void | Promise<void>;
+}) {
+  const [name, setName] = useState('context-memory');
+  const [provider, setProvider] = useState<RuntimeMemoryProvider['provider']>('sqlite');
+  const [connectionUrl, setConnectionUrl] = useState('');
+  const [apiKey, setApiKey] = useState('');
+  const [isDefault, setIsDefault] = useState(!hasProviders);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const adapterRequired = provider === 'database' || provider === 'mem0' || provider === 'memu';
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    setError('');
+    setSaving(true);
+    try {
+      await postJson('/v1/x/memory-providers', {
+        name,
+        provider,
+        connection_url: connectionUrl,
+        api_key: apiKey,
+        is_default: (isDefault || !hasProviders) && !adapterRequired,
+      });
+      await onSaved();
+    } catch (err: any) {
+      setError(err?.message ?? 'Could not add memory provider');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal title="Add memory provider" onClose={onClose} size="medium">
+      <form className="formStack" onSubmit={submit}>
+        {error ? <div className="formError">{error}</div> : null}
+        <label>
+          <span>Name <RequiredMark /></span>
+          <input value={name} maxLength={80} onChange={(event) => setName(event.target.value)} placeholder="context-memory" required />
+          <span className="formHint">A local provider label used by sessions and future plugin adapters.</span>
+        </label>
+        <label>
+          <span>Provider <RequiredMark /></span>
+          <select value={provider} onChange={(event) => setProvider(event.target.value as RuntimeMemoryProvider['provider'])}>
+            <option value="sqlite">SQLite</option>
+            <option value="in_memory">In-memory</option>
+            <option value="database">External database</option>
+            <option value="mem0">mem0</option>
+            <option value="memu">MemU</option>
+          </select>
+          {adapterRequired ? <span className="formHint">This provider can be registered now and becomes selectable as default when its runtime adapter is installed.</span> : null}
+        </label>
+        <label>
+          <span>Connection URL {provider === 'database' ? <RequiredMark /> : null}</span>
+          <input
+            value={connectionUrl}
+            onChange={(event) => setConnectionUrl(event.target.value)}
+            placeholder={provider === 'database' ? 'postgres://user:pass@host:5432/db' : 'Optional'}
+            required={provider === 'database'}
+          />
+        </label>
+        <label>
+          <span>API key</span>
+          <input value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder="Optional" type="password" />
+        </label>
+        <label className="checkRow">
+          <input
+            type="checkbox"
+            checked={(isDefault || !hasProviders) && !adapterRequired}
+            disabled={!hasProviders || adapterRequired}
+            onChange={(event) => setIsDefault(event.target.checked)}
+          />
+          <span>Use as default context memory provider</span>
+        </label>
+        <div className="modalActions">
+          <button className="secondaryButton" type="button" onClick={onClose}>Cancel</button>
+          <button className="primaryButton" type="submit" disabled={saving}>{saving ? 'Adding...' : 'Add provider'}</button>
+        </div>
+      </form>
+    </Modal>
   );
 }
 
@@ -3462,7 +3903,7 @@ const API_ENDPOINT_GROUPS: EndpointGroup[] = Array.from(new Set(API_REFERENCE_DO
       .map((endpoint) => ({ method: endpoint.method, path: endpoint.path, description: endpoint.title })),
   }));
 
-function SettingsApiReference({ data, setView }: { data: ConsoleData; setView: (view: ViewId) => void }) {
+function SettingsApiReference({ data }: { data: ConsoleData }) {
   const baseUrl = typeof window === 'undefined' ? 'http://127.0.0.1:3000' : window.location.origin;
   const authEnabled = data.runtime?.auth_enabled ?? false;
   const firstAgentId = data.agents[0]?.id ?? 'agent_...';
@@ -3594,9 +4035,6 @@ metadata:
           <h1>API reference</h1>
           <p>Use these endpoints to automate managed-agents from local scripts, SDKs, CI jobs, and external tools.</p>
         </div>
-        <button className="button secondary" type="button" onClick={() => setView('api-keys')}>
-          <KeyRound size={16} /> Manage API keys
-        </button>
       </div>
 
       <div className="apiDocsShell">
@@ -3692,41 +4130,44 @@ metadata:
             <p>Skill uploads follow Claude's package rule: one top-level folder containing <code>SKILL.md</code> at its root. The runtime derives the custom skill name from that package metadata and generates a random <code>skill_...</code> id.</p>
             <pre className="metricsPreview">code-review-assistant/{'\n'}  SKILL.md{'\n'}  references/checklist.md</pre>
           </section>
-        </article>
 
-        <aside className="apiDocsCodeRail" aria-label="API examples">
-          <div className="apiDocsCodeCard">
-            <div className="snippetHeader">
-              <h2>Example request</h2>
-              <button className="iconButton" type="button" title="Copy request" aria-label="Copy request" onClick={() => copyText(endpointExample)}>
-                <Copy size={16} />
-              </button>
+          <section className="apiDocsSection apiDocsExamples" aria-label="API examples">
+            <h3>Examples</h3>
+            <div className="apiDocsExampleGrid">
+              <div className="apiDocsCodeCard">
+                <div className="snippetHeader">
+                  <h2>Example request</h2>
+                  <button className="iconButton" type="button" title="Copy request" aria-label="Copy request" onClick={() => copyText(endpointExample)}>
+                    <Copy size={15} />
+                  </button>
+                </div>
+                <pre className="metricsPreview apiSnippet">{endpointExample}</pre>
+              </div>
+              <div className="apiDocsCodeCard">
+                <div className="snippetHeader">
+                  <h2>TypeScript SDK</h2>
+                  <button className="iconButton" type="button" title="Copy SDK snippet" aria-label="Copy SDK snippet" onClick={() => copyText(sdkSnippet)}>
+                    <Copy size={15} />
+                  </button>
+                </div>
+                <pre className="metricsPreview apiSnippet">{sdkSnippet}</pre>
+              </div>
+              <div className="apiDocsCodeCard">
+                <div className="snippetHeader">
+                  <h2>Skill JSON upload</h2>
+                  <button className="iconButton" type="button" title="Copy Skill JSON" aria-label="Copy Skill JSON" onClick={() => copyText(skillJsonSnippet)}>
+                    <Copy size={15} />
+                  </button>
+                </div>
+                <pre className="metricsPreview apiSnippet">{skillJsonSnippet}</pre>
+              </div>
+              <div className="apiDocsCodeCard">
+                <h2>Agent skill reference</h2>
+                <pre className="metricsPreview apiSnippet">{skillAttachSnippet}</pre>
+              </div>
             </div>
-            <pre className="metricsPreview apiSnippet">{endpointExample}</pre>
-          </div>
-          <div className="apiDocsCodeCard">
-            <div className="snippetHeader">
-              <h2>TypeScript SDK</h2>
-              <button className="iconButton" type="button" title="Copy SDK snippet" aria-label="Copy SDK snippet" onClick={() => copyText(sdkSnippet)}>
-                <Copy size={16} />
-              </button>
-            </div>
-            <pre className="metricsPreview apiSnippet">{sdkSnippet}</pre>
-          </div>
-          <div className="apiDocsCodeCard">
-            <div className="snippetHeader">
-              <h2>Skill JSON upload</h2>
-              <button className="iconButton" type="button" title="Copy Skill JSON" aria-label="Copy Skill JSON" onClick={() => copyText(skillJsonSnippet)}>
-                <Copy size={16} />
-              </button>
-            </div>
-            <pre className="metricsPreview apiSnippet">{skillJsonSnippet}</pre>
-          </div>
-          <div className="apiDocsCodeCard">
-            <h2>Agent skill reference</h2>
-            <pre className="metricsPreview apiSnippet">{skillAttachSnippet}</pre>
-          </div>
-        </aside>
+          </section>
+        </article>
       </div>
     </section>
   );
@@ -3791,13 +4232,13 @@ function SettingsView({
       <div className="settingsContent">
         {active === 'general' ? <SettingsGeneral data={data} setView={setView} /> : null}
         {active === 'workspace' ? <WorkspaceView data={data} /> : null}
-        {active === 'models' ? <SettingsModels data={data} /> : null}
+        {active === 'models' ? <SettingsModels data={data} onRefresh={onRefresh} /> : null}
         {active === 'loop-engine' ? <SettingsLoopEngine data={data} /> : null}
-        {active === 'storage' ? <SettingsStorage data={data} /> : null}
-        {active === 'memory' ? <SettingsMemory data={data} /> : null}
+        {active === 'storage' ? <SettingsStorage data={data} onRefresh={onRefresh} /> : null}
+        {active === 'memory' ? <SettingsMemory data={data} onRefresh={onRefresh} /> : null}
         {active === 'sandbox' ? <SettingsSandbox data={data} /> : null}
         {active === 'api-keys' ? <ApiKeys data={data} onRefresh={onRefresh} /> : null}
-        {active === 'api-reference' ? <SettingsApiReference data={data} setView={setView} /> : null}
+        {active === 'api-reference' ? <SettingsApiReference data={data} /> : null}
         {active === 'logs' ? <SettingsLogs data={data} /> : null}
         {active === 'monitoring' ? <Observability data={data} /> : null}
       </div>

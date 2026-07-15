@@ -73,7 +73,6 @@ Then create a runtime workspace outside the source checkout:
 mkdir ../my-agents
 cd ../my-agents
 node ../managed-agents/dist/index.js init
-# edit managed-agents.config.yaml and set your provider API key
 node ../managed-agents/dist/index.js start
 ```
 
@@ -115,42 +114,26 @@ managed-agents.config.yaml
 uploaded resource state are stored outside the repository under
 `~/.managed-agents/<workspace-name>-<hash>/` by default.
 
-## Configure A Model
+## Configure A Model Provider
 
-Edit `managed-agents.config.yaml` and configure at least one model.
+Start the runtime, open the Dashboard, and go to `Settings > Models`.
 
-OpenAI-compatible hosted provider:
-
-```yaml
-models:
-  - name: default
-    provider: openai
-    model: gpt-4o
-    api_key: ${OPENAI_API_KEY}
+```text
+http://127.0.0.1:3000/dashboard#models
 ```
 
-OpenAI-compatible local endpoint:
+Click `Add provider`, then enter:
 
-```yaml
-models:
-  - name: default
-    provider: openai
-    model: llama3.1
-    base_url: http://127.0.0.1:11434/v1
-    api_key: ${LOCAL_MODEL_API_KEY}
-```
+- `Name`: the runtime name agents reference, usually `default`
+- `Provider`: `anthropic`, `openai`, or another OpenAI-compatible adapter
+- `Model ID`: the provider model id, such as `claude-sonnet-4-5`, `gpt-4o`, or `llama3.1`
+- `Base URL`: required for OpenAI-compatible local or hosted endpoints
+- `API key`: the provider key for model requests
 
-Anthropic model provider:
-
-```yaml
-models:
-  - name: default
-    provider: anthropic
-    model: claude-sonnet-4-5
-    api_key: ${ANTHROPIC_API_KEY}
-```
-
-Environment variables in the config file are resolved at startup.
+Model providers are stored in SQLite under the runtime data directory, not in
+the source checkout. Mark one provider as default; agents using
+`model: default` will run through that provider. Config-file model entries are
+only used as optional bootstrap data for a new workspace.
 
 ## Configure Environments
 

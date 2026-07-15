@@ -21,6 +21,7 @@ import {
 
 export class ModelRegistry {
   private models = new Map<string, ModelConfig>();
+  private defaultModelName: string | undefined;
 
   constructor(private readonly retryPolicy: RetryPolicy = DEFAULT_RETRY_POLICY) {}
 
@@ -29,6 +30,9 @@ export class ModelRegistry {
    */
   register(config: ModelConfig): void {
     this.models.set(config.name, config);
+    if (config.is_default || !this.defaultModelName) {
+      this.defaultModelName = config.name;
+    }
   }
 
   /**
@@ -36,6 +40,17 @@ export class ModelRegistry {
    */
   get(name: string): ModelConfig | undefined {
     return this.models.get(name);
+  }
+
+  setDefault(name: string): void {
+    if (!this.models.has(name)) {
+      throw new ModelNotFoundError(name, Array.from(this.models.keys()));
+    }
+    this.defaultModelName = name;
+  }
+
+  getDefaultName(): string | undefined {
+    return this.defaultModelName ?? Array.from(this.models.keys())[0];
   }
 
   /**
@@ -86,12 +101,17 @@ export class ModelRegistry {
    * Never includes raw API keys or resolved base URLs.
    */
   listRuntimeInfo(): RuntimeModelInfo[] {
-    return Array.from(this.models.values()).map((config) => ({
+    const defaultName = this.getDefaultName();
+    return Array.from(this.models.values())
+      .sort((a, b) => Number(b.name === defaultName) - Number(a.name === defaultName) || a.name.localeCompare(b.name))
+      .map((config) => ({
       name: config.name,
       provider: config.provider ?? 'unknown',
       model: config.model ?? config.name,
+      base_url: publicBaseUrl(config.base_url),
       api_key_state: configState(config.api_key),
       base_url_state: configState(config.base_url),
+      is_default: config.name === defaultName,
     }));
   }
 }
@@ -102,6 +122,12 @@ function configState(value?: string): RuntimeConfigState {
   if (!value) return 'not_set';
   const resolved = resolveEnvVars(value, false);
   return ENV_PLACEHOLDER.test(resolved) ? 'missing_env' : 'configured';
+}
+
+function publicBaseUrl(value?: string): string | undefined {
+  if (!value) return undefined;
+  const resolved = resolveEnvVars(value, false);
+  return ENV_PLACEHOLDER.test(resolved) ? undefined : resolved;
 }
 
 // ============================================================
@@ -203,7 +229,7 @@ export class ModelNotFoundError extends Error {
   ) {
     const suggestion = available.length > 0
       ? `Available models: ${available.join(', ')}`
-      : 'No models registered. Add models to managed-agents.config.yaml';
+      : 'No models registered. Add a model provider in Dashboard Settings > Models';
     super(`Model not found: "${modelName}". ${suggestion}`);
     this.name = 'ModelNotFoundError';
   }

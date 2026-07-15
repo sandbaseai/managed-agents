@@ -14,6 +14,7 @@ import { loadSkills } from '@/core/skills/loader.js';
 import { createLogger, InMemoryLogStore } from '@/core/observability/logger.js';
 import type { Session, SessionEvent } from '@/types/session.js';
 import type { UserEvent } from '@/types/cma-protocol.js';
+import type { RuntimeModelInfo } from '@/types/model.js';
 
 describe('Managed Agents API', () => {
   let app: ReturnType<typeof createServer>;
@@ -24,6 +25,7 @@ describe('Managed Agents API', () => {
   let skillsDir: string;
   let logStore: InMemoryLogStore;
   let restartRequested = false;
+  let runtimeModelsData: RuntimeModelInfo[] = [];
 
   beforeAll(() => {
     tmpDir = mkdtempSync(join(tmpdir(), 'ma-api-test-'));
@@ -71,6 +73,15 @@ describe('Managed Agents API', () => {
     const logger = createLogger({ level: 'debug', logStore, write: () => undefined });
     logger.info('test_runtime_ready', { component: 'integration' });
 
+    runtimeModelsData = [{
+      name: 'local',
+      provider: 'openai',
+      model: 'gpt-4o',
+      api_key_state: 'configured',
+      base_url_state: 'not_set',
+      is_default: true,
+    }];
+
     app = createServer({
       db,
       sessionManager,
@@ -91,13 +102,7 @@ describe('Managed Agents API', () => {
         target: 'local',
       },
       runtime: {
-        models: [{
-          name: 'local',
-          provider: 'openai',
-          model: 'gpt-4o',
-          api_key_state: 'configured',
-          base_url_state: 'not_set',
-        }],
+        models: runtimeModelsData,
         sandboxProviders: ['local'],
         memory: 'disabled',
         authEnabled: false,
@@ -108,6 +113,26 @@ describe('Managed Agents API', () => {
       restart: () => {
         restartRequested = true;
         logger.warn('test_restart_called', { component: 'integration' });
+      },
+      listRuntimeModels: () => runtimeModelsData,
+      registerModelProvider: (provider) => {
+        const next: RuntimeModelInfo = {
+          name: provider.name,
+          provider: provider.provider,
+          model: provider.model,
+          base_url: provider.base_url,
+          api_key_state: provider.api_key ? 'configured' : 'not_set',
+          base_url_state: provider.base_url ? 'configured' : 'not_set',
+          is_default: Boolean(provider.is_default),
+        };
+        runtimeModelsData = runtimeModelsData.filter((model) => model.name !== next.name);
+        if (next.is_default) {
+          runtimeModelsData = runtimeModelsData.map((model) => ({ ...model, is_default: false }));
+        }
+        runtimeModelsData.unshift(next);
+      },
+      setDefaultRuntimeModel: (name) => {
+        runtimeModelsData = runtimeModelsData.map((model) => ({ ...model, is_default: model.name === name }));
       },
       reloadAgents: () => ({ agents: [], errors: [] }),
     });
@@ -631,6 +656,220 @@ describe('Managed Agents API', () => {
       expect(skills.data.some((item: any) => item.id === 'pptx' && item.source === 'anthropic')).toBe(true);
       expect(skills.data.some((item: any) => item.id === 'skill_research' && item.source === 'custom')).toBe(true);
       expect(skills.data.every((item: any) => item.type === 'skill')).toBe(true);
+    });
+
+    it('creates dashboard-managed model providers and changes the default provider', async () => {
+      const created = await postJson('/v1/x/model-providers', {
+        name: 'dashboard-default',
+        provider: 'openai',
+        model: 'gpt-4o-mini',
+        base_url: 'https://api.openai.com/v1',
+        api_key: 'sk-test-value',
+      });
+      expect(created.res.status).toBe(201);
+      expect(created.body).toMatchObject({
+        name: 'dashboard-default',
+        provider: 'openai',
+        model: 'gpt-4o-mini',
+        base_url: 'https://api.openai.com/v1',
+        api_key_state: 'configured',
+        base_url_state: 'configured',
+        is_default: true,
+      });
+      expect(created.body).not.toHaveProperty('api_key');
+
+      const secondary = await postJson('/v1/x/model-providers', {
+        name: 'local-llm',
+        provider: 'openai',
+        model: 'llama3.1',
+        base_url: 'http://127.0.0.1:11434/v1',
+      });
+      expect(secondary.res.status).toBe(201);
+      expect(secondary.body.is_default).toBe(false);
+
+      const madeDefault = await postJson('/v1/x/model-providers/local-llm/default', {});
+      expect(madeDefault.res.status).toBe(200);
+      expect(madeDefault.body).toMatchObject({ name: 'local-llm', is_default: true });
+
+      const providers = await getJson('/v1/x/model-providers');
+      expect(providers.res.status).toBe(200);
+      expectPage(providers.body);
+      expect(providers.body.data[0]).toMatchObject({ name: 'local-llm', is_default: true });
+      expect(JSON.stringify(providers.body)).not.toContain('sk-test-value');
+
+      const runtime = await getJson('/v1/x/runtime');
+      expect(runtime.body.models.find((model: any) => model.name === 'local-llm')?.is_default).toBe(true);
+    });
+
+    it('creates dashboard-managed memory providers and protects adapter-only defaults', async () => {
+      const initial = await getJson('/v1/x/memory-providers');
+      expect(initial.res.status).toBe(200);
+      expectPage(initial.body);
+      expect(initial.body.data[0]).toMatchObject({
+        name: 'local-sqlite',
+        provider: 'sqlite',
+        provider_label: 'SQLite',
+        is_default: true,
+        runtime_capable: true,
+      });
+
+      const created = await postJson('/v1/x/memory-providers', {
+        name: 'transient-context',
+        provider: 'in_memory',
+        api_key: 'secret-value',
+      });
+      expect(created.res.status).toBe(201);
+      expect(created.body).toMatchObject({
+        name: 'transient-context',
+        provider: 'in_memory',
+        provider_label: 'In-memory',
+        api_key_state: 'configured',
+        runtime_capable: true,
+        is_default: false,
+      });
+      expect(created.body).not.toHaveProperty('api_key');
+
+      const madeDefault = await postJson('/v1/x/memory-providers/transient-context/default', {});
+      expect(madeDefault.res.status).toBe(200);
+      expect(madeDefault.body).toMatchObject({ name: 'transient-context', is_default: true });
+
+      const adapterOnly = await postJson('/v1/x/memory-providers', {
+        name: 'mem0-cloud',
+        provider: 'mem0',
+        connection_url: 'https://api.mem0.ai',
+      });
+      expect(adapterOnly.res.status).toBe(201);
+      expect(adapterOnly.body).toMatchObject({
+        name: 'mem0-cloud',
+        provider: 'mem0',
+        status: 'adapter_required',
+        runtime_capable: false,
+        is_default: false,
+      });
+
+      const invalidDefault = await postJson('/v1/x/memory-providers/mem0-cloud/default', {});
+      expect(invalidDefault.res.status).toBe(400);
+
+      const database = await postJson('/v1/x/memory-providers', {
+        name: 'warehouse-memory',
+        provider: 'database',
+        connection_url: 'postgres://memory_user:memory_password@db.example.com:5432/agents',
+      });
+      expect(database.res.status).toBe(201);
+      expect(database.body).toMatchObject({
+        name: 'warehouse-memory',
+        provider: 'database',
+        status: 'adapter_required',
+        runtime_capable: false,
+      });
+      expect(database.body.connection_url).toContain('db.example.com');
+      expect(database.body.connection_url).not.toContain('memory_password');
+
+      const runtime = await getJson('/v1/x/runtime');
+      expect(runtime.body.memory_providers.find((provider: any) => provider.name === 'transient-context')?.is_default).toBe(true);
+      expect(JSON.stringify(runtime.body.memory_providers)).not.toContain('secret-value');
+      expect(JSON.stringify(runtime.body.memory_providers)).not.toContain('memory_password');
+    });
+
+    it('creates dashboard-managed storage providers and protects adapter-only defaults', async () => {
+      const initial = await getJson('/v1/x/storage-providers');
+      expect(initial.res.status).toBe(200);
+      expectPage(initial.body);
+      expect(initial.body.data).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          name: 'metadata-sqlite',
+          role: 'metadata',
+          provider: 'sqlite',
+          provider_label: 'SQLite',
+          is_default: true,
+          runtime_capable: true,
+        }),
+        expect.objectContaining({
+          name: 'local-artifacts',
+          role: 'artifact',
+          provider: 'local_filesystem',
+          provider_label: 'Local filesystem',
+          is_default: true,
+          runtime_capable: true,
+        }),
+      ]));
+
+      const postgres = await postJson('/v1/x/storage-providers', {
+        name: 'warehouse-meta',
+        role: 'metadata',
+        provider: 'postgres',
+        connection_url: 'postgres://meta_user:meta_password@db.example.com:5432/agents',
+      });
+      expect(postgres.res.status).toBe(201);
+      expect(postgres.body).toMatchObject({
+        name: 'warehouse-meta',
+        role: 'metadata',
+        provider: 'postgres',
+        status: 'adapter_required',
+        runtime_capable: false,
+        is_default: false,
+      });
+      expect(postgres.body.connection_url).toContain('db.example.com');
+      expect(postgres.body.connection_url).not.toContain('meta_password');
+
+      const invalidDefault = await postJson('/v1/x/storage-providers/warehouse-meta/default', {});
+      expect(invalidDefault.res.status).toBe(400);
+
+      const s3 = await postJson('/v1/x/storage-providers', {
+        name: 'archive-bucket',
+        role: 'artifact',
+        provider: 's3',
+        bucket: 'agent-artifacts',
+        region: 'us-east-1',
+        access_key: 'AKIA_TEST_VALUE',
+        secret_key: 'secret-storage-key',
+      });
+      expect(s3.res.status).toBe(201);
+      expect(s3.body).toMatchObject({
+        name: 'archive-bucket',
+        role: 'artifact',
+        provider: 's3',
+        status: 'adapter_required',
+        runtime_capable: false,
+        secret_key_state: 'configured',
+      });
+      expect(s3.body).not.toHaveProperty('secret_key');
+
+      const local = await postJson('/v1/x/storage-providers', {
+        name: 'fast-local-artifacts',
+        role: 'artifact',
+        provider: 'local_filesystem',
+        base_path: 'artifacts-fast',
+      });
+      expect(local.res.status).toBe(201);
+      expect(local.body).toMatchObject({
+        name: 'fast-local-artifacts',
+        role: 'artifact',
+        provider: 'local_filesystem',
+        status: 'init_required',
+        runtime_capable: true,
+        is_default: false,
+      });
+
+      const defaultBeforeInit = await postJson('/v1/x/storage-providers/fast-local-artifacts/default', {});
+      expect(defaultBeforeInit.res.status).toBe(400);
+
+      const initialized = await postJson('/v1/x/storage-providers/fast-local-artifacts/initialize', {});
+      expect(initialized.res.status).toBe(200);
+      expect(initialized.body).toMatchObject({
+        name: 'fast-local-artifacts',
+        status: 'active',
+        is_default: false,
+      });
+
+      const madeDefault = await postJson('/v1/x/storage-providers/fast-local-artifacts/default', {});
+      expect(madeDefault.res.status).toBe(200);
+      expect(madeDefault.body).toMatchObject({ name: 'fast-local-artifacts', is_default: true });
+
+      const runtime = await getJson('/v1/x/runtime');
+      expect(runtime.body.storage_providers.find((provider: any) => provider.name === 'fast-local-artifacts')?.is_default).toBe(true);
+      expect(JSON.stringify(runtime.body.storage_providers)).not.toContain('meta_password');
+      expect(JSON.stringify(runtime.body.storage_providers)).not.toContain('secret-storage-key');
     });
 
     it('exposes recent runtime logs through the extension API', async () => {
