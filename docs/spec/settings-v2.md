@@ -1,7 +1,7 @@
 # Settings V2 Specification
 
 Status: Implemented, active iteration
-Target: managed-agents local runtime and Dashboard  
+Target: managed-agents local runtime and Dashboard
 Primary surface: `/dashboard#settings`
 
 ## 1. Purpose
@@ -518,6 +518,14 @@ Compatibility decision: legacy provider `GET` endpoints remain readable for
 one release so older clients can inspect existing rows. Legacy provider
 mutation endpoints return `410 Gone` and point callers to `/v1/x/settings`.
 
+Upgrade note for existing workspaces: existing YAML model entries and legacy
+provider rows are treated as bootstrap/import data only. On first Settings V2
+startup, the runtime seeds the single `runtime_settings` document from the
+actual effective local runtime: default model vendor, built-in loop engine,
+SQLite metadata, local artifact storage, configured memory enablement, and the
+default Environment sandbox. After that seed, normal Dashboard edits persist to
+SQLite under the user data directory and do not rewrite source-controlled YAML.
+
 ## 11. Test plan
 
 ### Unit tests
@@ -655,3 +663,34 @@ must not imply that a planned adapter is active.
 
 No configuration page may offer a save action whose adapter is not connected
 to observable runtime behavior.
+
+## 14. First-release implementation status
+
+The first-release Settings V2 scope is implemented when all available adapters
+are truthful, configurable, validated, and wired to runtime behavior. Planned
+adapters remain visible only as unavailable capability descriptors until their
+runtime implementations exist.
+
+Implemented for this release:
+
+- one versioned Settings V2 document with saved/effective revisions;
+- encrypted secret storage and masked API responses;
+- read, validate, test, save, revision conflict, and restart-required APIs;
+- audit log entry for settings saves with revisions and changed paths only;
+- settings-driven model vendor, built-in loop max steps, SQLite memory
+  enablement, local artifact storage, and workspace sandbox fallback;
+- Dashboard Form/JSON editor for Models, Loop engine, Storage, Memory, and
+  Sandbox, with Save gated by a changed and validated candidate;
+- read-only legacy provider compatibility and `410 Gone` legacy mutations;
+- documentation for local setup, API usage, upgrade behavior, and adapter
+  availability.
+
+Explicitly not part of the first-release done definition:
+
+- live remote credential authentication for model vendors;
+- Postgres/MySQL metadata migration;
+- S3 artifact storage;
+- mem0 or MemU memory backends;
+- Docker or remote sandbox health checks;
+- Harness, Codex, or Claude loop engines;
+- removing legacy read endpoints before the compatibility window ends.

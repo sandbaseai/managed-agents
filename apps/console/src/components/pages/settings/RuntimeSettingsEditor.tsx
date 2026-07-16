@@ -29,11 +29,15 @@ export function RuntimeSettingsEditor({
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [restarting, setRestarting] = useState(false);
+  const [validationState, setValidationState] = useState<'unknown' | 'valid' | 'invalid'>('unknown');
+  const [validatedJson, setValidatedJson] = useState('');
 
   useEffect(() => {
     setDraft(settings?.saved_config ?? null);
     setJson(settings ? JSON.stringify(settings.saved_config, null, 2) : '');
     setError('');
+    setValidationState('unknown');
+    setValidatedJson('');
   }, [settings?.revision]);
 
   if (!settings || !draft) return <LoadingState label="Loading runtime settings..." />;
@@ -45,10 +49,13 @@ export function RuntimeSettingsEditor({
     || error.startsWith('Saved.')
     || error.includes('OK ')
     || error.includes('SKIPPED ');
+  const canSave = isDirty && validationState === 'valid' && validatedJson === currentJson && !saving;
 
-  const setConfig = (next: RuntimeSettingsConfig) => {
+  const setConfig = (next: RuntimeSettingsConfig, validation: 'unknown' | 'valid' = 'unknown') => {
     setDraft(next);
     setJson(JSON.stringify(next, null, 2));
+    setValidationState(validation);
+    setValidatedJson(validation === 'valid' ? JSON.stringify(next, null, 2) : '');
   };
   const adapters = section === 'models' ? settings.adapters.model
     : section === 'loop-engine' ? settings.adapters.loop_engine
@@ -69,25 +76,36 @@ export function RuntimeSettingsEditor({
   const validate = async (): Promise<RuntimeSettingsConfig | null> => {
     try {
       const candidate = mode === 'json' ? JSON.parse(json) as RuntimeSettingsConfig : draft;
-      const result = await postJson<{ valid: boolean; errors: Array<{ path: string; message: string }> }>('/v1/x/settings/validate', candidate);
+      const result = await postJson<{
+        valid: boolean;
+        normalized_config?: RuntimeSettingsConfig;
+        errors: Array<{ path: string; message: string }>;
+      }>('/v1/x/settings/validate', candidate);
       if (!result.valid) {
         setError(result.errors.map((item) => `${item.path || 'config'}: ${item.message}`).join('\n'));
+        setValidationState('invalid');
+        setValidatedJson('');
         return null;
       }
-      setConfig(candidate);
+      const normalized = result.normalized_config ?? candidate;
+      setConfig(normalized, 'valid');
       setError('Configuration is valid.');
-      return candidate;
+      return normalized;
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Configuration is invalid JSON.');
+      setValidationState('invalid');
+      setValidatedJson('');
       return null;
     }
   };
   const save = async () => {
+    if (!canSave) {
+      setError('Validate this changed configuration before saving.');
+      return;
+    }
     setSaving(true);
     try {
-      const candidate = await validate();
-      if (!candidate) return;
-      await putJson('/v1/x/settings', { revision: settings.revision, config: candidate });
+      await putJson('/v1/x/settings', { revision: settings.revision, config: draft });
       setError('Saved. Restart the runtime to apply this configuration.');
       onRefresh();
     } catch (err) {
@@ -139,6 +157,8 @@ export function RuntimeSettingsEditor({
     setDraft(settings.saved_config);
     setJson(savedJson);
     setError('');
+    setValidationState('unknown');
+    setValidatedJson('');
   };
 
   const adapterOptions = (items: AdapterOption[], value: string) => (
@@ -187,14 +207,18 @@ export function RuntimeSettingsEditor({
           <label><span>Timeout (seconds)</span><input type="number" min="1" value={draft.sandbox.options.timeout_seconds} onChange={(event) => setConfig({ ...draft, sandbox: { ...draft.sandbox, options: { ...draft.sandbox.options, timeout_seconds: Number(event.target.value) } } })} /></label>
           <p className="formHint">Named Environments can override this default provider.</p>
         </> : null}
-      </div> : <textarea className="settingsJsonEditor" value={json} onChange={(event) => setJson(event.target.value)} spellCheck={false} />}
+      </div> : <textarea className="settingsJsonEditor" value={json} onChange={(event) => {
+        setJson(event.target.value);
+        setValidationState('unknown');
+        setValidatedJson('');
+      }} spellCheck={false} />}
       {error ? <div className={isPositiveMessage ? 'noticeBox' : 'formError'}>{error}</div> : null}
       <div className="modalActions settingsEditorActions">
         <button className="secondaryButton" type="button" onClick={() => void validate()}>Validate</button>
         <button className="secondaryButton" type="button" onClick={() => void testConnection()} disabled={testing}>{testing ? 'Testing...' : 'Test connection'}</button>
         <button className="secondaryButton" type="button" onClick={discard} disabled={!isDirty || saving}>Discard</button>
         {settings.restart_required ? <button className="secondaryButton" type="button" onClick={() => void restart()} disabled={restarting}>{restarting ? 'Restarting...' : 'Restart runtime'}</button> : null}
-        <button className="primaryButton" type="button" onClick={() => void save()} disabled={saving || !isDirty}>{saving ? 'Saving...' : 'Save settings'}</button>
+        <button className="primaryButton" type="button" onClick={() => void save()} disabled={!canSave}>{saving ? 'Saving...' : 'Save settings'}</button>
       </div>
     </section>
   );
