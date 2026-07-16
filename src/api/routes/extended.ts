@@ -33,11 +33,93 @@ import {
   toRuntimeStorageProviderInfo,
   type StorageProviderRole,
 } from '@/core/storage/providers.js';
+import { describeSettingsAdapters, availabilityFromDescriptors } from '@/core/settings/adapters.js';
+import { validateRuntimeSettings } from '@/core/settings/schema.js';
+import {
+  getOrSeedRuntimeSettings,
+  maskRuntimeSettings,
+  runtimeSettingsSecretStates,
+  saveRuntimeSettings,
+} from '@/core/settings/store.js';
 
 const LOG_LEVELS = new Set<LogLevel>(['debug', 'info', 'warn', 'error']);
 
 export function extendedRoutes(deps: ServerDeps) {
   const app = new Hono();
+
+  app.get('/settings', (c) => {
+    const settings = getOrSeedRuntimeSettings(deps.db);
+    const adapters = describeSettingsAdapters(deps.runtime?.sandboxProviders);
+    return c.json({
+      schema_version: settings.schema_version,
+      revision: settings.revision,
+      saved_config: maskRuntimeSettings(settings.saved_config),
+      effective_config: maskRuntimeSettings(settings.effective_config),
+      restart_required: settings.restart_required,
+      adapters,
+      secret_states: runtimeSettingsSecretStates(deps.db, settings.saved_config),
+    });
+  });
+
+  app.post('/settings/validate', async (c) => {
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({
+        valid: false,
+        errors: [{ path: '', code: 'invalid_json', message: 'Request body must be valid JSON' }],
+        warnings: [],
+      }, 400);
+    }
+    const adapters = describeSettingsAdapters(deps.runtime?.sandboxProviders);
+    const result = validateRuntimeSettings(body, availabilityFromDescriptors(adapters));
+    return c.json({
+      ...result,
+      ...(result.normalized_config ? { normalized_config: maskRuntimeSettings(result.normalized_config) } : {}),
+    });
+  });
+
+  app.put('/settings', async (c) => {
+    let body: { revision?: unknown; config?: unknown };
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: { type: 'invalid_request', message: 'Request body must be valid JSON' } }, 400);
+    }
+    if (!body || typeof body !== 'object' || !Number.isInteger(body.revision) || (body.revision as number) < 1) {
+      return c.json({ error: { type: 'invalid_request', message: 'revision must be a positive integer' } }, 400);
+    }
+    const adapters = describeSettingsAdapters(deps.runtime?.sandboxProviders);
+    const validation = validateRuntimeSettings(body.config, availabilityFromDescriptors(adapters));
+    if (!validation.valid || !validation.normalized_config) {
+      return c.json({
+        error: { type: 'validation_error', message: 'Settings configuration is invalid' },
+        ...validation,
+      }, 422);
+    }
+    const saved = saveRuntimeSettings(
+      deps.db,
+      validation.normalized_config,
+      body.revision as number,
+      deps.workspace?.dataDir,
+    );
+    if (!saved.ok) {
+      return c.json({
+        error: { type: 'revision_conflict', message: 'Settings were modified by another request' },
+        revision: saved.record.revision,
+        saved_config: maskRuntimeSettings(saved.record.saved_config),
+      }, 409);
+    }
+    return c.json({
+      schema_version: saved.record.schema_version,
+      revision: saved.record.revision,
+      saved_config: maskRuntimeSettings(saved.record.saved_config),
+      effective_config: maskRuntimeSettings(saved.record.effective_config),
+      restart_required: saved.record.restart_required,
+      secret_states: runtimeSettingsSecretStates(deps.db, saved.record.saved_config),
+    });
+  });
 
   // POST /reload - Hot-reload agents
   app.post('/reload', (c) => {

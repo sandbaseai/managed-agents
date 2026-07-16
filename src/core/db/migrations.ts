@@ -504,6 +504,30 @@ CREATE INDEX idx_storage_providers_role
   ON storage_providers(role, created_at DESC);
 `;
 
+const M019_RUNTIME_SETTINGS = `
+CREATE TABLE runtime_settings (
+  id TEXT PRIMARY KEY CHECK (id = 'default'),
+  schema_version INTEGER NOT NULL,
+  config TEXT NOT NULL,
+  effective_config TEXT NOT NULL,
+  revision INTEGER NOT NULL DEFAULT 1,
+  effective_revision INTEGER NOT NULL DEFAULT 1,
+  restart_required INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+`;
+
+const M020_RUNTIME_SETTINGS_SECRETS = `
+CREATE TABLE runtime_settings_secrets (
+  path TEXT PRIMARY KEY,
+  ciphertext TEXT NOT NULL,
+  nonce TEXT NOT NULL,
+  tag TEXT NOT NULL,
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+`;
+
 export const MIGRATIONS: Migration[] = [
   { version: 1, name: '001_initial', sql: M001_INITIAL },
   { version: 2, name: '002_memory', sql: M002_MEMORY },
@@ -523,4 +547,6 @@ export const MIGRATIONS: Migration[] = [
   { version: 16, name: '016_model_provider_settings', sql: M016_MODEL_PROVIDER_SETTINGS },
   { version: 17, name: '017_memory_provider_settings', sql: M017_MEMORY_PROVIDER_SETTINGS },
   { version: 18, name: '018_storage_provider_settings', sql: M018_STORAGE_PROVIDER_SETTINGS },
+  { version: 19, name: '019_runtime_settings', sql: M019_RUNTIME_SETTINGS },
+  { version: 20, name: '020_runtime_settings_secrets', sql: M020_RUNTIME_SETTINGS_SECRETS },
 ];

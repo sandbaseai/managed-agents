@@ -260,6 +260,88 @@ button {
   background: #ffffff;
 }
 
+.runtimeSettingsEditor {
+  max-width: 860px;
+}
+
+.settingsEditorTabs {
+  display: flex;
+  gap: 2px;
+  width: fit-content;
+  padding: 3px;
+  background: var(--surface-hover);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+}
+
+.settingsEditorTabs button {
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-soft);
+  font: inherit;
+  font-size: 13px;
+  padding: 6px 10px;
+}
+
+.settingsEditorTabs button.active {
+  color: var(--text);
+  background: #fff;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 8%);
+}
+
+.runtimeSettingsForm {
+  gap: 18px;
+  padding: 22px;
+}
+
+.runtimeSettingsForm > label {
+  display: grid;
+  gap: 7px;
+  color: var(--text-soft);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.runtimeSettingsForm > label input,
+.runtimeSettingsForm > label select {
+  min-height: 38px;
+  font-weight: 450;
+}
+
+.runtimeSettingsForm .checkRow {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--text);
+}
+
+.storageSettingsSection + .storageSettingsSection {
+  padding-top: 18px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.storageSettingsSection h2 {
+  margin: 0 0 12px;
+  font-size: 15px;
+}
+
+.settingsJsonEditor {
+  width: 100%;
+  min-height: 460px;
+  resize: vertical;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px;
+  background: #111827;
+  color: #e5e7eb;
+  font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.settingsEditorActions {
+  justify-content: flex-end;
+}
+
 .consoleNotice {
   min-height: 36px;
   display: flex;
