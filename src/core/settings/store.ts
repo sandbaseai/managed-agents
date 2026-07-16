@@ -1,6 +1,6 @@
 import type { Database } from '@/core/db/database.js';
 import { relative, resolve, sep } from 'node:path';
-import type { RuntimeSettings } from './schema.js';
+import { runtimeSettingsSchema, type RuntimeSettings } from './schema.js';
 import { decryptSecret, encryptSecret } from '@/core/security/secrets.js';
 import type { ModelConfig } from '@/types/model.js';
 
@@ -159,13 +159,30 @@ function readSettingsRow(db: Database): SettingsRow | undefined {
 }
 
 function rowToRecord(row: SettingsRow): RuntimeSettingsRecord {
+  const saved = parseRuntimeSettings(row.config);
+  const effective = parseRuntimeSettings(row.effective_config);
+  if (!saved && !effective) {
+    throw new Error('Runtime settings contain no valid saved or effective configuration.');
+  }
+  const effectiveConfig = effective ?? saved!;
+  const savedConfig = saved ?? effectiveConfig;
   return {
     schema_version: 1,
     revision: row.revision,
-    saved_config: JSON.parse(row.config) as RuntimeSettings,
-    effective_config: JSON.parse(row.effective_config) as RuntimeSettings,
-    restart_required: row.restart_required === 1 || row.revision !== row.effective_revision,
+    saved_config: savedConfig,
+    effective_config: effectiveConfig,
+    restart_required: Boolean(saved) && (row.restart_required === 1 || row.revision !== row.effective_revision),
   };
+}
+
+function parseRuntimeSettings(value: string): RuntimeSettings | undefined {
+  try {
+    const parsed = JSON.parse(value);
+    const result = runtimeSettingsSchema.safeParse(parsed);
+    return result.success ? result.data : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function legacySettingsSeed(db: Database, seed: RuntimeSettingsSeed): RuntimeSettings {

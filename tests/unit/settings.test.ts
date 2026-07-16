@@ -83,6 +83,31 @@ describe('Settings V2 activation', () => {
     db.close();
   });
 
+  it('retains the last valid effective settings when the saved config is corrupted', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'ma-settings-corrupt-'));
+    directories.push(directory);
+    const db = new Database(join(directory, 'settings.db'));
+    db.runMigrations();
+    const initial = getOrSeedRuntimeSettings(db);
+    const invalidSaved = {
+      ...initial.saved_config,
+      loop_engine: { provider: 'missing-engine', options: { default_max_steps: 64 } },
+    };
+    db.prepare(`
+      UPDATE runtime_settings
+      SET config = ?, revision = 2, restart_required = 1
+      WHERE id = 'default'
+    `).run(JSON.stringify(invalidSaved));
+
+    const activated = activateRuntimeSettings(db);
+
+    expect(activated.restart_required).toBe(false);
+    expect(activated.revision).toBe(2);
+    expect(activated.saved_config.loop_engine.options.default_max_steps).toBe(25);
+    expect(activated.effective_config.loop_engine.options.default_max_steps).toBe(25);
+    db.close();
+  });
+
   it('builds the default runtime model from the effective settings without a UI model ID', () => {
     const directory = mkdtempSync(join(tmpdir(), 'ma-settings-model-'));
     directories.push(directory);
