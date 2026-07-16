@@ -659,9 +659,9 @@ must not imply that a planned adapter is active.
    adapter registries, and independently loaded feature modules. The first
    split moved Console data loading, Settings V2 editor/navigation, Workspace,
    Settings overview, Settings logs, API keys, Monitoring, API Reference, API
-   endpoint docs data, the Settings section router, and the Settings page shell
-   out of `App.tsx`; runtime Settings composition moved out of `src/index.ts`;
-   the stale pre-Settings Runtime view was removed.
+   endpoint docs data, the Settings section router, Agents pages, and the
+   Settings page shell out of `App.tsx`; runtime Settings composition moved
+   out of `src/index.ts`; the stale pre-Settings Runtime view was removed.
 
 ### 13.3 Priority order
 
@@ -704,7 +704,7 @@ Implemented for this release:
   availability.
 - incremental Console decomposition for Settings data loading, navigation,
   editor pages, Workspace, logs, API keys, Monitoring, API Reference, endpoint
-  docs data, section router, overview, and shell layout.
+  docs data, section router, Agents pages, overview, and shell layout.
 - parallel domain-level Console data loaders for build, resource, access, and
   runtime data instead of one monolithic endpoint list.
 - runtime composition helper for Settings activation, model registration,
