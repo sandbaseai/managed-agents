@@ -646,7 +646,7 @@ must not imply that a planned adapter is active.
    split moved Console data loading, Settings V2 editor/navigation, Workspace,
    Settings overview, Settings logs, API keys, Monitoring, and the Settings
    page shell out of `App.tsx`; runtime Settings composition moved out of
-   `src/index.ts`.
+   `src/index.ts`; the stale pre-Settings Runtime view was removed.
 
 ### 13.3 Priority order
 
@@ -694,6 +694,7 @@ Implemented for this release:
   data instead of one monolithic endpoint list.
 - runtime composition helper for Settings activation, model registration,
   memory selection, artifact storage, and default Environment sandbox fallback.
+- stale pre-Settings Runtime view removed from the Console composition root.
 
 Explicitly not part of the first-release done definition:
 

@@ -50,7 +50,7 @@ import { SettingsLogs } from './components/pages/settings/SettingsLogs';
 import { SettingsMonitoring } from './components/pages/settings/SettingsMonitoring';
 import { SettingsPage } from './components/pages/settings/SettingsPage';
 import { RuntimeSettingsEditor } from './components/pages/settings/RuntimeSettingsEditor';
-import { SettingsWorkspace, WorkspacePathsPanel } from './components/pages/settings/SettingsWorkspace';
+import { SettingsWorkspace } from './components/pages/settings/SettingsWorkspace';
 import { SETTINGS_VIEW_IDS, type SettingsSection } from './components/pages/settings/navigation';
 import { useHashRoute } from './hooks/useHashRoute';
 import { useConsoleData } from './hooks/useConsoleData';
@@ -71,9 +71,6 @@ import type {
   MetadataDraft,
   McpToolset,
   Runtime,
-  RuntimeConfigState,
-  RuntimeLogEntry,
-  RuntimeLogLevel,
   RuntimeSettings,
   Session,
   SessionEvent,
@@ -1986,189 +1983,12 @@ function MemoryTree({ memories, selectedId, onSelect }: { memories: MemoryRecord
   );
 }
 
-function RuntimeView({ data }: { data: ConsoleData }) {
-  const [logs, setLogs] = useState<RuntimeLogEntry[]>([]);
-  const [logsLoading, setLogsLoading] = useState(false);
-  const [logsError, setLogsError] = useState('');
-  const [logLevel, setLogLevel] = useState<RuntimeLogLevel | 'all'>('all');
-  const [restartStatus, setRestartStatus] = useState('');
-  const [restarting, setRestarting] = useState(false);
-
-  const loadLogs = async () => {
-    setLogsLoading(true);
-    try {
-      const params = new URLSearchParams({ limit: '200' });
-      if (logLevel !== 'all') params.set('level', logLevel);
-      const page = await getPage<RuntimeLogEntry>(`/v1/x/logs?${params.toString()}`);
-      setLogs(page.data);
-      setLogsError('');
-    } catch (err: any) {
-      setLogsError(err?.message ?? String(err));
-    } finally {
-      setLogsLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    void loadLogs();
-    const timer = window.setInterval(() => void loadLogs(), 5000);
-    return () => window.clearInterval(timer);
-  }, [logLevel]);
-
-  const restartRuntime = async () => {
-    if (!window.confirm('Restart the local runtime? Active sessions will be interrupted.')) return;
-    setRestarting(true);
-    setRestartStatus('Scheduling runtime restart...');
-    try {
-      await postJson<{ restarting: boolean; status: string }>('/v1/x/restart', {});
-      setRestartStatus('Restart scheduled. The Console will reconnect when the runtime is back.');
-    } catch (err: any) {
-      setRestartStatus(err?.message ?? String(err));
-      setRestarting(false);
-    }
-  };
-
-  return (
-    <section className="stack">
-      <div className="pageIntro">
-        <div>
-          <h1>Runtime</h1>
-          <p>Inspect the runtime process, available model adapters, sandbox providers, and managed project paths.</p>
-        </div>
-        <div className="topActions">
-          <button className="secondaryButton" type="button" onClick={() => void loadLogs()} disabled={logsLoading}>
-            <RefreshCw size={16} />
-            Refresh logs
-          </button>
-          <button className="primaryButton" type="button" onClick={() => void restartRuntime()} disabled={restarting}>
-            <RefreshCw size={16} />
-            Restart runtime
-          </button>
-        </div>
-      </div>
-      <div className="sectionHeaderRow">
-        <div>
-          <h2>Runtime capabilities</h2>
-          <p>Live capability summary for the Console and local API.</p>
-        </div>
-      </div>
-      <SummaryStrip
-        items={[
-          { label: 'Status', value: data.runtime?.status ?? 'unknown', icon: <Gauge size={18} /> },
-          { label: 'Models', value: data.runtime?.models.length ?? 0, icon: <Brain size={18} /> },
-          { label: 'Sandboxes', value: data.runtime?.sandbox_providers.join(', ') || 'none', icon: <Shield size={18} /> },
-          { label: 'Memory', value: data.runtime?.memory ?? 'disabled', icon: <Database size={18} /> },
-        ]}
-      />
-      <div className="sectionHeaderRow">
-        <div>
-          <h2>Model registry</h2>
-          <p>Read-only resolved model diagnostics exposed by the active vendor adapter.</p>
-        </div>
-      </div>
-      <div className="tablePanel">
-        <table>
-          <thead><tr><th>Name</th><th>Provider</th><th>Resolved model</th><th>API key</th><th>Base URL</th></tr></thead>
-          <tbody>
-            {(data.runtime?.models ?? []).map((model) => (
-              <tr key={model.name}>
-                <td><strong>{model.name}</strong></td>
-                <td>{model.provider}</td>
-                <td><code>{model.model}</code></td>
-                <td><RuntimeConfigStatePill state={model.api_key_state} /></td>
-                <td><RuntimeConfigStatePill state={model.base_url_state} /></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {(data.runtime?.models.length ?? 0) === 0 ? <div className="emptyValue">No models configured</div> : null}
-      </div>
-      <div className="sectionHeaderRow">
-        <div>
-          <h2>Runtime paths</h2>
-          <p>Project folders and configuration files used by this runtime.</p>
-        </div>
-      </div>
-      <WorkspacePathsPanel workspace={data.workspace} />
-      <div className="sectionHeaderRow">
-        <div>
-          <h2>Runtime logs</h2>
-          <p>Recent structured logs from the current runtime process.</p>
-        </div>
-        <div className="toolbarActions">
-          <select
-            className="compactSelect"
-            value={logLevel}
-            onChange={(event) => setLogLevel(event.target.value as RuntimeLogLevel | 'all')}
-            aria-label="Log level"
-          >
-            <option value="all">All levels</option>
-            <option value="debug">Debug and above</option>
-            <option value="info">Info and above</option>
-            <option value="warn">Warn and above</option>
-            <option value="error">Errors only</option>
-          </select>
-          <button className="iconButton" type="button" title="Refresh logs" onClick={() => void loadLogs()} disabled={logsLoading}>
-            <RefreshCw size={16} />
-          </button>
-        </div>
-      </div>
-      <div className="runtimeLogPanel">
-        {restartStatus ? <div className="runtimeStatus">{restartStatus}</div> : null}
-        {logsError ? <div className="runtimeStatus error">{logsError}</div> : null}
-        {logs.length === 0 ? (
-          <div className="emptyValue">{logsLoading ? 'Loading logs...' : 'No runtime logs captured yet'}</div>
-        ) : (
-          <div className="runtimeLogList" role="log" aria-live="polite">
-            {logs.map((entry, index) => (
-              <div className={`runtimeLogLine ${entry.level}`} key={`${entry.time}-${index}`}>
-                <span className="runtimeLogMeta">{formatRuntimeLogTime(entry.time)} {entry.level.toUpperCase()}</span>
-                <span className="runtimeLogMessage">{formatRuntimeLog(entry)}</span>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </section>
-  );
-}
-
-function formatRuntimeLogTime(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-}
-
-function formatRuntimeLog(entry: RuntimeLogEntry) {
-  const extras = Object.entries(entry)
-    .filter(([key]) => !['level', 'time', 'msg', 'line'].includes(key))
-    .filter(([, value]) => value !== undefined && value !== null && value !== '')
-    .map(([key, value]) => `${key}=${formatRuntimeLogValue(value)}`);
-  return extras.length > 0 ? `${entry.msg} ${extras.join(' ')}` : entry.msg;
-}
-
-function formatRuntimeLogValue(value: unknown) {
-  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return String(value);
-  return JSON.stringify(value);
-}
-
-function runtimeDatabasePath(workspace: Workspace | null) {
-  const dataDir = workspace?.directories?.data ?? workspace?.dataDir;
-  return dataDir ? `${dataDir.replace(/\/$/, '')}/data.db` : undefined;
-}
-
 function environmentNetworkLabel(environment: Environment) {
   const network = environment.network;
   const type = typeof network?.type === 'string' ? network.type : environment.config?.network;
   if (typeof type === 'string' && type.length > 0) return titleCase(type.replace('_', ' '));
   if (environment.hosting_type === 'self_hosted') return 'Self-hosted';
   return 'Limited';
-}
-
-function RuntimeConfigStatePill({ state }: { state: RuntimeConfigState }) {
-  const status = state === 'configured' ? 'active' : state === 'missing_env' ? 'failed' : 'idle';
-  const label = state === 'missing_env' ? 'missing env' : state === 'not_set' ? 'not set' : 'configured';
-  return <span className={`status ${status}`}>{label}</span>;
 }
 
 type EndpointGroup = {
