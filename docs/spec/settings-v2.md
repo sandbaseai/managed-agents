@@ -654,18 +654,18 @@ must not imply that a planned adapter is active.
 4. **The rendered Console is honest for Settings V2.** Settings pages use the
    Settings V2 editor, old provider mutation surfaces are removed from
    `App.tsx`, and Skills starts as a table without an open drawer.
-5. **The composition roots are still too broad.** `src/index.ts` and the
-   Console `App.tsx` should continue splitting into settings/bootstrap,
-   adapter registries, and independently loaded feature modules. The first
-   split moved Console data loading, Settings V2 editor/navigation, Workspace,
-   Settings overview, Settings logs, API keys, Monitoring, API Reference, API
-   endpoint docs data, the Settings section router, Agents pages, Sessions
-   pages, Environments pages, Credential Vault pages, Memory Store pages,
-   Agent YAML modals, Session creation/resource modals, Resource, Credential,
-   and Memory creation modals, and the Settings page shell out of `App.tsx`;
-   shared metric cards moved into common Console components; runtime Settings
-   composition moved out of `src/index.ts`; the stale pre-Settings Runtime view
-   was removed.
+5. **The Console composition root is now lean; runtime bootstrap remains broad.**
+   `App.tsx` has been reduced to shell, route selection, and modal wiring.
+   Console data loading, Settings V2 editor/navigation, Workspace, Settings
+   overview, Settings logs, API keys, Monitoring, API Reference, API endpoint
+   docs data, the Settings section router, Agents pages, Sessions pages,
+   Environments pages, Credential Vault pages, Memory Store pages, Agent YAML
+   modals, Session creation/resource modals, Resource, Credential, and Memory
+   creation modals, and the Settings page shell moved out of `App.tsx`. Shared
+   metric cards moved into common Console components. Runtime Settings
+   composition moved out of `src/index.ts`, but `src/index.ts` should continue
+   splitting into CLI registration, config seeding, server lifecycle, and
+   runtime bootstrap modules. The stale pre-Settings Runtime view was removed.
 
 ### 13.3 Priority order
 
@@ -679,9 +679,11 @@ must not imply that a planned adapter is active.
 3. **P1 — Honest Console:** rendered Settings pages use one active config,
    legacy provider write paths are disabled, and stale unrendered provider
    components have been removed from `App.tsx`.
-4. **P2 — Maintainability:** split Console features and runtime bootstrap;
-   global Console bootstrap loading now uses parallel domain loaders, while
-   future work can make each page invoke only the domain it needs.
+4. **P2 — Maintainability:** Console feature/page/modal decomposition is
+   complete for the current first-release Dashboard. Runtime bootstrap should
+   continue splitting out of `src/index.ts`; global Console bootstrap loading
+   now uses parallel domain loaders, while future work can make each page
+   invoke only the domain it needs.
 
 No configuration page may offer a save action whose adapter is not connected
 to observable runtime behavior.
