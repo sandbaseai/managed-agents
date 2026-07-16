@@ -663,10 +663,10 @@ must not imply that a planned adapter is active.
    modals, Session creation/resource modals, Resource, Credential, and Memory
    creation modals, and the Settings page shell moved out of `App.tsx`. Shared
    metric cards moved into common Console components. Runtime Settings
-   composition, runtime config bootstrap, and runtime shutdown/restart
-   lifecycle handling moved out of `src/index.ts`, but `src/index.ts` should
-   continue splitting into CLI registration and remaining runtime bootstrap
-   modules. The stale pre-Settings Runtime view was removed.
+   composition, runtime config bootstrap, Agent/Skill bootstrap, and runtime
+   shutdown/restart lifecycle handling moved out of `src/index.ts`, but
+   `src/index.ts` should continue splitting into CLI registration and remaining
+   runtime bootstrap modules. The stale pre-Settings Runtime view was removed.
 
 ### 13.3 Priority order
 
@@ -682,10 +682,11 @@ must not imply that a planned adapter is active.
    components have been removed from `App.tsx`.
 4. **P2 — Maintainability:** Console feature/page/modal decomposition is
    complete for the current first-release Dashboard. Runtime composition,
-   config bootstrap, and shutdown/restart lifecycle are now tested helpers.
-   Agent/Skill/runtime wiring should continue splitting out of `src/index.ts`;
-   global Console bootstrap loading now uses parallel domain loaders, while
-   future work can make each page invoke only the domain it needs.
+   config bootstrap, Agent/Skill bootstrap, and shutdown/restart lifecycle are
+   now tested helpers. Remaining runtime wiring should continue splitting out
+   of `src/index.ts`; global Console bootstrap loading now uses parallel domain
+   loaders, while future work can make each page invoke only the domain it
+   needs.
 
 No configuration page may offer a save action whose adapter is not connected
 to observable runtime behavior.
@@ -723,6 +724,9 @@ Implemented for this release:
 - runtime config bootstrap helper for default Environment seeding, YAML API key
   loading, legacy model bootstrap, SQLite memory seeding, and config-defined
   Environments.
+- runtime Agent/Skill bootstrap helper for YAML Agent seed import, custom Skill
+  seed import, built-in/custom Skill reference validation, and reload-time Agent
+  refresh.
 - runtime lifecycle helper for graceful shutdown, restart spawning, server close
   errors, session drain errors, and idempotent repeated stop requests.
 - stale pre-Settings Runtime view removed from the Console composition root.

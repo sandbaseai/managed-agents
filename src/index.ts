@@ -13,11 +13,7 @@ import { join, resolve } from 'node:path';
 import { Database } from './core/db/database.js';
 import { SessionManager } from './core/session/session-manager.js';
 import { DefaultSessionExecutor } from './core/session/executor.js';
-import { loadAgents } from './core/agent/loader.js';
-import { importAgentSeeds, loadActiveAgentsFromDb, loadAgentDefinitionById, refreshAgentsFromDb } from './core/agent/store.js';
-import { loadSkills } from './core/skills/loader.js';
-import { BUILTIN_SKILLS } from './core/skills/catalog.js';
-import { importSkillSeeds, loadCustomSkillsFromDb } from './core/skills/store.js';
+import { loadAgentDefinitionById } from './core/agent/store.js';
 import { listModelProviders, seedModelProviders } from './core/model/providers.js';
 import { installTemplate, createTemplate, listTemplates, resolveTemplateSource } from './core/templates/templates.js';
 import { ModelRegistry } from './model/registry.js';
@@ -35,9 +31,9 @@ import { countActiveManagedApiKeys, validateManagedApiKey } from './core/auth/ap
 import { composeRuntimeFromSettings } from './core/runtime/composition.js';
 import { ensureDefaultEnvironment, loadRuntimeConfigBootstrap } from './core/runtime/config-bootstrap.js';
 import { createRuntimeStopper } from './core/runtime/lifecycle.js';
+import { loadRuntimeAgentSkillState, reloadRuntimeAgents } from './core/runtime/agent-skill-bootstrap.js';
 import { createLogger, InMemoryLogStore } from './core/observability/logger.js';
 import { Metrics } from './core/observability/metrics.js';
-import type { AgentDefinition } from './types/agent.js';
 
 const VERSION = '0.1.0';
 
@@ -214,37 +210,9 @@ async function startServer(opts: { port: string; host: string; dataDir?: string;
     modelRegistry.setDefault(defaultModel.name);
   }
 
-  // Load agents
-  const loadResult = loadAgents(agentsDir);
-  if (loadResult.errors.length > 0) {
-    for (const err of loadResult.errors) {
-      console.error(`[AGENT_LOAD] ${err.file} - ${err.reason}${err.field ? ` (field: ${err.field})` : ''}`);
-    }
-  }
-
-  // Seed portable YAML agents into SQLite. Runtime state is SQLite-backed.
-  const seedErrors = importAgentSeeds(db, loadResult.agents);
-  for (const err of seedErrors) {
-    console.error(`[AGENT_SEED] ${err.file} - ${err.reason}${err.field ? ` (field: ${err.field})` : ''}`);
-  }
-  const agents: AgentDefinition[] = loadActiveAgentsFromDb(db);
-
-  // Load skill directories (skills/*/SKILL.md); warn on agents referencing unknown skills
-  const skillResult = loadSkills(skillsDir);
-  for (const err of skillResult.errors) {
-    console.error(`[SKILL_LOAD] ${err.file} - ${err.reason}`);
-  }
-  importSkillSeeds(db, skillResult.skills);
-  const skills = loadCustomSkillsFromDb(db);
-  const knownSkills = [...skills, ...BUILTIN_SKILLS];
-  const skillNames = new Set(knownSkills.map((s) => s.name));
-  for (const agent of agents) {
-    for (const ref of agent.skills ?? []) {
-      if (!skillNames.has(ref.skill_id) && !knownSkills.some((skill) => skill.id === ref.skill_id)) {
-        console.error(`[SKILL_REF] agent "${agent.name}" references unknown skill "${ref.skill_id}" (ignored)`);
-      }
-    }
-  }
+  const agentSkillState = loadRuntimeAgentSkillState({ db, agentsDir, skillsDir });
+  const agents = agentSkillState.agents;
+  const skills = agentSkillState.skills;
 
   // Settings V2 is seeded after legacy config/import data exists, then becomes
   // the runtime source for settings that have a shipped adapter.
@@ -354,10 +322,7 @@ async function startServer(opts: { port: string; host: string; dataDir?: string;
     skills,
     getMcpStatus: (sessionId) => executor.getMcpStatus(sessionId),
     reloadAgents: () => {
-      const result = loadAgents(agentsDir);
-      importAgentSeeds(db, result.agents);
-      const activeAgents = refreshAgentsFromDb(db, agents);
-      return { agents: activeAgents, errors: result.errors };
+      return reloadRuntimeAgents({ db, agentsDir, agents });
     },
   });
 
@@ -378,8 +343,8 @@ async function startServer(opts: { port: string; host: string; dataDir?: string;
     console.log(`  Target:    ${target}`);
     console.log(`  Data:      ${dataDir}`);
     console.log(`  Auth:      ${hasRuntimeApiKeys() ? 'enabled (Bearer token required)' : 'DISABLED (open - localhost only)'}`);
-    if (loadResult.errors.length > 0) {
-      console.log(`  Warnings:  ${loadResult.errors.length} agent load errors`);
+    if (agentSkillState.agentLoadErrors.length > 0) {
+      console.log(`  Warnings:  ${agentSkillState.agentLoadErrors.length} agent load errors`);
     }
     console.log('');
   });
