@@ -643,9 +643,10 @@ must not imply that a planned adapter is active.
 5. **The composition roots are still too broad.** `src/index.ts` and the
    Console `App.tsx` should continue splitting into settings/bootstrap,
    adapter registries, and independently loaded feature modules. The first
-   split moved Console data loading, Settings V2 editor/navigation, Settings
-   overview, Settings logs, API keys, Monitoring, and the Settings page shell
-   out of `App.tsx`; runtime Settings composition moved out of `src/index.ts`.
+   split moved Console data loading, Settings V2 editor/navigation, Workspace,
+   Settings overview, Settings logs, API keys, Monitoring, and the Settings
+   page shell out of `App.tsx`; runtime Settings composition moved out of
+   `src/index.ts`.
 
 ### 13.3 Priority order
 
@@ -687,7 +688,8 @@ Implemented for this release:
 - documentation for local setup, API usage, upgrade behavior, and adapter
   availability.
 - incremental Console decomposition for Settings data loading, navigation,
-  editor pages, logs, API keys, Monitoring, overview, and shell layout.
+  editor pages, Workspace, logs, API keys, Monitoring, overview, and shell
+  layout.
 - domain-level Console data loaders for build, resource, access, and runtime
   data instead of one monolithic endpoint list.
 - runtime composition helper for Settings activation, model registration,
