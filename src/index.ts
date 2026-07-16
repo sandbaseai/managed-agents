@@ -15,10 +15,6 @@ import { SessionManager } from './core/session/session-manager.js';
 import { DefaultSessionExecutor } from './core/session/executor.js';
 import { loadAgentDefinitionById } from './core/agent/store.js';
 import { installTemplate, createTemplate, listTemplates, resolveTemplateSource } from './core/templates/templates.js';
-import { LocalSandboxProvider } from './sandbox/local-provider.js';
-import { DockerSandboxProvider, isDockerAvailable } from './sandbox/docker-provider.js';
-import { SandboxProviderRegistry } from './sandbox/registry.js';
-import { SelfHostedSandboxProvider, WorkQueue } from './sandbox/self-hosted-provider.js';
 import { DefaultStrategy } from './strategy/default-strategy.js';
 import { ContextCompactor } from './core/session/context-compactor.js';
 import { SnapshotManager } from './core/session/snapshot-manager.js';
@@ -31,6 +27,7 @@ import { ensureDefaultEnvironment, loadRuntimeConfigBootstrap } from './core/run
 import { createRuntimeStopper } from './core/runtime/lifecycle.js';
 import { loadRuntimeAgentSkillState, reloadRuntimeAgents } from './core/runtime/agent-skill-bootstrap.js';
 import { bootstrapRuntimeModelRegistry } from './core/runtime/model-bootstrap.js';
+import { bootstrapRuntimeSandboxes } from './core/runtime/sandbox-bootstrap.js';
 import { createLogger, InMemoryLogStore } from './core/observability/logger.js';
 import { Metrics } from './core/observability/metrics.js';
 
@@ -216,19 +213,8 @@ async function startServer(opts: { port: string; host: string; dataDir?: string;
   // Create core components
   const sessionManager = new SessionManager(db);
   const eventLogger = sessionManager.getEventLogger();
-  const sandboxProvider = new LocalSandboxProvider(dataDir);
   const strategy = new DefaultStrategy();
-
-  // Sandbox provider registry: local always; docker if the CLI is present
-  const sandboxRegistry = new SandboxProviderRegistry();
-  sandboxRegistry.register(sandboxProvider);
-  const dockerAvailable = isDockerAvailable();
-  if (dockerAvailable) {
-    sandboxRegistry.register(new DockerSandboxProvider());
-  }
-  // self_hosted: tool calls are dispatched to a user-run Worker via the queue
-  const workQueue = new WorkQueue(db);
-  sandboxRegistry.register(new SelfHostedSandboxProvider(workQueue));
+  const { sandboxProvider, sandboxRegistry, workQueue } = bootstrapRuntimeSandboxes({ db, dataDir });
 
   const artifactStore = runtimeComposition.artifactStore;
   const snapshots = new SnapshotManager(db, artifactStore.path('snapshots'));
