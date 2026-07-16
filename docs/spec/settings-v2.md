@@ -371,6 +371,25 @@ Response contains normalized configuration plus field-level errors:
 The request identifies one area and contains a candidate area configuration.
 It performs a bounded connection or capability check without saving.
 
+Implemented request shape:
+
+```json
+{
+  "area": "model",
+  "config": {},
+  "full_config": {}
+}
+```
+
+`area` is one of `model`, `loop_engine`, `storage.metadata`,
+`storage.artifacts`, `memory`, or `sandbox`. `full_config` is optional; when
+omitted, the server merges `config` into the current saved document before
+validation. The first implementation performs local capability checks only:
+credential resolution, URL shape, SQLite quick check, local artifact
+writability, memory enablement, and local sandbox data-dir writability. It
+does not perform live vendor authentication against OpenAI, Anthropic, S3,
+Docker, mem0, or MemU until those adapters are real runtime implementations.
+
 ### 7.4 Save configuration
 
 `PUT /v1/x/settings`
@@ -488,10 +507,14 @@ Exit criteria: no page offers an action that the backend cannot perform.
 
 ### Phase 4: cleanup and compatibility
 
-- Deprecate legacy provider endpoints.
+- Deprecate legacy provider write endpoints.
 - Remove unused Dashboard modal and table components.
 - Update README, installation, usage, API, and configuration documentation.
 - Add upgrade notes for workspaces created before Settings V2.
+
+Compatibility decision: legacy provider `GET` endpoints remain readable for
+one release so older clients can inspect existing rows. Legacy provider
+mutation endpoints return `410 Gone` and point callers to `/v1/x/settings`.
 
 ## 11. Test plan
 
@@ -578,18 +601,19 @@ must not imply that a planned adapter is active.
 
 | Area | Current behavior | Required before claiming full support |
 | --- | --- | --- |
-| Model | Settings V2 is persisted, but the runtime ModelRegistry still starts from the legacy `models` table. | Construct the default model adapter from Settings V2 and migrate legacy rows once. |
-| Loop engine | `builtin` default max steps is applied by the executor. | Replace direct strategy construction with an engine factory before enabling other engines. |
+| Model | Runtime ModelRegistry is constructed from effective Settings V2. Vendor adapters own internal default model IDs. | Add optional live credential tests before claiming remote vendor health. |
+| Loop engine | `builtin` default max steps is applied by the executor. Planned engines are unavailable. | Replace direct strategy construction with an engine factory before enabling other engines. |
 | Metadata storage | SQLite is the real metadata store. | Add a migration/backup/rollback contract before exposing external databases. |
 | Artifact storage | Local artifact path is resolved from effective Settings V2 and is used by File resources and snapshots. | Introduce a shared ArtifactStore interface before adding generated artifact and S3 support. |
-| Memory | SQLite enable/disable is wired. mem0 and MemU are unavailable. | Add real adapters and connection tests before making either selectable. |
-| Sandbox | The workspace setting is used as the `env_default` fallback; named Environments override it. | Expose precedence clearly and add adapter-specific health checks. |
+| Memory | SQLite enable/disable is wired and locally testable. mem0 and MemU are unavailable. | Add real adapters before making either selectable. |
+| Sandbox | The workspace setting is used as the `env_default` fallback; named Environments override it. Local sandbox writability is testable. | Add Docker and remote health checks when those adapters are implemented. |
 
 ### 13.2 Findings
 
-1. **Single source of truth is incomplete.** Legacy model, memory-provider, and
-   storage-provider controls still coexist with Settings V2. The compatibility
-   period must be read-only for legacy controls: no new writes may be added.
+1. **Single source of truth is now Settings V2 for shipped runtime settings.**
+   The Dashboard no longer loads legacy memory-provider or storage-provider
+   data. Legacy provider mutation endpoints are read-only compatibility
+   failures (`410`) and no new Dashboard writes may be added.
 2. **Model vendor needs an adapter-owned resolved model.** Settings must not
    ask for a Model ID, but a concrete provider request still needs one. Each
    shipped vendor adapter therefore owns a versioned default mapping and
@@ -598,22 +622,25 @@ must not imply that a planned adapter is active.
    commands must receive an allowlisted environment only. Self-hosted workers
    may complete only work they claimed. API credentials must use the single
    SecretStore rather than legacy plaintext columns.
-4. **The Console has stale control surfaces.** Settings overview cards still
-   use plural “provider plugin” language, the disabled search input has no
-   purpose, and Skills must start as a table without an open drawer.
-5. **The composition roots are too broad.** `src/index.ts` and the Console
-   `App.tsx` should be split after runtime cutover into settings/bootstrap,
-   adapter registries, and independently loaded feature modules.
+4. **The Console still has stale dead code.** The rendered Settings pages use
+   the Settings V2 editor and Skills starts as a table without an open drawer,
+   but old unrendered Settings provider components remain in `App.tsx`.
+5. **The composition roots are still too broad.** `src/index.ts` and the
+   Console `App.tsx` should continue splitting into settings/bootstrap,
+   adapter registries, and independently loaded feature modules. The first
+   split moved Console data loading and Settings V2 editor/navigation out of
+   `App.tsx`.
 
 ### 13.3 Priority order
 
 1. **P0 — Safety and integrity:** sandbox environment allowlist; worker claim
    ownership enforcement; CORS/auth deployment policy; move legacy plaintext
    provider secrets into SecretStore.
-2. **P0 — Runtime cutover:** settings-driven ModelRegistry and ArtifactStore;
-   add end-to-end tests proving a saved setting changes execution after restart.
-3. **P1 — Honest Console:** remove legacy provider write paths and stale copy;
-   close Skills drawer by default; show unavailable adapters as unavailable.
+2. **P0 — Runtime cutover:** settings-driven ModelRegistry is complete;
+   ArtifactStore abstraction and end-to-end restart tests remain.
+3. **P1 — Honest Console:** rendered Settings pages use one active config and
+   legacy provider write paths are disabled; remove stale unrendered provider
+   components next.
 4. **P2 — Maintainability:** split Console features and runtime bootstrap;
    replace global Console `Promise.all` loading with page/domain-level loading.
 

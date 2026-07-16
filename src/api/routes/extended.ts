@@ -9,32 +9,31 @@
  */
 
 import { Hono } from 'hono';
+import type { Context } from 'hono';
 import { dirname } from 'node:path';
 import type { ServerDeps } from '../server.js';
 import type { LogLevel } from '@/core/observability/logger.js';
 import { getAgentSkillIds, getEnabledToolNames } from '@/core/agent/standard.js';
 import {
-  createModelProvider,
   listModelProviders,
-  setDefaultModelProvider,
   toRuntimeModelInfo,
 } from '@/core/model/providers.js';
 import {
-  createMemoryProvider,
   listMemoryProviders,
-  setDefaultMemoryProvider,
   toRuntimeMemoryProviderInfo,
 } from '@/core/memory/providers.js';
 import {
-  createStorageProvider,
-  initializeStorageProvider,
   listStorageProviders,
-  setDefaultStorageProvider,
   toRuntimeStorageProviderInfo,
   type StorageProviderRole,
 } from '@/core/storage/providers.js';
 import { describeSettingsAdapters, availabilityFromDescriptors } from '@/core/settings/adapters.js';
 import { validateRuntimeSettings } from '@/core/settings/schema.js';
+import {
+  mergeRuntimeSettingsArea,
+  testRuntimeSettingsArea,
+  type RuntimeSettingsTestArea,
+} from '@/core/settings/test.js';
 import {
   getOrSeedRuntimeSettings,
   maskRuntimeSettings,
@@ -43,6 +42,14 @@ import {
 } from '@/core/settings/store.js';
 
 const LOG_LEVELS = new Set<LogLevel>(['debug', 'info', 'warn', 'error']);
+const SETTINGS_TEST_AREAS = new Set<RuntimeSettingsTestArea>([
+  'model',
+  'loop_engine',
+  'storage.metadata',
+  'storage.artifacts',
+  'memory',
+  'sandbox',
+]);
 
 export function extendedRoutes(deps: ServerDeps) {
   const app = new Hono();
@@ -78,6 +85,49 @@ export function extendedRoutes(deps: ServerDeps) {
       ...result,
       ...(result.normalized_config ? { normalized_config: maskRuntimeSettings(result.normalized_config) } : {}),
     });
+  });
+
+  app.post('/settings/test', async (c) => {
+    let body: { area?: unknown; config?: unknown; full_config?: unknown };
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: { type: 'invalid_request', message: 'Request body must be valid JSON' } }, 400);
+    }
+    const area = body?.area;
+    if (typeof area !== 'string' || !SETTINGS_TEST_AREAS.has(area as RuntimeSettingsTestArea)) {
+      return c.json({
+        error: {
+          type: 'invalid_request',
+          message: 'area must be one of model, loop_engine, storage.metadata, storage.artifacts, memory, or sandbox',
+        },
+      }, 400);
+    }
+
+    const settings = getOrSeedRuntimeSettings(deps.db);
+    const candidate = body.full_config
+      ? body.full_config
+      : mergeRuntimeSettingsArea(settings.saved_config, area as RuntimeSettingsTestArea, body.config);
+    const adapters = describeSettingsAdapters(deps.runtime?.sandboxProviders);
+    const validation = validateRuntimeSettings(candidate, availabilityFromDescriptors(adapters));
+    if (!validation.valid || !validation.normalized_config) {
+      return c.json({
+        ok: false,
+        area,
+        status: 'failed',
+        checks: [],
+        errors: validation.errors,
+        warnings: validation.warnings,
+      }, 422);
+    }
+
+    const result = testRuntimeSettingsArea({
+      db: deps.db,
+      dataDir: deps.workspace?.dataDir,
+      area: area as RuntimeSettingsTestArea,
+      config: validation.normalized_config,
+    });
+    return c.json({ ...result, errors: [], warnings: validation.warnings });
   });
 
   app.put('/settings', async (c) => {
@@ -265,33 +315,11 @@ export function extendedRoutes(deps: ServerDeps) {
   });
 
   app.post('/model-providers', async (c) => {
-    let body: unknown;
-    try {
-      body = await c.req.json();
-    } catch {
-      return c.json({ error: { type: 'invalid_request', message: 'Request body must be JSON' } }, 400);
-    }
-
-    try {
-      const record = createModelProvider(deps.db, body as Record<string, unknown>);
-      deps.registerModelProvider?.(record);
-      if (record.is_default) {
-        deps.setDefaultRuntimeModel?.(record.name);
-      }
-      return c.json(toRuntimeModelInfo(record), 201);
-    } catch (err: any) {
-      return c.json({ error: { type: 'invalid_request', message: err?.message ?? 'Invalid model provider' } }, 400);
-    }
+    return legacyProviderMutationUnsupported(c);
   });
 
   app.post('/model-providers/:name/default', (c) => {
-    const name = decodeURIComponent(c.req.param('name'));
-    const record = setDefaultModelProvider(deps.db, name);
-    if (!record) {
-      return c.json({ error: { type: 'not_found', message: 'Model provider not found' } }, 404);
-    }
-    deps.setDefaultRuntimeModel?.(record.name);
-    return c.json(toRuntimeModelInfo(record));
+    return legacyProviderMutationUnsupported(c);
   });
 
   app.get('/memory-providers', (c) => {
@@ -305,32 +333,11 @@ export function extendedRoutes(deps: ServerDeps) {
   });
 
   app.post('/memory-providers', async (c) => {
-    let body: unknown;
-    try {
-      body = await c.req.json();
-    } catch {
-      return c.json({ error: { type: 'invalid_request', message: 'Request body must be JSON' } }, 400);
-    }
-
-    try {
-      const record = createMemoryProvider(deps.db, body as Record<string, unknown>);
-      return c.json(toRuntimeMemoryProviderInfo(record), 201);
-    } catch (err: any) {
-      return c.json({ error: { type: 'invalid_request', message: err?.message ?? 'Invalid memory provider' } }, 400);
-    }
+    return legacyProviderMutationUnsupported(c);
   });
 
   app.post('/memory-providers/:name/default', (c) => {
-    const name = decodeURIComponent(c.req.param('name'));
-    try {
-      const record = setDefaultMemoryProvider(deps.db, name);
-      if (!record) {
-        return c.json({ error: { type: 'not_found', message: 'Memory provider not found' } }, 404);
-      }
-      return c.json(toRuntimeMemoryProviderInfo(record));
-    } catch (err: any) {
-      return c.json({ error: { type: 'invalid_request', message: err?.message ?? 'Invalid memory provider' } }, 400);
-    }
+    return legacyProviderMutationUnsupported(c);
   });
 
   app.get('/storage-providers', (c) => {
@@ -348,45 +355,15 @@ export function extendedRoutes(deps: ServerDeps) {
   });
 
   app.post('/storage-providers', async (c) => {
-    let body: unknown;
-    try {
-      body = await c.req.json();
-    } catch {
-      return c.json({ error: { type: 'invalid_request', message: 'Request body must be JSON' } }, 400);
-    }
-
-    try {
-      const record = createStorageProvider(deps.db, body as Record<string, unknown>);
-      return c.json(toRuntimeStorageProviderInfo(record), 201);
-    } catch (err: any) {
-      return c.json({ error: { type: 'invalid_request', message: err?.message ?? 'Invalid storage provider' } }, 400);
-    }
+    return legacyProviderMutationUnsupported(c);
   });
 
   app.post('/storage-providers/:name/initialize', (c) => {
-    const name = decodeURIComponent(c.req.param('name'));
-    try {
-      const record = initializeStorageProvider(deps.db, name);
-      if (!record) {
-        return c.json({ error: { type: 'not_found', message: 'Storage provider not found' } }, 404);
-      }
-      return c.json(toRuntimeStorageProviderInfo(record));
-    } catch (err: any) {
-      return c.json({ error: { type: 'invalid_request', message: err?.message ?? 'Invalid storage provider' } }, 400);
-    }
+    return legacyProviderMutationUnsupported(c);
   });
 
   app.post('/storage-providers/:name/default', (c) => {
-    const name = decodeURIComponent(c.req.param('name'));
-    try {
-      const record = setDefaultStorageProvider(deps.db, name);
-      if (!record) {
-        return c.json({ error: { type: 'not_found', message: 'Storage provider not found' } }, 404);
-      }
-      return c.json(toRuntimeStorageProviderInfo(record));
-    } catch (err: any) {
-      return c.json({ error: { type: 'invalid_request', message: err?.message ?? 'Invalid storage provider' } }, 400);
-    }
+    return legacyProviderMutationUnsupported(c);
   });
 
   app.get('/templates', (c) => {
@@ -407,6 +384,15 @@ function parsePositiveInteger(value: string | undefined): number | undefined {
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed <= 0) return undefined;
   return Math.trunc(parsed);
+}
+
+function legacyProviderMutationUnsupported(c: Context) {
+  return c.json({
+    error: {
+      type: 'unsupported',
+      message: 'Provider tables are read-only compatibility views. Use /v1/x/settings to validate and save runtime configuration.',
+    },
+  }, 410);
 }
 
 function normalizeStorageProviderRole(value: string | undefined): StorageProviderRole | undefined {

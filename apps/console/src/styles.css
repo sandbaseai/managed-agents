@@ -2168,28 +2168,6 @@ label.searchBox input {
   font-weight: 690;
 }
 
-.settingsSearch {
-  min-height: var(--height-large);
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--surface);
-  padding: 0 9px;
-  color: var(--muted);
-  box-shadow: var(--shadow-control);
-}
-
-.settingsSearch input {
-  width: 100%;
-  border: 0;
-  background: transparent;
-  color: var(--muted);
-  min-height: 30px;
-  font-size: 13px;
-}
-
 .settingsGroupLabel {
   color: var(--muted);
   font-size: 11px;

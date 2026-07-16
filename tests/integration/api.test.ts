@@ -658,7 +658,7 @@ describe('Managed Agents API', () => {
       expect(skills.data.every((item: any) => item.type === 'skill')).toBe(true);
     });
 
-    it('creates dashboard-managed model providers and changes the default provider', async () => {
+    it('keeps legacy model provider endpoints read-only after Settings V2 cutover', async () => {
       const created = await postJson('/v1/x/model-providers', {
         name: 'dashboard-default',
         provider: 'openai',
@@ -666,17 +666,8 @@ describe('Managed Agents API', () => {
         base_url: 'https://api.openai.com/v1',
         api_key: 'sk-test-value',
       });
-      expect(created.res.status).toBe(201);
-      expect(created.body).toMatchObject({
-        name: 'dashboard-default',
-        provider: 'openai',
-        model: 'gpt-4o-mini',
-        base_url: 'https://api.openai.com/v1',
-        api_key_state: 'configured',
-        base_url_state: 'configured',
-        is_default: true,
-      });
-      expect(created.body).not.toHaveProperty('api_key');
+      expect(created.res.status).toBe(410);
+      expect(created.body.error.message).toContain('/v1/x/settings');
 
       const secondary = await postJson('/v1/x/model-providers', {
         name: 'local-llm',
@@ -684,21 +675,19 @@ describe('Managed Agents API', () => {
         model: 'llama3.1',
         base_url: 'http://127.0.0.1:11434/v1',
       });
-      expect(secondary.res.status).toBe(201);
-      expect(secondary.body.is_default).toBe(false);
+      expect(secondary.res.status).toBe(410);
 
       const madeDefault = await postJson('/v1/x/model-providers/local-llm/default', {});
-      expect(madeDefault.res.status).toBe(200);
-      expect(madeDefault.body).toMatchObject({ name: 'local-llm', is_default: true });
+      expect(madeDefault.res.status).toBe(410);
 
       const providers = await getJson('/v1/x/model-providers');
       expect(providers.res.status).toBe(200);
       expectPage(providers.body);
-      expect(providers.body.data[0]).toMatchObject({ name: 'local-llm', is_default: true });
+      expect(providers.body.data.find((model: any) => model.name === 'local-llm')).toBeUndefined();
       expect(JSON.stringify(providers.body)).not.toContain('sk-test-value');
 
       const runtime = await getJson('/v1/x/runtime');
-      expect(runtime.body.models.find((model: any) => model.name === 'local-llm')?.is_default).toBe(true);
+      expect(runtime.body.models.find((model: any) => model.name === 'local-llm')).toBeUndefined();
     });
 
     it('exposes and validates the versioned Settings V2 document', async () => {
@@ -729,6 +718,23 @@ describe('Managed Agents API', () => {
       const valid = await postJson('/v1/x/settings/validate', settings.body.saved_config);
       expect(valid.res.status).toBe(200);
       expect(valid.body).toMatchObject({ valid: true, errors: [] });
+
+      const modelTest = await postJson('/v1/x/settings/test', {
+        area: 'model',
+        config: { ...settings.body.saved_config.model, vendor: 'openai', api_key: 'test-api-key' },
+      });
+      expect(modelTest.res.status).toBe(200);
+      expect(modelTest.body).toMatchObject({ ok: true, area: 'model', status: 'ok' });
+      expect(modelTest.body.checks).toEqual(expect.arrayContaining([
+        expect.objectContaining({ name: 'api_key', status: 'ok' }),
+      ]));
+
+      const artifactTest = await postJson('/v1/x/settings/test', {
+        area: 'storage.artifacts',
+        config: settings.body.saved_config.storage.artifacts,
+      });
+      expect(artifactTest.res.status).toBe(200);
+      expect(artifactTest.body).toMatchObject({ ok: true, area: 'storage.artifacts', status: 'ok' });
 
       const unavailable = await postJson('/v1/x/settings/validate', {
         ...settings.body.saved_config,
@@ -764,7 +770,7 @@ describe('Managed Agents API', () => {
       expect(stale.res.status).toBe(409);
     });
 
-    it('creates dashboard-managed memory providers and protects adapter-only defaults', async () => {
+    it('keeps legacy memory provider endpoints read-only after Settings V2 cutover', async () => {
       const initial = await getJson('/v1/x/memory-providers');
       expect(initial.res.status).toBe(200);
       expectPage(initial.body);
@@ -781,60 +787,18 @@ describe('Managed Agents API', () => {
         provider: 'in_memory',
         api_key: 'secret-value',
       });
-      expect(created.res.status).toBe(201);
-      expect(created.body).toMatchObject({
-        name: 'transient-context',
-        provider: 'in_memory',
-        provider_label: 'In-memory',
-        api_key_state: 'configured',
-        runtime_capable: true,
-        is_default: false,
-      });
-      expect(created.body).not.toHaveProperty('api_key');
+      expect(created.res.status).toBe(410);
+      expect(created.body.error.message).toContain('/v1/x/settings');
 
       const madeDefault = await postJson('/v1/x/memory-providers/transient-context/default', {});
-      expect(madeDefault.res.status).toBe(200);
-      expect(madeDefault.body).toMatchObject({ name: 'transient-context', is_default: true });
-
-      const adapterOnly = await postJson('/v1/x/memory-providers', {
-        name: 'mem0-cloud',
-        provider: 'mem0',
-        connection_url: 'https://api.mem0.ai',
-      });
-      expect(adapterOnly.res.status).toBe(201);
-      expect(adapterOnly.body).toMatchObject({
-        name: 'mem0-cloud',
-        provider: 'mem0',
-        status: 'adapter_required',
-        runtime_capable: false,
-        is_default: false,
-      });
-
-      const invalidDefault = await postJson('/v1/x/memory-providers/mem0-cloud/default', {});
-      expect(invalidDefault.res.status).toBe(400);
-
-      const database = await postJson('/v1/x/memory-providers', {
-        name: 'warehouse-memory',
-        provider: 'database',
-        connection_url: 'postgres://memory_user:memory_password@db.example.com:5432/agents',
-      });
-      expect(database.res.status).toBe(201);
-      expect(database.body).toMatchObject({
-        name: 'warehouse-memory',
-        provider: 'database',
-        status: 'adapter_required',
-        runtime_capable: false,
-      });
-      expect(database.body.connection_url).toContain('db.example.com');
-      expect(database.body.connection_url).not.toContain('memory_password');
+      expect(madeDefault.res.status).toBe(410);
 
       const runtime = await getJson('/v1/x/runtime');
-      expect(runtime.body.memory_providers.find((provider: any) => provider.name === 'transient-context')?.is_default).toBe(true);
+      expect(runtime.body.memory_providers.find((provider: any) => provider.name === 'transient-context')).toBeUndefined();
       expect(JSON.stringify(runtime.body.memory_providers)).not.toContain('secret-value');
-      expect(JSON.stringify(runtime.body.memory_providers)).not.toContain('memory_password');
     });
 
-    it('creates dashboard-managed storage providers and protects adapter-only defaults', async () => {
+    it('keeps legacy storage provider endpoints read-only after Settings V2 cutover', async () => {
       const initial = await getJson('/v1/x/storage-providers');
       expect(initial.res.status).toBe(200);
       expectPage(initial.body);
@@ -863,20 +827,11 @@ describe('Managed Agents API', () => {
         provider: 'postgres',
         connection_url: 'postgres://meta_user:meta_password@db.example.com:5432/agents',
       });
-      expect(postgres.res.status).toBe(201);
-      expect(postgres.body).toMatchObject({
-        name: 'warehouse-meta',
-        role: 'metadata',
-        provider: 'postgres',
-        status: 'adapter_required',
-        runtime_capable: false,
-        is_default: false,
-      });
-      expect(postgres.body.connection_url).toContain('db.example.com');
-      expect(postgres.body.connection_url).not.toContain('meta_password');
+      expect(postgres.res.status).toBe(410);
+      expect(postgres.body.error.message).toContain('/v1/x/settings');
 
       const invalidDefault = await postJson('/v1/x/storage-providers/warehouse-meta/default', {});
-      expect(invalidDefault.res.status).toBe(400);
+      expect(invalidDefault.res.status).toBe(410);
 
       const s3 = await postJson('/v1/x/storage-providers', {
         name: 'archive-bucket',
@@ -887,16 +842,7 @@ describe('Managed Agents API', () => {
         access_key: 'AKIA_TEST_VALUE',
         secret_key: 'secret-storage-key',
       });
-      expect(s3.res.status).toBe(201);
-      expect(s3.body).toMatchObject({
-        name: 'archive-bucket',
-        role: 'artifact',
-        provider: 's3',
-        status: 'adapter_required',
-        runtime_capable: false,
-        secret_key_state: 'configured',
-      });
-      expect(s3.body).not.toHaveProperty('secret_key');
+      expect(s3.res.status).toBe(410);
 
       const local = await postJson('/v1/x/storage-providers', {
         name: 'fast-local-artifacts',
@@ -904,33 +850,19 @@ describe('Managed Agents API', () => {
         provider: 'local_filesystem',
         base_path: 'artifacts-fast',
       });
-      expect(local.res.status).toBe(201);
-      expect(local.body).toMatchObject({
-        name: 'fast-local-artifacts',
-        role: 'artifact',
-        provider: 'local_filesystem',
-        status: 'init_required',
-        runtime_capable: true,
-        is_default: false,
-      });
+      expect(local.res.status).toBe(410);
 
       const defaultBeforeInit = await postJson('/v1/x/storage-providers/fast-local-artifacts/default', {});
-      expect(defaultBeforeInit.res.status).toBe(400);
+      expect(defaultBeforeInit.res.status).toBe(410);
 
       const initialized = await postJson('/v1/x/storage-providers/fast-local-artifacts/initialize', {});
-      expect(initialized.res.status).toBe(200);
-      expect(initialized.body).toMatchObject({
-        name: 'fast-local-artifacts',
-        status: 'active',
-        is_default: false,
-      });
+      expect(initialized.res.status).toBe(410);
 
       const madeDefault = await postJson('/v1/x/storage-providers/fast-local-artifacts/default', {});
-      expect(madeDefault.res.status).toBe(200);
-      expect(madeDefault.body).toMatchObject({ name: 'fast-local-artifacts', is_default: true });
+      expect(madeDefault.res.status).toBe(410);
 
       const runtime = await getJson('/v1/x/runtime');
-      expect(runtime.body.storage_providers.find((provider: any) => provider.name === 'fast-local-artifacts')?.is_default).toBe(true);
+      expect(runtime.body.storage_providers.find((provider: any) => provider.name === 'fast-local-artifacts')).toBeUndefined();
       expect(JSON.stringify(runtime.body.storage_providers)).not.toContain('meta_password');
       expect(JSON.stringify(runtime.body.storage_providers)).not.toContain('secret-storage-key');
     });
