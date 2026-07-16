@@ -1,7 +1,7 @@
 import { Box, Check, ChevronDown, Lock, MessageSquare, Monitor, MoreVertical, Pencil, Play, Plus, Server, Sparkles, Zap } from 'lucide-react';
-import { type ReactNode, useState } from 'react';
+import { useState } from 'react';
 import { postJson } from '../../api';
-import { EmptyState, FilterSelect, StatusPill, Toolbar } from '../Common';
+import { EmptyState, FilterSelect, MetricCard, StatusPill, Toolbar } from '../Common';
 import { formatDate, formatDateShort, formatUsage, shortId } from '../../lib/format';
 import type { Agent, AgentTab, ConsoleData, McpToolset, Session } from '../../types';
 
@@ -315,16 +315,6 @@ function AgentObservability({ sessions, tokenIn, tokenOut }: { sessions: Session
           <button className="filterButton" type="button">Version <strong>All</strong> <ChevronDown size={15} /></button>
         </div>
       </div>
-    </div>
-  );
-}
-
-function MetricCard({ title, value, subtitle }: { title: string; value: ReactNode; subtitle?: string }) {
-  return (
-    <div className="metricCard">
-      <strong>{title}</strong>
-      <span>{value}</span>
-      {subtitle ? <small>{subtitle}</small> : null}
     </div>
   );
 }
