@@ -644,7 +644,7 @@ must not imply that a planned adapter is active.
    Console `App.tsx` should continue splitting into settings/bootstrap,
    adapter registries, and independently loaded feature modules. The first
    split moved Console data loading, Settings V2 editor/navigation, Settings
-   overview, and Settings logs out of `App.tsx`.
+   overview, Settings logs, and the Settings page shell out of `App.tsx`.
 
 ### 13.3 Priority order
 
@@ -684,6 +684,8 @@ Implemented for this release:
 - read-only legacy provider compatibility and `410 Gone` legacy mutations;
 - documentation for local setup, API usage, upgrade behavior, and adapter
   availability.
+- incremental Console decomposition for Settings data loading, navigation,
+  editor pages, logs, overview, and shell layout.
 
 Explicitly not part of the first-release done definition:
 

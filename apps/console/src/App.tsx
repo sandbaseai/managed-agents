@@ -48,8 +48,9 @@ import { Modal } from './components/Modal';
 import { Files, Skills } from './components/pages/BuildPages';
 import { SettingsGeneral } from './components/pages/settings/SettingsGeneral';
 import { SettingsLogs } from './components/pages/settings/SettingsLogs';
+import { SettingsPage } from './components/pages/settings/SettingsPage';
 import { RuntimeSettingsEditor } from './components/pages/settings/RuntimeSettingsEditor';
-import { SETTINGS_GROUPS, SETTINGS_SECTIONS, SETTINGS_VIEW_IDS, type SettingsSection } from './components/pages/settings/navigation';
+import { SETTINGS_VIEW_IDS, type SettingsSection } from './components/pages/settings/navigation';
 import { useHashRoute } from './hooks/useHashRoute';
 import { useConsoleData } from './hooks/useConsoleData';
 import { copyText, downloadJson, formatDate, formatDateShort, formatDuration, formatUsage, pathName, relativeDate, relativeWorkspacePath, shortId, titleCase, truncateMiddle, workspaceConfigDir } from './lib/format';
@@ -3027,48 +3028,13 @@ function SettingsView({
   onRefresh: () => void;
   setView: (view: ViewId) => void;
 }) {
-  const [active, setActive] = useState<SettingsSection>(section);
-
-  useEffect(() => {
-    setActive(section);
-  }, [section]);
-
   return (
-    <section className="settingsShell">
-      <aside className="settingsSidebar" aria-label="Settings sections">
-        <div className="settingsSidebarHeader">
-          <strong>Settings</strong>
-          <button className="iconButton quiet" type="button" title="Back to console" onClick={() => setView('agents')}>
-            <X size={17} />
-          </button>
-        </div>
-        {SETTINGS_GROUPS.map((group) => (
-          <div className="settingsNavGroup" key={group}>
-            <div className="settingsGroupLabel">{group}</div>
-            <div className="settingsNav">
-              {SETTINGS_SECTIONS.filter((item) => item.group === group).map((item) => {
-                const Icon = item.icon;
-                const nextView: ViewId = item.id === 'general' ? 'settings' : item.id;
-                return (
-                  <button
-                    type="button"
-                    key={item.id}
-                    className={`settingsNavItem ${active === item.id ? 'active' : ''}`}
-                    onClick={() => {
-                      setActive(item.id);
-                      setView(nextView);
-                    }}
-                  >
-                    <Icon size={18} />
-                    <span>{item.label}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        ))}
-      </aside>
-      <div className="settingsContent">
+    <SettingsPage
+      data={data}
+      section={section}
+      setView={setView}
+      renderSection={(active) => (
+        <>
         {active === 'general' ? <SettingsGeneral data={data} setView={setView} /> : null}
         {active === 'workspace' ? <WorkspaceView data={data} /> : null}
         {active === 'models' ? <RuntimeSettingsEditor data={data} section="models" onRefresh={onRefresh} /> : null}
@@ -3080,8 +3046,9 @@ function SettingsView({
         {active === 'api-reference' ? <SettingsApiReference data={data} /> : null}
         {active === 'logs' ? <SettingsLogs data={data} /> : null}
         {active === 'monitoring' ? <Observability data={data} /> : null}
-      </div>
-    </section>
+        </>
+      )}
+    />
   );
 }
 
