@@ -305,6 +305,42 @@ export type Runtime = {
   auth_enabled: boolean;
 };
 
+export type SettingsAdapterDescriptor = {
+  id: string;
+  label: string;
+  version: string;
+  status: 'available' | 'unavailable';
+  restart_policy: 'none' | 'runtime';
+};
+
+export type RuntimeSettingsConfig = {
+  schema_version: 1;
+  model: { vendor: 'openai' | 'anthropic' | 'openai_compatible'; base_url?: string; api_key?: string; options: Record<string, unknown> };
+  loop_engine: { provider: 'builtin' | 'harness' | 'codex' | 'claude'; options: { default_max_steps: number; [key: string]: unknown } };
+  storage: {
+    metadata: { provider: 'sqlite' | 'postgres' | 'mysql'; options: Record<string, unknown> };
+    artifacts: { provider: 'local' | 's3'; options: Record<string, unknown> };
+  };
+  memory: { enabled: boolean; provider: 'sqlite' | 'memu' | 'mem0'; options: Record<string, unknown> };
+  sandbox: { provider: 'local' | 'docker' | 'remote'; options: { timeout_seconds: number; [key: string]: unknown } };
+};
+
+export type RuntimeSettings = {
+  schema_version: 1;
+  revision: number;
+  saved_config: RuntimeSettingsConfig;
+  effective_config: RuntimeSettingsConfig;
+  restart_required: boolean;
+  secret_states: { model: { api_key: RuntimeConfigState } };
+  adapters: {
+    model: SettingsAdapterDescriptor[];
+    loop_engine: SettingsAdapterDescriptor[];
+    storage: { metadata: SettingsAdapterDescriptor[]; artifacts: SettingsAdapterDescriptor[] };
+    memory: SettingsAdapterDescriptor[];
+    sandbox: SettingsAdapterDescriptor[];
+  };
+};
+
 export type RuntimeLogLevel = 'debug' | 'info' | 'warn' | 'error';
 
 export type RuntimeLogEntry = {
@@ -348,6 +384,7 @@ export type ConsoleData = {
   storageProviders: RuntimeStorageProvider[];
   runtime: Runtime | null;
   workspace: Workspace | null;
+  settings: RuntimeSettings | null;
 };
 
 export type ViewId =

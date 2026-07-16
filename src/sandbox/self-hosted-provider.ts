@@ -33,6 +33,8 @@ export interface WorkItem {
   result?: unknown;
 }
 
+export type WorkCompletionResult = 'completed' | 'not_found' | 'not_claimed_by_worker';
+
 /**
  * Queue primitives shared by the provider (enqueue/await) and the HTTP worker
  * endpoints (claim/complete).
@@ -74,10 +76,12 @@ export class WorkQueue {
     });
   }
 
-  complete(id: string, result: unknown, failed = false): void {
-    this.db
-      .prepare("UPDATE work_items SET status = ?, result = ?, completed_at = datetime('now') WHERE id = ?")
-      .run(failed ? 'failed' : 'done', JSON.stringify(result), id);
+  complete(id: string, workerId: string, result: unknown, failed = false): WorkCompletionResult {
+    const update = this.db
+      .prepare("UPDATE work_items SET status = ?, result = ?, completed_at = datetime('now') WHERE id = ? AND status = 'claimed' AND claimed_by = ?")
+      .run(failed ? 'failed' : 'done', JSON.stringify(result), id, workerId) as { changes: number };
+    if (update.changes === 1) return 'completed';
+    return this.get(id) ? 'not_claimed_by_worker' : 'not_found';
   }
 
   get(id: string): WorkItem | null {

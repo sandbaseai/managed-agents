@@ -9,7 +9,7 @@ import { formatBytes, formatDateShort, formatDateWithYear, shortId } from '../..
 export function Skills({ data, onRefresh }: { data: ConsoleData; onRefresh: () => void }) {
   const [query, setQuery] = useState('');
   const [source, setSource] = useState<'all' | Skill['source']>('all');
-  const [selectedId, setSelectedId] = useState<string | null>(data.skills[0]?.id ?? null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -23,11 +23,7 @@ export function Skills({ data, onRefresh }: { data: ConsoleData; onRefresh: () =
       return sourceMatches && queryMatches;
     });
   }, [data.skills, query, source]);
-  const selected = filtered.find((skill) => skill.id === selectedId) ?? filtered[0] ?? null;
-
-  useEffect(() => {
-    if (selected && selected.id !== selectedId) setSelectedId(selected.id);
-  }, [selected, selectedId]);
+  const selected = selectedId ? filtered.find((skill) => skill.id === selectedId) ?? null : null;
 
   return (
     <section className="stack skillsPage">
@@ -64,7 +60,7 @@ export function Skills({ data, onRefresh }: { data: ConsoleData; onRefresh: () =
         />
       </div>
 
-      <div className="skillsLayout">
+      <div className={`skillsLayout${selected ? ' hasDrawer' : ''}`}>
         <div className="tablePanel skillTablePanel">
           <table>
             <thead>

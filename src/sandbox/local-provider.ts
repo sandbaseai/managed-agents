@@ -27,6 +27,30 @@ import type {
   ExecResult,
 } from '@/types/sandbox.js';
 
+const INHERITED_ENVIRONMENT_KEYS = [
+  'HOME',
+  'LANG',
+  'LC_ALL',
+  'LOGNAME',
+  'PATH',
+  'SHELL',
+  'TERM',
+  'TMPDIR',
+  'TMP',
+  'TEMP',
+  'USER',
+] as const;
+
+function sandboxEnvironment(extra: Record<string, string> | undefined): Record<string, string> {
+  const inherited = Object.fromEntries(
+    INHERITED_ENVIRONMENT_KEYS.flatMap((key) => {
+      const value = process.env[key];
+      return value === undefined ? [] : [[key, value]];
+    }),
+  );
+  return { ...inherited, ...extra };
+}
+
 export class LocalSandboxProvider implements SandboxProvider {
   readonly type = 'local';
 
@@ -78,7 +102,9 @@ class LocalSandboxInstance implements SandboxInstance {
     const timeout = options?.timeout ?? 300_000; // 5 minutes default
     const cwd = options?.cwd ? this.resolveInsideWorkDir(options.cwd) : this.workDir;
     this.assertExistingPathInsideWorkDir(cwd, options?.cwd ?? '.');
-    const env = { ...process.env, ...options?.env };
+    // Commands are untrusted agent actions. Do not inherit service credentials
+    // or arbitrary host configuration; credentials must be injected explicitly.
+    const env = sandboxEnvironment(options?.env);
 
     return new Promise<ExecResult>((resolve) => {
       let stdout = '';

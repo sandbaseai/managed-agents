@@ -148,9 +148,9 @@ describe('Managed Agents API', () => {
     return { res, body: await res.json() as any };
   }
 
-  async function postJson(path: string, body: unknown) {
+  async function postJson(path: string, body: unknown, method: 'POST' | 'PUT' = 'POST') {
     const res = await app.request(path, {
-      method: 'POST',
+      method,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
@@ -699,6 +699,69 @@ describe('Managed Agents API', () => {
 
       const runtime = await getJson('/v1/x/runtime');
       expect(runtime.body.models.find((model: any) => model.name === 'local-llm')?.is_default).toBe(true);
+    });
+
+    it('exposes and validates the versioned Settings V2 document', async () => {
+      const settings = await getJson('/v1/x/settings');
+      expect(settings.res.status).toBe(200);
+      expect(settings.body).toMatchObject({
+        schema_version: 1,
+        revision: 1,
+        restart_required: false,
+        secret_states: { model: { api_key: 'not_set' } },
+        saved_config: {
+          schema_version: 1,
+          loop_engine: { provider: 'builtin' },
+          storage: {
+            metadata: { provider: 'sqlite' },
+            artifacts: { provider: 'local' },
+          },
+          memory: { provider: 'sqlite' },
+          sandbox: { provider: 'local' },
+        },
+      });
+      expect(settings.body.adapters.loop_engine).toEqual(expect.arrayContaining([
+        expect.objectContaining({ id: 'builtin', status: 'available' }),
+        expect.objectContaining({ id: 'codex', status: 'unavailable' }),
+      ]));
+      expect(JSON.stringify(settings.body)).not.toContain('test-api-key');
+
+      const valid = await postJson('/v1/x/settings/validate', settings.body.saved_config);
+      expect(valid.res.status).toBe(200);
+      expect(valid.body).toMatchObject({ valid: true, errors: [] });
+
+      const unavailable = await postJson('/v1/x/settings/validate', {
+        ...settings.body.saved_config,
+        loop_engine: {
+          ...settings.body.saved_config.loop_engine,
+          provider: 'codex',
+        },
+      });
+      expect(unavailable.res.status).toBe(200);
+      expect(unavailable.body.valid).toBe(false);
+      expect(unavailable.body.errors).toContainEqual(expect.objectContaining({
+        path: 'loop_engine.provider',
+        code: 'adapter_unavailable',
+      }));
+
+      const updatedConfig = {
+        ...settings.body.saved_config,
+        model: {
+          ...settings.body.saved_config.model,
+          api_key: 'settings-secret-value',
+        },
+        loop_engine: {
+          ...settings.body.saved_config.loop_engine,
+          options: { default_max_steps: 42 },
+        },
+      };
+      const saved = await postJson('/v1/x/settings', { revision: settings.body.revision, config: updatedConfig }, 'PUT');
+      expect(saved.res.status).toBe(200);
+      expect(saved.body).toMatchObject({ revision: 2, restart_required: true, secret_states: { model: { api_key: 'configured' } } });
+      expect(JSON.stringify(saved.body)).not.toContain('settings-secret-value');
+
+      const stale = await postJson('/v1/x/settings', { revision: 1, config: updatedConfig }, 'PUT');
+      expect(stale.res.status).toBe(409);
     });
 
     it('creates dashboard-managed memory providers and protects adapter-only defaults', async () => {
