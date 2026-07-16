@@ -661,8 +661,9 @@ must not imply that a planned adapter is active.
    Settings overview, Settings logs, API keys, Monitoring, API Reference, API
    endpoint docs data, the Settings section router, Agents pages, Sessions
    pages, Environments pages, Credential Vault pages, Memory Store pages,
-   Agent YAML modals, and the Settings page shell out of `App.tsx`; shared
-   metric cards moved into common Console components; runtime Settings composition moved out of
+   Agent YAML modals, Session creation/resource modals, and the Settings page
+   shell out of `App.tsx`; shared metric cards moved into common Console
+   components; runtime Settings composition moved out of
    `src/index.ts`; the stale pre-Settings Runtime view was removed.
 
 ### 13.3 Priority order
@@ -708,7 +709,7 @@ Implemented for this release:
   editor pages, Workspace, logs, API keys, Monitoring, API Reference, endpoint
   docs data, section router, Agents pages, Sessions pages, Environments pages,
   Credential Vault pages, Memory Store pages, Agent YAML modals, overview, and
-  shell layout.
+  Session creation/resource modals, overview, and shell layout.
 - parallel domain-level Console data loaders for build, resource, access, and
   runtime data instead of one monolithic endpoint list.
 - runtime composition helper for Settings activation, model registration,
