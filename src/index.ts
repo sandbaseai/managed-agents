@@ -7,7 +7,6 @@
 
 import { Command } from 'commander';
 import { serve } from '@hono/node-server';
-import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
@@ -35,6 +34,7 @@ import { resolveApiKeys } from './api/auth.js';
 import { countActiveManagedApiKeys, validateManagedApiKey } from './core/auth/api-keys.js';
 import { composeRuntimeFromSettings } from './core/runtime/composition.js';
 import { ensureDefaultEnvironment, loadRuntimeConfigBootstrap } from './core/runtime/config-bootstrap.js';
+import { createRuntimeStopper } from './core/runtime/lifecycle.js';
 import { createLogger, InMemoryLogStore } from './core/observability/logger.js';
 import { Metrics } from './core/observability/metrics.js';
 import type { AgentDefinition } from './types/agent.js';
@@ -311,56 +311,12 @@ async function startServer(opts: { port: string; host: string; dataDir?: string;
   const logger = createLogger({ logStore });
   const metrics = new Metrics();
   let server: ReturnType<typeof serve> | undefined;
-  let shuttingDown = false;
-
-  const stopRuntime = async (mode: 'shutdown' | 'restart') => {
-    if (shuttingDown) return;
-    shuttingDown = true;
-    const restarting = mode === 'restart';
-    logger.warn(restarting ? 'runtime_restart_requested' : 'runtime_shutdown_requested', {
-      source: 'runtime',
-    });
-    console.log(restarting ? '\nRestarting runtime...' : '\nShutting down...');
-    if (server) {
-      await new Promise<void>((resolveClose) => {
-        server?.close((err?: Error) => {
-          if (err) {
-            logger.warn('http_server_close_failed', {
-              error: err.message,
-            });
-          }
-          resolveClose();
-        });
-      });
-    }
-    try {
-      await sessionManager.shutdown();
-    } catch (err: any) {
-      logger.error('session_manager_shutdown_failed', {
-        error: err?.message ?? String(err),
-      });
-    }
-    db.close();
-
-    if (restarting) {
-      try {
-        const child = spawn(process.execPath, process.argv.slice(1), {
-          cwd: process.cwd(),
-          env: process.env,
-          stdio: 'ignore',
-          detached: true,
-        });
-        child.unref();
-      } catch (err: any) {
-        logger.error('runtime_restart_spawn_failed', {
-          error: err?.message ?? String(err),
-        });
-        process.exit(1);
-      }
-    }
-
-    process.exit(0);
-  };
+  const stopRuntime = createRuntimeStopper({
+    getServer: () => server,
+    sessionManager,
+    db,
+    logger,
+  });
 
   // Create HTTP server
   const app = createServer({
