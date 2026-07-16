@@ -573,6 +573,8 @@ SQLite under the user data directory and do not rewrite source-controlled YAML.
 - Storage sections are vertically flattened without horizontal scrolling.
 - Memory and Loop engine never render provider tables.
 - Unavailable adapters cannot be selected.
+- Default saveable availability includes only implemented adapters; planned
+  adapters may appear only as unavailable capability descriptors.
 - Restart banner appears and clears after restart.
 - Layout is verified at desktop, medium, and narrow viewport widths.
 

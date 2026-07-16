@@ -55,6 +55,20 @@ describe('Settings V2 schema', () => {
     }, availabilityFromDescriptors(descriptors));
     expect(result.valid).toBe(true);
   });
+
+  it('keeps planned adapters out of the default saveable availability set', () => {
+    const descriptors = describeSettingsAdapters();
+    const availability = availabilityFromDescriptors(descriptors);
+
+    expect([...availability.loopEngines]).toEqual(['builtin']);
+    expect([...availability.metadataStorage]).toEqual(['sqlite']);
+    expect([...availability.artifactStorage]).toEqual(['local']);
+    expect([...availability.memoryProviders]).toEqual(['sqlite']);
+    expect([...availability.sandboxProviders]).toEqual(['local']);
+    expect(descriptors.loop_engine.find((adapter) => adapter.id === 'codex')?.status).toBe('unavailable');
+    expect(descriptors.storage.artifacts.find((adapter) => adapter.id === 's3')?.status).toBe('unavailable');
+    expect(descriptors.memory.find((adapter) => adapter.id === 'mem0')?.status).toBe('unavailable');
+  });
 });
 
 describe('Settings V2 activation', () => {
