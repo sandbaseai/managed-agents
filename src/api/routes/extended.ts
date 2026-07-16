@@ -28,7 +28,7 @@ import {
   type StorageProviderRole,
 } from '@/core/storage/providers.js';
 import { describeSettingsAdapters, availabilityFromDescriptors } from '@/core/settings/adapters.js';
-import { validateRuntimeSettings } from '@/core/settings/schema.js';
+import { validateRuntimeSettings, type RuntimeSettings } from '@/core/settings/schema.js';
 import {
   mergeRuntimeSettingsArea,
   testRuntimeSettingsArea,
@@ -148,6 +148,7 @@ export function extendedRoutes(deps: ServerDeps) {
         ...validation,
       }, 422);
     }
+    const previous = getOrSeedRuntimeSettings(deps.db);
     const saved = saveRuntimeSettings(
       deps.db,
       validation.normalized_config,
@@ -161,6 +162,12 @@ export function extendedRoutes(deps: ServerDeps) {
         saved_config: maskRuntimeSettings(saved.record.saved_config),
       }, 409);
     }
+    deps.logger?.info('runtime_settings_saved', {
+      old_revision: previous.revision,
+      new_revision: saved.record.revision,
+      changed_paths: changedRuntimeSettingsPaths(previous.saved_config, saved.record.saved_config),
+      restart_required: saved.record.restart_required,
+    });
     return c.json({
       schema_version: saved.record.schema_version,
       revision: saved.record.revision,
@@ -377,6 +384,29 @@ export function extendedRoutes(deps: ServerDeps) {
   });
 
   return app;
+}
+
+function changedRuntimeSettingsPaths(before: RuntimeSettings, after: RuntimeSettings): string[] {
+  const paths = new Set<string>();
+  collectChangedPaths(before, after, '', paths);
+  return Array.from(paths).sort();
+}
+
+function collectChangedPaths(before: unknown, after: unknown, prefix: string, paths: Set<string>): void {
+  if (Object.is(before, after)) return;
+  if (isPlainObject(before) && isPlainObject(after)) {
+    const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
+    for (const key of keys) {
+      const childPrefix = prefix ? `${prefix}.${key}` : key;
+      collectChangedPaths(before[key], after[key], childPrefix, paths);
+    }
+    return;
+  }
+  if (prefix) paths.add(prefix);
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
 function parsePositiveInteger(value: string | undefined): number | undefined {

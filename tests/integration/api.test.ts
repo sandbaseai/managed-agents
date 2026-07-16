@@ -12,6 +12,7 @@ import { SessionManager } from '@/core/session/session-manager.js';
 import { createServer } from '@/api/server.js';
 import { loadSkills } from '@/core/skills/loader.js';
 import { createLogger, InMemoryLogStore } from '@/core/observability/logger.js';
+import { activateRuntimeSettings } from '@/core/settings/store.js';
 import type { Session, SessionEvent } from '@/types/session.js';
 import type { UserEvent } from '@/types/cma-protocol.js';
 import type { RuntimeModelInfo } from '@/types/model.js';
@@ -764,7 +765,26 @@ describe('Managed Agents API', () => {
       const saved = await postJson('/v1/x/settings', { revision: settings.body.revision, config: updatedConfig }, 'PUT');
       expect(saved.res.status).toBe(200);
       expect(saved.body).toMatchObject({ revision: 2, restart_required: true, secret_states: { model: { api_key: 'configured' } } });
+      expect(saved.body.saved_config.loop_engine.options.default_max_steps).toBe(42);
+      expect(saved.body.effective_config.loop_engine.options.default_max_steps).toBe(25);
       expect(JSON.stringify(saved.body)).not.toContain('settings-secret-value');
+      const auditLogs = logStore.list({ query: 'runtime_settings_saved' });
+      expect(auditLogs.at(-1)).toMatchObject({
+        msg: 'runtime_settings_saved',
+        old_revision: 1,
+        new_revision: 2,
+        restart_required: true,
+      });
+      expect(auditLogs.at(-1)?.changed_paths).toEqual(expect.arrayContaining([
+        'loop_engine.options.default_max_steps',
+        'model.api_key',
+      ]));
+
+      activateRuntimeSettings(db, {}, dataDir);
+      const afterActivation = await getJson('/v1/x/settings');
+      expect(afterActivation.res.status).toBe(200);
+      expect(afterActivation.body.restart_required).toBe(false);
+      expect(afterActivation.body.effective_config.loop_engine.options.default_max_steps).toBe(42);
 
       const stale = await postJson('/v1/x/settings', { revision: 1, config: updatedConfig }, 'PUT');
       expect(stale.res.status).toBe(409);

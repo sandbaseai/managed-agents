@@ -1,6 +1,6 @@
 # Settings V2 Specification
 
-Status: Proposed  
+Status: Implemented, active iteration
 Target: managed-agents local runtime and Dashboard  
 Primary surface: `/dashboard#settings`
 
@@ -56,7 +56,9 @@ CREATE TABLE runtime_settings (
   id TEXT PRIMARY KEY CHECK (id = 'default'),
   schema_version INTEGER NOT NULL,
   config TEXT NOT NULL,
+  effective_config TEXT NOT NULL,
   revision INTEGER NOT NULL DEFAULT 1,
+  effective_revision INTEGER NOT NULL DEFAULT 1,
   restart_required INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -540,6 +542,8 @@ mutation endpoints return `410 Gone` and point callers to `/v1/x/settings`.
 - Invalid adapter and unavailable adapter rejection.
 - Literal and environment-backed secret behavior.
 - Saved/effective revision behavior across runtime restart.
+- Settings save audit log includes old revision, new revision, changed paths,
+  and never includes secret values.
 - No secret is returned by any API.
 
 ### Runtime integration tests
@@ -640,9 +644,9 @@ must not imply that a planned adapter is active.
    ownership enforcement, and CORS allowlist are complete for the current
    local-first runtime. Remaining work is broader deployment auth policy and
    retiring legacy provider tables after the compatibility window.
-2. **P0 — Runtime cutover:** settings-driven ModelRegistry and local
-   ArtifactStore abstraction are complete. End-to-end restart tests and future
-   non-local artifact adapters remain.
+2. **P0 — Runtime cutover:** settings-driven ModelRegistry, saved/effective
+   revision behavior, Settings save audit logs, and the local ArtifactStore
+   abstraction are complete. Future non-local artifact adapters remain.
 3. **P1 — Honest Console:** rendered Settings pages use one active config,
    legacy provider write paths are disabled, and stale unrendered provider
    components have been removed from `App.tsx`.
