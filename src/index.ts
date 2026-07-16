@@ -23,6 +23,7 @@ import { bootstrapRuntimeModelRegistry } from './core/runtime/model-bootstrap.js
 import { bootstrapRuntimeSandboxes } from './core/runtime/sandbox-bootstrap.js';
 import { resolveRuntimeApiAuth } from './core/runtime/api-auth.js';
 import { createRuntimeSessionServices } from './core/runtime/session-runtime.js';
+import { attachRuntimeServerErrorHandler, parseCsv, runtimeStartupBannerLines } from './core/runtime/http-server.js';
 import { createLogger, InMemoryLogStore } from './core/observability/logger.js';
 import { Metrics } from './core/observability/metrics.js';
 
@@ -289,44 +290,30 @@ async function startServer(opts: { port: string; host: string; dataDir?: string;
     port,
     hostname: host,
   }, (info) => {
-    console.log(`\n  managed-agents v${VERSION}\n`);
-    console.log(`  API:       http://${host}:${info.port}/v1`);
-    console.log(`  Dashboard: http://${host}:${info.port}/dashboard`);
-    console.log(`  Health:    http://${host}:${info.port}/v1/x/health`);
-    console.log(`  Agents:    ${agents.length} loaded`);
-    console.log(`  Skills:    ${skills.length} loaded`);
-    console.log(`  Sandbox:   ${sandboxRegistry.listTypes().join(', ')}`);
-    console.log(`  Memory:    ${memory ? memory.name : 'disabled'}`);
-    console.log(`  Target:    ${target}`);
-    console.log(`  Data:      ${dataDir}`);
-    console.log(`  Auth:      ${runtimeApiAuth.hasApiKeys() ? 'enabled (Bearer token required)' : 'DISABLED (open - localhost only)'}`);
-    if (agentSkillState.agentLoadErrors.length > 0) {
-      console.log(`  Warnings:  ${agentSkillState.agentLoadErrors.length} agent load errors`);
+    for (const line of runtimeStartupBannerLines({
+      version: VERSION,
+      host,
+      port: info.port,
+      agentsCount: agents.length,
+      skillsCount: skills.length,
+      sandboxProviders: sandboxRegistry.listTypes(),
+      memory: memory ? memory.name : 'disabled',
+      target,
+      dataDir,
+      authEnabled: runtimeApiAuth.hasApiKeys(),
+      agentLoadErrorCount: agentSkillState.agentLoadErrors.length,
+    })) {
+      console.log(line);
     }
-    console.log('');
   });
 
   // Port-in-use / bind errors: print a clear message and exit (R1.5) rather
   // than crashing with an unhandled 'error' event stack trace.
-  server.on('error', (err: NodeJS.ErrnoException) => {
-    if (err.code === 'EADDRINUSE') {
-      console.error(`Error: [PORT_IN_USE] Port ${port} is already in use.`);
-      console.error(`  -> Stop the process using it, or start with --port <other>`);
-    } else {
-      console.error(`Error: [SERVER] ${err.message}`);
-    }
-    db.close();
-    process.exit(1);
-  });
+  attachRuntimeServerErrorHandler({ server, port, db });
 
   // Graceful shutdown: stop accepting requests, drain turns + sandboxes, close DB
   process.on('SIGINT', () => void stopRuntime('shutdown'));
   process.on('SIGTERM', () => void stopRuntime('shutdown'));
-}
-
-function parseCsv(value: string | undefined): string[] {
-  if (!value) return [];
-  return value.split(',').map((item) => item.trim()).filter(Boolean);
 }
 
 // ============================================================
