@@ -19,10 +19,10 @@ import {
   Zap,
 } from 'lucide-react';
 import { Dispatch, FormEvent, SetStateAction, useEffect, useState } from 'react';
-import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { postJson, putJson } from './api';
 import { EmptyState, LoadingState, RequiredMark } from './components/Common';
 import { Modal } from './components/Modal';
+import { AgentEditModal, AgentModal } from './components/modals/AgentModals';
 import { Agents, AgentDetail } from './components/pages/AgentPages';
 import { Sessions, SessionDetail } from './components/pages/SessionPages';
 import { Files, Skills } from './components/pages/BuildPages';
@@ -37,7 +37,6 @@ import { formatDateShort } from './lib/format';
 import type {
   Agent,
   AgentTab,
-  AgentToolset,
   ConsoleData,
   CredentialAuthType,
   Environment,
@@ -45,7 +44,6 @@ import type {
   MemoryStore,
   Session,
   SessionResourceDraft,
-  SkillRef,
   Template,
   Vault,
   ViewId,
@@ -423,170 +421,6 @@ function View(props: {
   }
 }
 
-
-function AgentModal({ template, data, onClose, onSaved }: { template?: Template; data: ConsoleData; onClose: () => void; onSaved: () => void }) {
-  const initialTemplate = template ?? data.templates[0];
-  const [selected, setSelected] = useState<Template | undefined>(initialTemplate);
-  const [yaml, setYaml] = useState(agentDefinitionYaml(initialTemplate?.agent ?? defaultAgentDraft(data)));
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
-
-  const chooseTemplate = (next: Template) => {
-    setSelected(next);
-    setYaml(agentDefinitionYaml(next.agent));
-  };
-
-  const submit = async (event: FormEvent) => {
-    event.preventDefault();
-    setSaving(true);
-    setError('');
-    try {
-      await postJson('/v1/agents', parseYaml(yaml));
-      onSaved();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <Modal title="Create agent" subtitle="Start from a template and edit the YAML config." onClose={onClose} size="wide">
-      <form className="agentComposer" onSubmit={submit}>
-        {error ? <div className="banner error inlineBanner">{error}</div> : null}
-        <section className="composerSection">
-          <div className="sectionTitle"><ChevronDown size={18} /><strong>Starting point</strong>{selected ? <span>· {selected.name}</span> : null}</div>
-          <div className="claudeTemplateGrid">
-            {data.templates.map((item) => (
-              <button
-                type="button"
-                key={item.id}
-                className={`claudeTemplateCard ${selected?.id === item.id ? 'selected' : ''}`}
-                onClick={() => chooseTemplate(item)}
-              >
-                <strong>{item.name}</strong>
-                <span>{item.description}</span>
-                {item.tags.length ? <small>{item.tags.slice(0, 4).join(' · ')}</small> : null}
-              </button>
-            ))}
-          </div>
-        </section>
-
-        <section className="composerSection">
-          <h2>Agent config</h2>
-          <YamlEditor value={yaml} onChange={setYaml} minRows={18} />
-        </section>
-
-        <div className="modalActions stickyActions">
-          <button className="darkButton" type="submit" disabled={saving}>Create agent</button>
-        </div>
-      </form>
-    </Modal>
-  );
-}
-
-function AgentEditModal({ agent, onClose, onSaved }: { agent: Agent; onClose: () => void; onSaved: () => void }) {
-  const [yaml, setYaml] = useState(agentDefinitionYaml(agentDraftFromApi(agent)));
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
-
-  const submit = async (event: FormEvent) => {
-    event.preventDefault();
-    setSaving(true);
-    setError('');
-    try {
-      await putJson(`/v1/agents/${agent.id}`, parseYaml(yaml));
-      onSaved();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <Modal title="Edit agent" onClose={onClose} size="medium">
-      <form className="agentComposer" onSubmit={submit}>
-        {error ? <div className="banner error inlineBanner">{error}</div> : null}
-        <YamlEditor value={yaml} onChange={setYaml} minRows={16} />
-        <div className="modalActions stickyActions">
-          <button className="darkButton" type="submit" disabled={saving}>Save new version</button>
-        </div>
-      </form>
-    </Modal>
-  );
-}
-
-type AgentDraft = {
-  name: string;
-  description?: string;
-  model: string;
-  model_config?: { speed: string };
-  system: string;
-  mcp_servers?: Array<Record<string, unknown>>;
-  tools?: AgentToolset[];
-  skills?: SkillRef[];
-  metadata?: Record<string, unknown>;
-};
-
-function YamlEditor({ value, onChange, minRows }: { value: string; onChange: (value: string) => void; minRows: number }) {
-  return (
-    <div className="yamlShell">
-      <div className="yamlToolbar">
-        <button type="button">YAML <ChevronDown size={16} /></button>
-        <FileText size={17} />
-      </div>
-      <textarea
-        className="yamlTextarea"
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        rows={minRows}
-        spellCheck={false}
-      />
-    </div>
-  );
-}
-
-function defaultAgentDraft(data: ConsoleData): AgentDraft {
-  return {
-    name: 'Untitled agent',
-    description: 'A blank starting point with the core toolset.',
-    model: data.runtime?.models[0]?.name ?? 'claude-sonnet-5',
-    system: 'You are a general-purpose agent that can research, write code, run commands, and use connected tools to complete the user\'s task end to end.',
-    mcp_servers: [],
-    tools: [{ type: 'agent_toolset_20260401' }],
-    skills: [],
-    metadata: {},
-  };
-}
-
-function agentDraftFromApi(agent: Agent): AgentDraft {
-  return {
-    name: agent.name,
-    model: agent.model,
-    model_config: agent.model_config,
-    description: agent.description,
-    system: agent.system,
-    mcp_servers: agent.mcp_servers,
-    tools: agent.tools,
-    skills: agent.skills,
-    metadata: agent.metadata ?? {},
-  };
-}
-
-function agentDefinitionYaml(agent: AgentDraft): string {
-  return stringifyYaml({
-    name: agent.name,
-    ...(agent.description ? { description: agent.description } : {}),
-    model: agent.model,
-    ...(agent.model_config && agent.model_config.speed !== 'standard' ? { model_config: agent.model_config } : {}),
-    system: agent.system,
-    mcp_servers: agent.mcp_servers ?? [],
-    tools: agent.tools ?? [{ type: 'agent_toolset_20260401' }],
-    skills: agent.skills ?? [],
-    metadata: agent.metadata ?? {},
-  }, { blockQuote: 'literal', lineWidth: 100 });
-}
 
 function SessionModal({
   data,
