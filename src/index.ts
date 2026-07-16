@@ -20,14 +20,13 @@ import { ContextCompactor } from './core/session/context-compactor.js';
 import { SnapshotManager } from './core/session/snapshot-manager.js';
 import { createServer } from './api/server.js';
 import { defaultTemplateCacheDir, resolveDataDir, resolveUserPath } from './core/config/paths.js';
-import { resolveApiKeys } from './api/auth.js';
-import { countActiveManagedApiKeys, validateManagedApiKey } from './core/auth/api-keys.js';
 import { composeRuntimeFromSettings } from './core/runtime/composition.js';
 import { ensureDefaultEnvironment, loadRuntimeConfigBootstrap } from './core/runtime/config-bootstrap.js';
 import { createRuntimeStopper } from './core/runtime/lifecycle.js';
 import { loadRuntimeAgentSkillState, reloadRuntimeAgents } from './core/runtime/agent-skill-bootstrap.js';
 import { bootstrapRuntimeModelRegistry } from './core/runtime/model-bootstrap.js';
 import { bootstrapRuntimeSandboxes } from './core/runtime/sandbox-bootstrap.js';
+import { resolveRuntimeApiAuth } from './core/runtime/api-auth.js';
 import { createLogger, InMemoryLogStore } from './core/observability/logger.js';
 import { Metrics } from './core/observability/metrics.js';
 
@@ -243,10 +242,7 @@ async function startServer(opts: { port: string; host: string; dataDir?: string;
     console.log(`  Recovery:  reconciled ${reconciled} interrupted session(s)`);
   }
 
-  // Resolve API keys (config + MANAGED_AGENTS_API_KEY env). Empty = open.
-  const apiKeys = resolveApiKeys(configBootstrap.apiKeys);
-  const hasRuntimeApiKeys = () => apiKeys.length > 0 || countActiveManagedApiKeys(db) > 0;
-  const validateRuntimeApiKey = (key: string) => apiKeys.includes(key) || validateManagedApiKey(db, key);
+  const runtimeApiAuth = resolveRuntimeApiAuth({ db, configKeys: configBootstrap.apiKeys });
 
   // Observability
   const logStore = new InMemoryLogStore();
@@ -265,9 +261,9 @@ async function startServer(opts: { port: string; host: string; dataDir?: string;
     db,
     sessionManager,
     agents,
-    apiKeys,
-    hasApiKeys: hasRuntimeApiKeys,
-    validateApiKey: validateRuntimeApiKey,
+    apiKeys: runtimeApiAuth.apiKeys,
+    hasApiKeys: runtimeApiAuth.hasApiKeys,
+    validateApiKey: runtimeApiAuth.validateApiKey,
     logger,
     logStore,
     metrics,
@@ -288,7 +284,7 @@ async function startServer(opts: { port: string; host: string; dataDir?: string;
       models: modelRegistry.listRuntimeInfo(),
       sandboxProviders: sandboxRegistry.listTypes(),
       memory: memory ? memory.name : 'disabled',
-      authEnabled: apiKeys.length > 0,
+      authEnabled: runtimeApiAuth.apiKeys.length > 0,
     },
     listRuntimeModels: () => modelRegistry.listRuntimeInfo(),
     registerModelProvider: (config) => modelRegistry.register(config),
@@ -316,7 +312,7 @@ async function startServer(opts: { port: string; host: string; dataDir?: string;
     console.log(`  Memory:    ${memory ? memory.name : 'disabled'}`);
     console.log(`  Target:    ${target}`);
     console.log(`  Data:      ${dataDir}`);
-    console.log(`  Auth:      ${hasRuntimeApiKeys() ? 'enabled (Bearer token required)' : 'DISABLED (open - localhost only)'}`);
+    console.log(`  Auth:      ${runtimeApiAuth.hasApiKeys() ? 'enabled (Bearer token required)' : 'DISABLED (open - localhost only)'}`);
     if (agentSkillState.agentLoadErrors.length > 0) {
       console.log(`  Warnings:  ${agentSkillState.agentLoadErrors.length} agent load errors`);
     }
