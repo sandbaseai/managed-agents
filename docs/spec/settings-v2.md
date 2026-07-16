@@ -661,8 +661,8 @@ must not imply that a planned adapter is active.
    legacy provider write paths are disabled, and stale unrendered provider
    components have been removed from `App.tsx`.
 4. **P2 — Maintainability:** split Console features and runtime bootstrap;
-   global Console bootstrap loading now uses domain loaders, while future work
-   can make each page invoke only the domain it needs.
+   global Console bootstrap loading now uses parallel domain loaders, while
+   future work can make each page invoke only the domain it needs.
 
 No configuration page may offer a save action whose adapter is not connected
 to observable runtime behavior.
@@ -690,8 +690,8 @@ Implemented for this release:
 - incremental Console decomposition for Settings data loading, navigation,
   editor pages, Workspace, logs, API keys, Monitoring, overview, and shell
   layout.
-- domain-level Console data loaders for build, resource, access, and runtime
-  data instead of one monolithic endpoint list.
+- parallel domain-level Console data loaders for build, resource, access, and
+  runtime data instead of one monolithic endpoint list.
 - runtime composition helper for Settings activation, model registration,
   memory selection, artifact storage, and default Environment sandbox fallback.
 - stale pre-Settings Runtime view removed from the Console composition root.

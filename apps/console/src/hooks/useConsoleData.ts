@@ -78,10 +78,12 @@ export function useConsoleData() {
     setLoading(true);
     setError('');
     try {
-      const build = await loadBuildDomain();
-      const resources = await loadResourceDomain();
-      const access = await loadAccessDomain();
-      const runtime = await loadRuntimeDomain();
+      const [build, resources, access, runtime] = await Promise.all([
+        loadBuildDomain(),
+        loadResourceDomain(),
+        loadAccessDomain(),
+        loadRuntimeDomain(),
+      ]);
       setData({
         ...emptyConsoleData(),
         ...build,
