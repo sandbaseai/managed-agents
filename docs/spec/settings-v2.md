@@ -663,9 +663,10 @@ must not imply that a planned adapter is active.
    modals, Session creation/resource modals, Resource, Credential, and Memory
    creation modals, and the Settings page shell moved out of `App.tsx`. Shared
    metric cards moved into common Console components. Runtime Settings
-   composition moved out of `src/index.ts`, but `src/index.ts` should continue
-   splitting into CLI registration, config seeding, server lifecycle, and
-   runtime bootstrap modules. The stale pre-Settings Runtime view was removed.
+   composition and runtime config bootstrap moved out of `src/index.ts`, but
+   `src/index.ts` should continue splitting into CLI registration, server
+   lifecycle, and runtime bootstrap modules. The stale pre-Settings Runtime
+   view was removed.
 
 ### 13.3 Priority order
 
@@ -718,6 +719,9 @@ Implemented for this release:
   runtime data instead of one monolithic endpoint list.
 - runtime composition helper for Settings activation, model registration,
   memory selection, artifact storage, and default Environment sandbox fallback.
+- runtime config bootstrap helper for default Environment seeding, YAML API key
+  loading, legacy model bootstrap, SQLite memory seeding, and config-defined
+  Environments.
 - stale pre-Settings Runtime view removed from the Console composition root.
 - legacy provider arrays removed from the Console page-state model.
 

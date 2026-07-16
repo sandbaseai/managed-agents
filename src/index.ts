@@ -8,10 +8,8 @@
 import { Command } from 'commander';
 import { serve } from '@hono/node-server';
 import { spawn } from 'node:child_process';
-import { existsSync, readFileSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { nanoid } from 'nanoid';
-import { parse as parseYaml } from 'yaml';
 
 import { Database } from './core/db/database.js';
 import { SessionManager } from './core/session/session-manager.js';
@@ -30,19 +28,16 @@ import { SandboxProviderRegistry } from './sandbox/registry.js';
 import { SelfHostedSandboxProvider, WorkQueue } from './sandbox/self-hosted-provider.js';
 import { DefaultStrategy } from './strategy/default-strategy.js';
 import { ContextCompactor } from './core/session/context-compactor.js';
-import { SqliteMemoryProvider } from './core/memory/sqlite-memory-provider.js';
-import type { MemoryProvider } from './core/memory/memory-provider.js';
 import { SnapshotManager } from './core/session/snapshot-manager.js';
 import { createServer } from './api/server.js';
-import { resolveEnvVars } from './core/config/env-resolver.js';
 import { defaultTemplateCacheDir, resolveDataDir, resolveUserPath } from './core/config/paths.js';
 import { resolveApiKeys } from './api/auth.js';
 import { countActiveManagedApiKeys, validateManagedApiKey } from './core/auth/api-keys.js';
 import { composeRuntimeFromSettings } from './core/runtime/composition.js';
+import { ensureDefaultEnvironment, loadRuntimeConfigBootstrap } from './core/runtime/config-bootstrap.js';
 import { createLogger, InMemoryLogStore } from './core/observability/logger.js';
 import { Metrics } from './core/observability/metrics.js';
 import type { AgentDefinition } from './types/agent.js';
-import type { ModelConfig } from './types/model.js';
 
 const VERSION = '0.1.0';
 
@@ -203,71 +198,14 @@ async function startServer(opts: { port: string; host: string; dataDir?: string;
   const db = new Database(dbPath);
   db.runMigrations();
 
-  // Ensure default environment exists
-  const envCheck = db.prepare('SELECT id FROM environments WHERE id = ?').get('env_default');
-  if (!envCheck) {
-    db.exec(`INSERT INTO environments (id, name, config) VALUES ('env_default', 'local', '{"sandbox_provider":"local","timeout":300}')`);
-  }
+  ensureDefaultEnvironment(db);
 
-  // Load config file
   const modelRegistry = new ModelRegistry();
-  let configApiKeys: string[] = [];
-  let configModels: ModelConfig[] = [];
-  let memory: MemoryProvider | undefined;
-  if (existsSync(configPath)) {
-    const configContent = readFileSync(configPath, 'utf-8');
-    const config = parseYaml(configContent) as any;
+  const configBootstrap = loadRuntimeConfigBootstrap({ db, configPath, target });
 
-    // API keys (auth): resolve ${ENV_VAR} refs in configured keys
-    if (Array.isArray(config.api_keys)) {
-      configApiKeys = config.api_keys
-        .map((k: string) => (typeof k === 'string' ? resolveEnvVars(k, false) : ''))
-        .filter(Boolean);
-    }
-
-    // Memory provider (optional). Built-in `sqlite` provider; adapters (mem0/
-    // memU) can be plugged in later. Disabled unless memory.provider is set.
-    if (config.memory?.provider === 'sqlite') {
-      memory = new SqliteMemoryProvider(db);
-    }
-
-    // Register base models, then apply target overrides (R13.3/13.4). The same
-    // config runs locally or in the cloud; `overrides.<target>.models` layers
-    // target-specific model settings (e.g. different base_url/api_key) on top,
-    // matched by model `name`. Selected via `--target local|cloud`.
-    const baseModels: any[] = Array.isArray(config.models) ? config.models : [];
-    const overrideModels: any[] = config.overrides?.[target]?.models ?? [];
-    const merged = new Map<string, any>();
-    for (const m of baseModels) merged.set(m.name, m);
-    for (const m of overrideModels) merged.set(m.name, { ...merged.get(m.name), ...m });
-    configModels = [...merged.values()].map((m) => ({
-        name: m.name,
-        provider: m.provider,
-        model: m.model,
-        base_url: m.base_url,
-        api_key: m.api_key,
-        is_default: Boolean(m.is_default),
-      }) as ModelConfig);
-
-    // Load environments
-    if (config.environments && typeof config.environments === 'object') {
-      for (const [name, envConfig] of Object.entries(config.environments as Record<string, any>)) {
-        const envId = `env_${nanoid(18)}`;
-        const existing = db.prepare('SELECT id FROM environments WHERE name = ?').get(name);
-        if (!existing) {
-          db.prepare('INSERT INTO environments (id, name, config) VALUES (?, ?, ?)').run(
-            envId,
-            name,
-            JSON.stringify(envConfig),
-          );
-        }
-      }
-    }
-  }
-
-// Dashboard-managed model providers are stored in SQLite and are the runtime
-// source of truth. Config models can optionally bootstrap a new local project.
-  seedModelProviders(db, configModels);
+  // Dashboard-managed model providers are stored in SQLite and are the runtime
+  // source of truth. Config models can optionally bootstrap a new local project.
+  seedModelProviders(db, configBootstrap.models);
   for (const model of listModelProviders(db)) {
     modelRegistry.register(model);
   }
@@ -314,10 +252,10 @@ async function startServer(opts: { port: string; host: string; dataDir?: string;
     db,
     dataDir,
     modelRegistry,
-    memorySeedEnabled: Boolean(memory),
+    memorySeedEnabled: Boolean(configBootstrap.memory),
   });
   const effectiveSettings = runtimeComposition.settings.effective_config;
-  memory = runtimeComposition.memory;
+  const memory = runtimeComposition.memory;
 
   // Create core components
   const sessionManager = new SessionManager(db);
@@ -364,7 +302,7 @@ async function startServer(opts: { port: string; host: string; dataDir?: string;
   }
 
   // Resolve API keys (config + MANAGED_AGENTS_API_KEY env). Empty = open.
-  const apiKeys = resolveApiKeys(configApiKeys);
+  const apiKeys = resolveApiKeys(configBootstrap.apiKeys);
   const hasRuntimeApiKeys = () => apiKeys.length > 0 || countActiveManagedApiKeys(db) > 0;
   const validateRuntimeApiKey = (key: string) => apiKeys.includes(key) || validateManagedApiKey(db, key);
 
