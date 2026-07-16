@@ -44,16 +44,8 @@ import { deleteJson, getJson, getPage, postJson, putJson } from './api';
 import { EmptyState, FilterSelect, KeyValuePanel, LoadingState, RequiredMark, ResourceBadge, StatusPill, SummaryStrip, Toolbar } from './components/Common';
 import { Modal } from './components/Modal';
 import { Files, Skills } from './components/pages/BuildPages';
-import { SettingsGeneral } from './components/pages/settings/SettingsGeneral';
-import { SettingsApiKeys } from './components/pages/settings/SettingsApiKeys';
-import { SettingsLogs } from './components/pages/settings/SettingsLogs';
-import { SettingsMonitoring } from './components/pages/settings/SettingsMonitoring';
-import { SettingsPage } from './components/pages/settings/SettingsPage';
-import { RuntimeSettingsEditor } from './components/pages/settings/RuntimeSettingsEditor';
-import { SettingsWorkspace } from './components/pages/settings/SettingsWorkspace';
-import { SettingsApiReference } from './components/pages/settings/SettingsApiReference';
-import { API_REFERENCE_DOCS } from './components/pages/settings/apiReferenceDocs';
-import { SETTINGS_VIEW_IDS, type SettingsSection } from './components/pages/settings/navigation';
+import { SettingsView } from './components/pages/settings/SettingsView';
+import { SETTINGS_VIEW_IDS } from './components/pages/settings/navigation';
 import { useHashRoute } from './hooks/useHashRoute';
 import { useConsoleData } from './hooks/useConsoleData';
 import { downloadJson, formatDate, formatDateShort, formatDuration, formatUsage, pathName, relativeDate, relativeWorkspacePath, shortId, titleCase, truncateMiddle, workspaceConfigDir } from './lib/format';
@@ -1991,41 +1983,6 @@ function environmentNetworkLabel(environment: Environment) {
   if (typeof type === 'string' && type.length > 0) return titleCase(type.replace('_', ' '));
   if (environment.hosting_type === 'self_hosted') return 'Self-hosted';
   return 'Limited';
-}
-
-function SettingsView({
-  data,
-  section,
-  onRefresh,
-  setView,
-}: {
-  data: ConsoleData;
-  section: SettingsSection;
-  onRefresh: () => void;
-  setView: (view: ViewId) => void;
-}) {
-  return (
-    <SettingsPage
-      data={data}
-      section={section}
-      setView={setView}
-      renderSection={(active) => (
-        <>
-        {active === 'general' ? <SettingsGeneral data={data} setView={setView} /> : null}
-        {active === 'workspace' ? <SettingsWorkspace data={data} /> : null}
-        {active === 'models' ? <RuntimeSettingsEditor data={data} section="models" onRefresh={onRefresh} /> : null}
-        {active === 'loop-engine' ? <RuntimeSettingsEditor data={data} section="loop-engine" onRefresh={onRefresh} /> : null}
-        {active === 'storage' ? <RuntimeSettingsEditor data={data} section="storage" onRefresh={onRefresh} /> : null}
-        {active === 'memory' ? <RuntimeSettingsEditor data={data} section="memory" onRefresh={onRefresh} /> : null}
-        {active === 'sandbox' ? <RuntimeSettingsEditor data={data} section="sandbox" onRefresh={onRefresh} /> : null}
-        {active === 'api-keys' ? <SettingsApiKeys data={data} onRefresh={onRefresh} /> : null}
-        {active === 'api-reference' ? <SettingsApiReference data={data} docs={API_REFERENCE_DOCS} /> : null}
-        {active === 'logs' ? <SettingsLogs data={data} /> : null}
-        {active === 'monitoring' ? <SettingsMonitoring data={data} /> : null}
-        </>
-      )}
-    />
-  );
 }
 
 function AgentModal({ template, data, onClose, onSaved }: { template?: Template; data: ConsoleData; onClose: () => void; onSaved: () => void }) {
