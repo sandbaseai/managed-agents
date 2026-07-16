@@ -14,9 +14,7 @@ import { Database } from './core/db/database.js';
 import { SessionManager } from './core/session/session-manager.js';
 import { DefaultSessionExecutor } from './core/session/executor.js';
 import { loadAgentDefinitionById } from './core/agent/store.js';
-import { listModelProviders, seedModelProviders } from './core/model/providers.js';
 import { installTemplate, createTemplate, listTemplates, resolveTemplateSource } from './core/templates/templates.js';
-import { ModelRegistry } from './model/registry.js';
 import { LocalSandboxProvider } from './sandbox/local-provider.js';
 import { DockerSandboxProvider, isDockerAvailable } from './sandbox/docker-provider.js';
 import { SandboxProviderRegistry } from './sandbox/registry.js';
@@ -32,6 +30,7 @@ import { composeRuntimeFromSettings } from './core/runtime/composition.js';
 import { ensureDefaultEnvironment, loadRuntimeConfigBootstrap } from './core/runtime/config-bootstrap.js';
 import { createRuntimeStopper } from './core/runtime/lifecycle.js';
 import { loadRuntimeAgentSkillState, reloadRuntimeAgents } from './core/runtime/agent-skill-bootstrap.js';
+import { bootstrapRuntimeModelRegistry } from './core/runtime/model-bootstrap.js';
 import { createLogger, InMemoryLogStore } from './core/observability/logger.js';
 import { Metrics } from './core/observability/metrics.js';
 
@@ -196,19 +195,8 @@ async function startServer(opts: { port: string; host: string; dataDir?: string;
 
   ensureDefaultEnvironment(db);
 
-  const modelRegistry = new ModelRegistry();
   const configBootstrap = loadRuntimeConfigBootstrap({ db, configPath, target });
-
-  // Dashboard-managed model providers are stored in SQLite and are the runtime
-  // source of truth. Config models can optionally bootstrap a new local project.
-  seedModelProviders(db, configBootstrap.models);
-  for (const model of listModelProviders(db)) {
-    modelRegistry.register(model);
-  }
-  const defaultModel = listModelProviders(db).find((model) => model.is_default);
-  if (defaultModel) {
-    modelRegistry.setDefault(defaultModel.name);
-  }
+  const { modelRegistry } = bootstrapRuntimeModelRegistry({ db, configModels: configBootstrap.models });
 
   const agentSkillState = loadRuntimeAgentSkillState({ db, agentsDir, skillsDir });
   const agents = agentSkillState.agents;
