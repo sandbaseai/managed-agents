@@ -471,48 +471,60 @@ Settings V2 is introduced with an additive migration.
 Migration must prefer actual runtime wiring over records that were previously
 saved but never connected to runtime behavior.
 
-## 10. Delivery plan
+## 10. Delivery plan and status
 
 ### Phase 1: schema and validation
 
-- Define Zod schemas for the top-level document and built-in adapter options.
-- Implement adapter descriptors and availability reporting.
-- Add `runtime_settings` migration and legacy seed logic.
-- Implement read and validate APIs.
-- Add encrypted secret serialization.
+- [x] Define Zod schemas for the top-level document and built-in adapter
+  options.
+- [x] Implement adapter descriptors and availability reporting.
+- [x] Add `runtime_settings` migration and legacy seed logic.
+- [x] Implement read and validate APIs.
+- [x] Add encrypted secret serialization.
 
 Exit criteria: a candidate JSON document can be validated with field-level
 errors, and existing workspaces produce a correct effective document.
 
 ### Phase 2: runtime wiring
 
-- Create model, engine, memory, storage, and sandbox registries.
-- Replace direct engine and memory construction with settings-driven factories.
-- Make workspace sandbox the fallback while preserving Environment overrides.
-- Report saved/effective revisions and restart requirements.
-- Implement save and adapter test APIs.
+- [x] Create settings-driven model, memory, artifact storage, and sandbox
+  composition helpers.
+- [x] Keep the built-in loop engine as the single implemented engine while
+  making its default step limit configurable.
+- [x] Replace direct model and memory construction with settings-driven
+  factories.
+- [x] Make workspace sandbox the fallback while preserving Environment
+  overrides.
+- [x] Report saved/effective revisions and restart requirements.
+- [x] Implement save and adapter test APIs for implemented adapters.
+- [ ] Add real non-local adapters only when their runtime implementations exist.
 
 Exit criteria: changing every available setting changes observable runtime
 behavior after the documented activation step.
 
 ### Phase 3: Dashboard
 
-- Replace the current model list with one vendor form.
-- Replace Loop engine plugin cards with one engine form.
-- Flatten Storage into Metadata and Artifact sections.
-- Replace Memory provider table with one backend form.
-- Replace Sandbox fake selects with one default form and capability summary.
-- Add Form/JSON modes, validation results, dirty state, and restart banner.
-- Apply the Claude/Codex visual pass after behavior is complete.
+- [x] Replace the current model list with one vendor form.
+- [x] Replace Loop engine plugin cards with one engine form.
+- [x] Flatten Storage into Metadata and Artifact sections.
+- [x] Replace Memory provider table with one backend form.
+- [x] Replace Sandbox fake selects with one default form and capability summary.
+- [x] Add Form/JSON modes, validation results, dirty state, restart banner, and
+  validate-before-save gating.
+- [x] Keep unavailable adapters visible only as neutral, disabled capability
+  descriptors.
+- [ ] Continue Claude/Codex visual polish after behavior remains stable.
 
 Exit criteria: no page offers an action that the backend cannot perform.
 
 ### Phase 4: cleanup and compatibility
 
-- Deprecate legacy provider write endpoints.
-- Remove unused Dashboard modal and table components.
-- Update README, installation, usage, API, and configuration documentation.
-- Add upgrade notes for workspaces created before Settings V2.
+- [x] Deprecate legacy provider write endpoints.
+- [x] Remove stale unrendered Dashboard provider components from `App.tsx`.
+- [x] Remove legacy provider arrays from the Console page-state model.
+- [x] Update README, installation, usage, API, and configuration documentation.
+- [x] Add upgrade notes for workspaces created before Settings V2.
+- [ ] Remove legacy read endpoints after the compatibility window ends.
 
 Compatibility decision: legacy provider `GET` endpoints remain readable for
 one release so older clients can inspect existing rows. Legacy provider
