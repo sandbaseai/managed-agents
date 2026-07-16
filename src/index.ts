@@ -11,13 +11,8 @@ import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
 import { Database } from './core/db/database.js';
-import { SessionManager } from './core/session/session-manager.js';
-import { DefaultSessionExecutor } from './core/session/executor.js';
-import { loadAgentDefinitionById } from './core/agent/store.js';
 import { installTemplate, createTemplate, listTemplates, resolveTemplateSource } from './core/templates/templates.js';
 import { DefaultStrategy } from './strategy/default-strategy.js';
-import { ContextCompactor } from './core/session/context-compactor.js';
-import { SnapshotManager } from './core/session/snapshot-manager.js';
 import { createServer } from './api/server.js';
 import { defaultTemplateCacheDir, resolveDataDir, resolveUserPath } from './core/config/paths.js';
 import { composeRuntimeFromSettings } from './core/runtime/composition.js';
@@ -27,6 +22,7 @@ import { loadRuntimeAgentSkillState, reloadRuntimeAgents } from './core/runtime/
 import { bootstrapRuntimeModelRegistry } from './core/runtime/model-bootstrap.js';
 import { bootstrapRuntimeSandboxes } from './core/runtime/sandbox-bootstrap.js';
 import { resolveRuntimeApiAuth } from './core/runtime/api-auth.js';
+import { createRuntimeSessionServices } from './core/runtime/session-runtime.js';
 import { createLogger, InMemoryLogStore } from './core/observability/logger.js';
 import { Metrics } from './core/observability/metrics.js';
 
@@ -209,35 +205,26 @@ async function startServer(opts: { port: string; host: string; dataDir?: string;
   const effectiveSettings = runtimeComposition.settings.effective_config;
   const memory = runtimeComposition.memory;
 
-  // Create core components
-  const sessionManager = new SessionManager(db);
-  const eventLogger = sessionManager.getEventLogger();
   const strategy = new DefaultStrategy();
   const { sandboxProvider, sandboxRegistry, workQueue } = bootstrapRuntimeSandboxes({ db, dataDir });
-
   const artifactStore = runtimeComposition.artifactStore;
-  const snapshots = new SnapshotManager(db, artifactStore.path('snapshots'));
-
-  // Wire executor (with context compaction + skills enabled)
-  const executor = new DefaultSessionExecutor({
+  const {
+    sessionManager,
+    executor,
+    reconciled,
+  } = createRuntimeSessionServices({
+    db,
     agents,
     modelRegistry,
     sandboxProvider,
     sandboxRegistry,
-    resolveEnvironmentConfig: runtimeComposition.resolveEnvironmentConfig,
-    resolveAgent: (agentId) => loadAgentDefinitionById(db, agentId),
+    runtimeComposition,
     strategy,
-    eventLogger,
-    compactor: new ContextCompactor(),
     skills,
     memory,
-    snapshots,
+    artifactStore,
     defaultMaxSteps: effectiveSettings.loop_engine.options.default_max_steps,
   });
-  sessionManager.setExecutor(executor);
-
-  // Crash recovery: reconcile any sessions left 'running' by a previous crash
-  const reconciled = sessionManager.reconcileOrphans();
   if (reconciled > 0) {
     console.log(`  Recovery:  reconciled ${reconciled} interrupted session(s)`);
   }

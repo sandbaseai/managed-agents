@@ -665,9 +665,10 @@ must not imply that a planned adapter is active.
    metric cards moved into common Console components. Runtime Settings
    composition, runtime config bootstrap, ModelRegistry bootstrap, Agent/Skill
    bootstrap, Sandbox provider bootstrap, runtime API auth resolution, and
-   runtime shutdown/restart lifecycle handling moved out of `src/index.ts`, but
-   `src/index.ts` should continue splitting into CLI registration and remaining
-   runtime bootstrap modules. The stale pre-Settings Runtime view was removed.
+   Session runtime service wiring, plus runtime shutdown/restart lifecycle
+   handling moved out of `src/index.ts`, but `src/index.ts` should continue
+   splitting into CLI registration and remaining runtime bootstrap modules. The
+   stale pre-Settings Runtime view was removed.
 
 ### 13.3 Priority order
 
@@ -684,11 +685,11 @@ must not imply that a planned adapter is active.
 4. **P2 — Maintainability:** Console feature/page/modal decomposition is
    complete for the current first-release Dashboard. Runtime composition,
    config bootstrap, ModelRegistry bootstrap, Agent/Skill bootstrap, and
-   Sandbox provider bootstrap, API auth resolution, and shutdown/restart
-   lifecycle are now tested helpers. Remaining runtime wiring should continue
-   splitting out of `src/index.ts`; global Console bootstrap loading now uses
-   parallel domain loaders, while future work can make each page invoke only the
-   domain it needs.
+   Sandbox provider bootstrap, API auth resolution, Session runtime service
+   wiring, and shutdown/restart lifecycle are now tested helpers. Remaining
+   runtime wiring should continue splitting out of `src/index.ts`; global
+   Console bootstrap loading now uses parallel domain loaders, while future work
+   can make each page invoke only the domain it needs.
 
 No configuration page may offer a save action whose adapter is not connected
 to observable runtime behavior.
@@ -735,6 +736,9 @@ Implemented for this release:
   Docker provider registration, and self-hosted WorkQueue provider wiring.
 - runtime API auth helper for config/env key resolution plus dynamic
   SQLite-managed API key presence and validation.
+- runtime Session services helper for SessionManager, DefaultSessionExecutor,
+  SnapshotManager, context compaction, durable Agent resolution, and orphaned
+  session recovery wiring.
 - runtime lifecycle helper for graceful shutdown, restart spawning, server close
   errors, session drain errors, and idempotent repeated stop requests.
 - stale pre-Settings Runtime view removed from the Console composition root.
