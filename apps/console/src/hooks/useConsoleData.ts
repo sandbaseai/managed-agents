@@ -19,8 +19,8 @@ import type {
 function emptyConsoleData(): ConsoleData {
   return {
     agents: [], sessions: [], environments: [], vaults: [], memoryStores: [],
-    files: [], apiKeys: [], skills: [], templates: [], memoryProviders: [],
-    storageProviders: [], runtime: null, workspace: null, settings: null,
+    files: [], apiKeys: [], skills: [], templates: [],
+    runtime: null, workspace: null, settings: null,
   };
 }
 
@@ -41,7 +41,7 @@ async function loadBuildDomain(): Promise<Pick<ConsoleData, 'agents' | 'sessions
   };
 }
 
-async function loadResourceDomain(): Promise<Pick<ConsoleData, 'environments' | 'vaults' | 'memoryStores' | 'memoryProviders' | 'storageProviders'>> {
+async function loadResourceDomain(): Promise<Pick<ConsoleData, 'environments' | 'vaults' | 'memoryStores'>> {
   const [environments, vaults, memoryStores] = await Promise.all([
     getPage<Environment>('/v1/environments'),
     getPage<Vault>('/v1/credential-vaults'),
@@ -51,8 +51,6 @@ async function loadResourceDomain(): Promise<Pick<ConsoleData, 'environments' | 
     environments: environments.data,
     vaults: vaults.data,
     memoryStores: memoryStores.data,
-    memoryProviders: [],
-    storageProviders: [],
   };
 }
 

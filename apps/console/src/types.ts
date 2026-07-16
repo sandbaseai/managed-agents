@@ -380,8 +380,6 @@ export type ConsoleData = {
   apiKeys: ApiKey[];
   skills: Skill[];
   templates: Template[];
-  memoryProviders: RuntimeMemoryProvider[];
-  storageProviders: RuntimeStorageProvider[];
   runtime: Runtime | null;
   workspace: Workspace | null;
   settings: RuntimeSettings | null;

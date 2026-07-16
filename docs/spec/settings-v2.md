@@ -624,8 +624,8 @@ must not imply that a planned adapter is active.
 
 1. **Single source of truth is now Settings V2 for shipped runtime settings.**
    The Dashboard no longer loads legacy memory-provider or storage-provider
-   data. Legacy provider mutation endpoints are read-only compatibility
-   failures (`410`) and no new Dashboard writes may be added.
+   data into its page state. Legacy provider mutation endpoints are read-only
+   compatibility failures (`410`) and no new Dashboard writes may be added.
 2. **Model vendor needs an adapter-owned resolved model.** Settings must not
    ask for a Model ID, but a concrete provider request still needs one. Each
    shipped vendor adapter therefore owns a versioned default mapping and
@@ -695,6 +695,7 @@ Implemented for this release:
 - runtime composition helper for Settings activation, model registration,
   memory selection, artifact storage, and default Environment sandbox fallback.
 - stale pre-Settings Runtime view removed from the Console composition root.
+- legacy provider arrays removed from the Console page-state model.
 
 Explicitly not part of the first-release done definition:
 
