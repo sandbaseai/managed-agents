@@ -39,6 +39,7 @@ import { defaultTemplateCacheDir, resolveDataDir, resolveUserPath } from './core
 import { resolveApiKeys } from './api/auth.js';
 import { countActiveManagedApiKeys, validateManagedApiKey } from './core/auth/api-keys.js';
 import { activateRuntimeSettings, localArtifactStorageDir, modelConfigFromRuntimeSettings } from './core/settings/store.js';
+import { LocalArtifactStore } from './core/storage/artifact-store.js';
 import { createLogger, InMemoryLogStore } from './core/observability/logger.js';
 import { Metrics } from './core/observability/metrics.js';
 import type { AgentDefinition } from './types/agent.js';
@@ -357,7 +358,8 @@ async function startServer(opts: { port: string; host: string; dataDir?: string;
     } as EnvironmentConfig;
   };
 
-  const snapshots = new SnapshotManager(db, join(localArtifactStorageDir(dataDir, effectiveSettings), 'snapshots'));
+  const artifactStore = new LocalArtifactStore(localArtifactStorageDir(dataDir, effectiveSettings));
+  const snapshots = new SnapshotManager(db, artifactStore.path('snapshots'));
 
   // Wire executor (with context compaction + skills enabled)
   const executor = new DefaultSessionExecutor({
@@ -457,6 +459,7 @@ async function startServer(opts: { port: string; host: string; dataDir?: string;
     metrics,
     restart: () => stopRuntime('restart'),
     workQueue,
+    corsOrigins: parseCsv(process.env.MANAGED_AGENTS_CORS_ORIGINS),
     workspace: {
       root: workspaceRoot,
       dataDir,
@@ -465,7 +468,8 @@ async function startServer(opts: { port: string; host: string; dataDir?: string;
       configPath,
       target,
     },
-    artifactStorageDir: () => localArtifactStorageDir(dataDir, effectiveSettings),
+    artifactStorageDir: () => artifactStore.rootPath(),
+    artifactStore: () => artifactStore,
     runtime: {
       models: modelRegistry.listRuntimeInfo(),
       sandboxProviders: sandboxRegistry.listTypes(),
@@ -556,6 +560,11 @@ function parseJsonObject(value: string): Record<string, any> {
   } catch {
     return {};
   }
+}
+
+function parseCsv(value: string | undefined): string[] {
+  if (!value) return [];
+  return value.split(',').map((item) => item.trim()).filter(Boolean);
 }
 
 // ============================================================

@@ -1,10 +1,10 @@
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { join, resolve } from 'node:path';
 import { Hono } from 'hono';
 import { nanoid } from 'nanoid';
 import type { ServerDeps } from '../server.js';
 import { pageOf } from '../standard.js';
 import { encryptSecret } from '@/core/security/secrets.js';
+import { LocalArtifactStore, type ArtifactStore } from '@/core/storage/artifact-store.js';
 
 type ResourceKind = 'environment' | 'credential_vault' | 'memory_store';
 type FileCreateInput = {
@@ -104,8 +104,9 @@ export function resourceRoutes(deps: ServerDeps) {
 
   app.get('/files/:id/content', (c) => {
     const row = deps.db.prepare('SELECT * FROM files WHERE id = ? AND archived_at IS NULL').get(c.req.param('id')) as FileRow | undefined;
-    if (!row || !isManagedFileStoragePath(row.storage_path, deps) || !existsSync(row.storage_path)) return notFound(c, 'File not found');
-    return new Response(readFileSync(row.storage_path), {
+    const store = artifactStore(deps);
+    if (!row || !store.exists(row.storage_path)) return notFound(c, 'File not found');
+    return new Response(store.readFile(row.storage_path), {
       headers: {
         'Content-Type': row.media_type || 'application/octet-stream',
         'Content-Disposition': `attachment; filename="${row.name.replace(/"/g, '')}"`,
@@ -484,13 +485,12 @@ async function readMultipartFileRequest(c: any): Promise<{ ok: true; value: File
 function persistFileResource(deps: ServerDeps, input: FileCreateInput) {
   if (!deps.workspace?.dataDir) throw new Error('workspace data directory is not configured');
   const id = `file_${nanoid(18)}`;
-  const storageDir = deps.artifactStorageDir?.() ?? resolve(deps.workspace.dataDir, 'files');
-  mkdirSync(storageDir, { recursive: true });
-  const storagePath = managedFileStoragePath(storageDir, id);
+  const store = artifactStore(deps);
+  const storagePath = store.path(id);
   const now = new Date().toISOString();
 
   try {
-    writeFileSync(storagePath, input.bytes, { mode: 0o600 });
+    store.writeFile(storagePath, input.bytes);
     deps.db.prepare(
       `INSERT INTO files (id, name, media_type, size_bytes, storage_path, metadata, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -505,7 +505,7 @@ function persistFileResource(deps: ServerDeps, input: FileCreateInput) {
       now,
     );
   } catch (err) {
-    if (existsSync(storagePath)) rmSync(storagePath, { force: true });
+    store.remove(storagePath);
     throw err;
   }
 
@@ -533,8 +533,9 @@ function parseStringRecord(value: string): Record<string, string> {
 }
 
 function previewFileResource(row: FileRow, deps: ServerDeps): { content: string; truncated: boolean } | null {
-  if (!isPreviewableMediaType(row.media_type) || !isManagedFileStoragePath(row.storage_path, deps) || !existsSync(row.storage_path)) return null;
-  const bytes = readFileSync(row.storage_path).subarray(0, FILE_PREVIEW_MAX_BYTES);
+  const store = artifactStore(deps);
+  if (!isPreviewableMediaType(row.media_type) || !store.exists(row.storage_path)) return null;
+  const bytes = store.readFile(row.storage_path).subarray(0, FILE_PREVIEW_MAX_BYTES);
   const raw = bytes.toString('utf8');
   if (raw.includes('\u0000')) return null;
   return {
@@ -543,20 +544,10 @@ function previewFileResource(row: FileRow, deps: ServerDeps): { content: string;
   };
 }
 
-function isManagedFileStoragePath(path: string, deps: ServerDeps): boolean {
-  if (!deps.workspace?.dataDir) return false;
-  const storageDir = deps.artifactStorageDir?.() ?? resolve(deps.workspace.dataDir, 'files');
-  const resolvedPath = resolve(path);
-  const relativePath = relative(storageDir, resolvedPath);
-  return Boolean(relativePath) && !relativePath.startsWith('..') && !isAbsolute(relativePath);
-}
-
-function managedFileStoragePath(storageDir: string, id: string): string {
-  const targetPath = resolve(storageDir, id);
-  if (targetPath !== storageDir && targetPath.startsWith(storageDir + sep)) {
-    return targetPath;
-  }
-  throw new Error('File storage path escapes the managed files directory.');
+function artifactStore(deps: ServerDeps): ArtifactStore {
+  if (deps.artifactStore) return deps.artifactStore();
+  if (!deps.workspace?.dataDir) throw new Error('workspace data directory is not configured');
+  return new LocalArtifactStore(deps.artifactStorageDir?.() ?? resolve(deps.workspace.dataDir, 'files'));
 }
 
 function isPreviewableMediaType(mediaType: string): boolean {

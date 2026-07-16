@@ -187,6 +187,15 @@ managed-agents start \
 Set `MANAGED_AGENTS_HOME` to move all workspace runtime folders together, or
 pass `--data-dir` for a single workspace override.
 
+The API and Dashboard are served from the same origin. CORS is restricted by
+default to same-origin and local loopback browser origins. For a deployed
+Console or a trusted separate frontend, set a comma-separated allowlist:
+
+```bash
+export MANAGED_AGENTS_CORS_ORIGINS=https://console.example.com,https://admin.example.com
+managed-agents start --host 0.0.0.0
+```
+
 ## Enable API Authentication
 
 Local development is open by default. Authentication turns on when at least one

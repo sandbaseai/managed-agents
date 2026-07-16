@@ -604,7 +604,7 @@ must not imply that a planned adapter is active.
 | Model | Runtime ModelRegistry is constructed from effective Settings V2. Vendor adapters own internal default model IDs. | Add optional live credential tests before claiming remote vendor health. |
 | Loop engine | `builtin` default max steps is applied by the executor. Planned engines are unavailable. | Replace direct strategy construction with an engine factory before enabling other engines. |
 | Metadata storage | SQLite is the real metadata store. | Add a migration/backup/rollback contract before exposing external databases. |
-| Artifact storage | Local artifact path is resolved from effective Settings V2 and is used by File resources and snapshots. | Introduce a shared ArtifactStore interface before adding generated artifact and S3 support. |
+| Artifact storage | Local artifact path is resolved from effective Settings V2 through a shared `ArtifactStore`, used by File resources and snapshots. | Add generated artifact consumers and a real S3 implementation before exposing S3 as selectable. |
 | Memory | SQLite enable/disable is wired and locally testable. mem0 and MemU are unavailable. | Add real adapters before making either selectable. |
 | Sandbox | The workspace setting is used as the `env_default` fallback; named Environments override it. Local sandbox writability is testable. | Add Docker and remote health checks when those adapters are implemented. |
 
@@ -618,29 +618,34 @@ must not imply that a planned adapter is active.
    ask for a Model ID, but a concrete provider request still needs one. Each
    shipped vendor adapter therefore owns a versioned default mapping and
    reports the resolved model as read-only diagnostics.
-3. **Security boundaries require completion before remote use.** Local shell
-   commands must receive an allowlisted environment only. Self-hosted workers
-   may complete only work they claimed. API credentials must use the single
-   SecretStore rather than legacy plaintext columns.
-4. **The Console still has stale dead code.** The rendered Settings pages use
-   the Settings V2 editor and Skills starts as a table without an open drawer,
-   but old unrendered Settings provider components remain in `App.tsx`.
+3. **Security boundaries are mostly closed for local-first use.** Local shell
+   commands receive an allowlisted environment only. Self-hosted workers may
+   complete only work they claimed. CORS no longer defaults to `*`; same-origin
+   and local loopback origins are allowed by default, and deployment origins
+   must be explicitly configured. API credentials use the single SecretStore
+   for Settings V2 secrets; legacy read-only provider tables remain only for
+   compatibility inspection.
+4. **The rendered Console is honest for Settings V2.** Settings pages use the
+   Settings V2 editor, old provider mutation surfaces are removed from
+   `App.tsx`, and Skills starts as a table without an open drawer.
 5. **The composition roots are still too broad.** `src/index.ts` and the
    Console `App.tsx` should continue splitting into settings/bootstrap,
    adapter registries, and independently loaded feature modules. The first
-   split moved Console data loading and Settings V2 editor/navigation out of
-   `App.tsx`.
+   split moved Console data loading, Settings V2 editor/navigation, and the
+   Settings overview page out of `App.tsx`.
 
 ### 13.3 Priority order
 
-1. **P0 — Safety and integrity:** sandbox environment allowlist; worker claim
-   ownership enforcement; CORS/auth deployment policy; move legacy plaintext
-   provider secrets into SecretStore.
-2. **P0 — Runtime cutover:** settings-driven ModelRegistry is complete;
-   ArtifactStore abstraction and end-to-end restart tests remain.
-3. **P1 — Honest Console:** rendered Settings pages use one active config and
-   legacy provider write paths are disabled; remove stale unrendered provider
-   components next.
+1. **P0 — Safety and integrity:** sandbox environment allowlist, worker claim
+   ownership enforcement, and CORS allowlist are complete for the current
+   local-first runtime. Remaining work is broader deployment auth policy and
+   retiring legacy provider tables after the compatibility window.
+2. **P0 — Runtime cutover:** settings-driven ModelRegistry and local
+   ArtifactStore abstraction are complete. End-to-end restart tests and future
+   non-local artifact adapters remain.
+3. **P1 — Honest Console:** rendered Settings pages use one active config,
+   legacy provider write paths are disabled, and stale unrendered provider
+   components have been removed from `App.tsx`.
 4. **P2 — Maintainability:** split Console features and runtime bootstrap;
    replace global Console `Promise.all` loading with page/domain-level loading.
 
