@@ -464,6 +464,10 @@ Extension endpoints expose local runtime operations.
 | `GET` | `/v1/x/health` | Health check. |
 | `GET` | `/v1/x/runtime` | Runtime status. |
 | `GET` | `/v1/x/workspace` | Workspace paths and metadata. |
+| `GET` | `/v1/x/settings` | Read the versioned Settings V2 runtime document. |
+| `POST` | `/v1/x/settings/validate` | Validate a complete Settings V2 document without saving. |
+| `POST` | `/v1/x/settings/test` | Test one settings area without saving. |
+| `PUT` | `/v1/x/settings` | Save a validated Settings V2 document. |
 | `GET` | `/v1/x/templates` | Built-in agent templates. |
 | `POST` | `/v1/x/reload` | Reload file-backed agents. |
 | `POST` | `/v1/x/restart` | Restart the local runtime process when the server was started through the CLI. |
@@ -492,6 +496,107 @@ configuration metadata only:
 ```
 
 The runtime never returns raw API keys or resolved secret values to the Console.
+
+Settings V2 is the source of truth for model vendor, loop engine, storage,
+memory, and sandbox configuration. Responses include both the saved document and
+the effective document currently used by the process. Response excerpt:
+
+```json
+{
+  "schema_version": 1,
+  "revision": 2,
+  "saved_config": {
+    "schema_version": 1,
+    "model": {
+      "vendor": "openai",
+      "base_url": "https://api.openai.com/v1",
+      "api_key": "********",
+      "options": {}
+    }
+  },
+  "effective_config": {},
+  "restart_required": true,
+  "secret_states": {
+    "model": {
+      "api_key": "configured"
+    }
+  }
+}
+```
+
+Validate a candidate document:
+
+```bash
+curl -X POST http://127.0.0.1:3000/v1/x/settings/validate \
+  -H "Content-Type: application/json" \
+  -d @settings.json
+```
+
+Test one area without saving:
+
+```bash
+curl -X POST http://127.0.0.1:3000/v1/x/settings/test \
+  -H "Content-Type: application/json" \
+  -d '{
+    "area": "storage.artifacts",
+    "config": {
+      "provider": "local",
+      "options": {
+        "base_path": "files"
+      }
+    }
+  }'
+```
+
+Save the complete document with optimistic concurrency:
+
+```bash
+curl -X PUT http://127.0.0.1:3000/v1/x/settings \
+  -H "Content-Type: application/json" \
+  -d '{
+    "revision": 2,
+    "config": {
+      "schema_version": 1,
+      "model": {
+        "vendor": "openai",
+        "api_key": "${OPENAI_API_KEY}",
+        "options": {}
+      },
+      "loop_engine": {
+        "provider": "builtin",
+        "options": {
+          "default_max_steps": 25
+        }
+      },
+      "storage": {
+        "metadata": {
+          "provider": "sqlite",
+          "options": {}
+        },
+        "artifacts": {
+          "provider": "local",
+          "options": {
+            "base_path": "files"
+          }
+        }
+      },
+      "memory": {
+        "enabled": true,
+        "provider": "sqlite",
+        "options": {}
+      },
+      "sandbox": {
+        "provider": "local",
+        "options": {
+          "timeout_seconds": 300
+        }
+      }
+    }
+  }'
+```
+
+Literal secrets are encrypted at rest. API responses return masked placeholders
+and `secret_states`; they never return plaintext or ciphertext.
 
 `GET /v1/x/logs` returns a standard page envelope with the most recent log
 entries captured by the current process. `level` is a minimum severity filter

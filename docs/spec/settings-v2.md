@@ -631,8 +631,8 @@ must not imply that a planned adapter is active.
 5. **The composition roots are still too broad.** `src/index.ts` and the
    Console `App.tsx` should continue splitting into settings/bootstrap,
    adapter registries, and independently loaded feature modules. The first
-   split moved Console data loading, Settings V2 editor/navigation, and the
-   Settings overview page out of `App.tsx`.
+   split moved Console data loading, Settings V2 editor/navigation, Settings
+   overview, and Settings logs out of `App.tsx`.
 
 ### 13.3 Priority order
 
