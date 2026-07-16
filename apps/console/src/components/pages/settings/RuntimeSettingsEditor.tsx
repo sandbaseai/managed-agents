@@ -43,19 +43,21 @@ export function RuntimeSettingsEditor({
   if (!settings || !draft) return <LoadingState label="Loading runtime settings..." />;
 
   const savedJson = JSON.stringify(settings.saved_config, null, 2);
+  const savedFingerprint = stableSettingsJson(settings.saved_config);
   const currentJson = mode === 'json' ? json : JSON.stringify(draft, null, 2);
-  const isDirty = currentJson !== savedJson;
+  const currentFingerprint = mode === 'json' ? stableJsonText(json) : stableSettingsJson(draft);
+  const isDirty = currentFingerprint ? currentFingerprint !== savedFingerprint : currentJson !== savedJson;
   const isPositiveMessage = error === 'Configuration is valid.'
     || error.startsWith('Saved.')
     || error.includes('OK ')
     || error.includes('SKIPPED ');
-  const canSave = isDirty && validationState === 'valid' && validatedJson === currentJson && !saving;
+  const canSave = Boolean(currentFingerprint) && isDirty && validationState === 'valid' && validatedJson === currentFingerprint && !saving;
 
   const setConfig = (next: RuntimeSettingsConfig, validation: 'unknown' | 'valid' = 'unknown') => {
     setDraft(next);
     setJson(JSON.stringify(next, null, 2));
     setValidationState(validation);
-    setValidatedJson(validation === 'valid' ? JSON.stringify(next, null, 2) : '');
+    setValidatedJson(validation === 'valid' ? stableSettingsJson(next) : '');
   };
   const adapters = section === 'models' ? settings.adapters.model
     : section === 'loop-engine' ? settings.adapters.loop_engine
@@ -236,4 +238,27 @@ function configKeyForSection(section: Exclude<RuntimeSettingsSection, 'storage'>
   if (section === 'loop-engine') return 'loop_engine';
   if (section === 'memory') return 'memory';
   return 'sandbox';
+}
+
+function stableJsonText(value: string): string | null {
+  try {
+    return stableStringify(JSON.parse(value));
+  } catch {
+    return null;
+  }
+}
+
+function stableSettingsJson(value: RuntimeSettingsConfig): string {
+  return stableStringify(value);
+}
+
+function stableStringify(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map((item) => stableStringify(item)).join(',')}]`;
+  if (value && typeof value === 'object') {
+    return `{${Object.entries(value as Record<string, unknown>)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, item]) => `${JSON.stringify(key)}:${stableStringify(item)}`)
+      .join(',')}}`;
+  }
+  return JSON.stringify(value);
 }
