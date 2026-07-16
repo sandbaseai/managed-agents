@@ -6,6 +6,8 @@ import { describeSettingsAdapters, availabilityFromDescriptors } from '@/core/se
 import { validateRuntimeSettings } from '@/core/settings/schema.js';
 import { Database } from '@/core/db/database.js';
 import { activateRuntimeSettings, getOrSeedRuntimeSettings, localArtifactStorageDir, modelConfigFromRuntimeSettings, saveRuntimeSettings } from '@/core/settings/store.js';
+import { composeRuntimeFromSettings } from '@/core/runtime/composition.js';
+import { ModelRegistry } from '@/model/registry.js';
 
 const validConfig = {
   schema_version: 1,
@@ -99,5 +101,39 @@ describe('Settings V2 activation', () => {
       ...validConfig,
       storage: { ...validConfig.storage, artifacts: { provider: 'local' as const, options: { base_path: '../escape' } } },
     })).toThrow(/inside the runtime data directory/);
+  });
+
+  it('composes runtime settings into model, memory, artifact, and environment defaults', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'ma-settings-runtime-'));
+    directories.push(directory);
+    const db = new Database(join(directory, 'settings.db'));
+    db.runMigrations();
+    db.exec(`INSERT INTO environments (id, name, config) VALUES ('env_default', 'local', '{}')`);
+    db.exec(`INSERT INTO environments (id, name, config) VALUES ('env_named', 'docker-env', '{"sandbox_provider":"docker","timeout":900}')`);
+    const initial = getOrSeedRuntimeSettings(db);
+    const changed = {
+      ...initial.saved_config,
+      memory: { enabled: false, provider: 'sqlite' as const, options: {} },
+      sandbox: { provider: 'local' as const, options: { timeout_seconds: 123 } },
+      storage: {
+        ...initial.saved_config.storage,
+        artifacts: { provider: 'local' as const, options: { base_path: 'artifacts-v2' } },
+      },
+    };
+    expect(saveRuntimeSettings(db, changed, initial.revision, directory).ok).toBe(true);
+    const registry = new ModelRegistry();
+    const runtime = composeRuntimeFromSettings({
+      db,
+      dataDir: directory,
+      modelRegistry: registry,
+      memorySeedEnabled: true,
+    });
+
+    expect(registry.getDefaultName()).toBe('default');
+    expect(runtime.memory).toBeUndefined();
+    expect(runtime.artifactStore.rootPath()).toBe(join(directory, 'artifacts-v2'));
+    expect(runtime.resolveEnvironmentConfig('env_default')).toMatchObject({ sandbox_provider: 'local', timeout: 123 });
+    expect(runtime.resolveEnvironmentConfig('env_named')).toMatchObject({ sandbox_provider: 'docker', timeout: 900 });
+    db.close();
   });
 });

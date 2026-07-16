@@ -38,13 +38,11 @@ import { resolveEnvVars } from './core/config/env-resolver.js';
 import { defaultTemplateCacheDir, resolveDataDir, resolveUserPath } from './core/config/paths.js';
 import { resolveApiKeys } from './api/auth.js';
 import { countActiveManagedApiKeys, validateManagedApiKey } from './core/auth/api-keys.js';
-import { activateRuntimeSettings, localArtifactStorageDir, modelConfigFromRuntimeSettings } from './core/settings/store.js';
-import { LocalArtifactStore } from './core/storage/artifact-store.js';
+import { composeRuntimeFromSettings } from './core/runtime/composition.js';
 import { createLogger, InMemoryLogStore } from './core/observability/logger.js';
 import { Metrics } from './core/observability/metrics.js';
 import type { AgentDefinition } from './types/agent.js';
 import type { ModelConfig } from './types/model.js';
-import type { EnvironmentConfig, SandboxProviderType } from './types/sandbox.js';
 
 const VERSION = '0.1.0';
 
@@ -312,17 +310,14 @@ async function startServer(opts: { port: string; host: string; dataDir?: string;
 
   // Settings V2 is seeded after legacy config/import data exists, then becomes
   // the runtime source for settings that have a shipped adapter.
-  const runtimeSettings = activateRuntimeSettings(db, { memoryEnabled: Boolean(memory) }, dataDir);
-  const effectiveSettings = runtimeSettings.effective_config;
-  // Legacy models seed Settings V2 once, but Settings V2 owns the live default
-  // model after that point. Agent definitions use the stable "default" name.
-  modelRegistry.clear();
-  modelRegistry.register(modelConfigFromRuntimeSettings(db, effectiveSettings, dataDir));
-  if (effectiveSettings.memory.enabled && effectiveSettings.memory.provider === 'sqlite') {
-    memory = new SqliteMemoryProvider(db);
-  } else {
-    memory = undefined;
-  }
+  const runtimeComposition = composeRuntimeFromSettings({
+    db,
+    dataDir,
+    modelRegistry,
+    memorySeedEnabled: Boolean(memory),
+  });
+  const effectiveSettings = runtimeComposition.settings.effective_config;
+  memory = runtimeComposition.memory;
 
   // Create core components
   const sessionManager = new SessionManager(db);
@@ -341,24 +336,7 @@ async function startServer(opts: { port: string; host: string; dataDir?: string;
   const workQueue = new WorkQueue(db);
   sandboxRegistry.register(new SelfHostedSandboxProvider(workQueue));
 
-  const resolveEnvironmentConfig = (environmentId: string): EnvironmentConfig | undefined => {
-    const row = db.prepare('SELECT id, name, config FROM environments WHERE id = ? AND archived_at IS NULL').get(environmentId) as
-      | { id: string; name: string; config: string } | undefined;
-    if (!row) return undefined;
-    const environment = normalizeRuntimeEnvironment(row);
-    // env_default is the workspace fallback; named Environments remain explicit
-    // session-level sandbox overrides.
-    if (row.id !== 'env_default') return environment;
-    return {
-      ...environment,
-      sandbox_provider: effectiveSettings.sandbox.provider === 'remote'
-        ? 'self_hosted'
-        : effectiveSettings.sandbox.provider,
-      timeout: effectiveSettings.sandbox.options.timeout_seconds,
-    } as EnvironmentConfig;
-  };
-
-  const artifactStore = new LocalArtifactStore(localArtifactStorageDir(dataDir, effectiveSettings));
+  const artifactStore = runtimeComposition.artifactStore;
   const snapshots = new SnapshotManager(db, artifactStore.path('snapshots'));
 
   // Wire executor (with context compaction + skills enabled)
@@ -367,7 +345,7 @@ async function startServer(opts: { port: string; host: string; dataDir?: string;
     modelRegistry,
     sandboxProvider,
     sandboxRegistry,
-    resolveEnvironmentConfig,
+    resolveEnvironmentConfig: runtimeComposition.resolveEnvironmentConfig,
     resolveAgent: (agentId) => loadAgentDefinitionById(db, agentId),
     strategy,
     eventLogger,
@@ -528,38 +506,6 @@ async function startServer(opts: { port: string; host: string; dataDir?: string;
   // Graceful shutdown: stop accepting requests, drain turns + sandboxes, close DB
   process.on('SIGINT', () => void stopRuntime('shutdown'));
   process.on('SIGTERM', () => void stopRuntime('shutdown'));
-}
-
-function normalizeRuntimeEnvironment(row: { id: string; name: string; config: string }): EnvironmentConfig {
-  const parsed = parseJsonObject(row.config);
-  const sandboxProvider = parseSandboxProvider(parsed.sandbox_provider)
-    ?? (parsed.hosting_type === 'self_hosted' ? 'self_hosted' : 'local');
-
-  return {
-    ...parsed,
-    name: typeof parsed.name === 'string' && parsed.name.trim() ? parsed.name.trim() : row.name || row.id,
-    sandbox_provider: sandboxProvider,
-    timeout: typeof parsed.timeout === 'number' ? parsed.timeout : 300,
-  };
-}
-
-function parseSandboxProvider(value: unknown): SandboxProviderType | undefined {
-  return value === 'local'
-    || value === 'docker'
-    || value === 'e2b'
-    || value === 'daytona'
-    || value === 'self_hosted'
-    ? value
-    : undefined;
-}
-
-function parseJsonObject(value: string): Record<string, any> {
-  try {
-    const parsed = JSON.parse(value);
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
-  } catch {
-    return {};
-  }
 }
 
 function parseCsv(value: string | undefined): string[] {

@@ -644,7 +644,8 @@ must not imply that a planned adapter is active.
    Console `App.tsx` should continue splitting into settings/bootstrap,
    adapter registries, and independently loaded feature modules. The first
    split moved Console data loading, Settings V2 editor/navigation, Settings
-   overview, Settings logs, and the Settings page shell out of `App.tsx`.
+   overview, Settings logs, and the Settings page shell out of `App.tsx`;
+   runtime Settings composition moved out of `src/index.ts`.
 
 ### 13.3 Priority order
 
@@ -689,6 +690,8 @@ Implemented for this release:
   editor pages, logs, overview, and shell layout.
 - domain-level Console data loaders for build, resource, access, and runtime
   data instead of one monolithic endpoint list.
+- runtime composition helper for Settings activation, model registration,
+  memory selection, artifact storage, and default Environment sandbox fallback.
 
 Explicitly not part of the first-release done definition:
 
