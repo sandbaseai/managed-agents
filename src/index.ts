@@ -38,7 +38,7 @@ import { resolveEnvVars } from './core/config/env-resolver.js';
 import { defaultTemplateCacheDir, resolveDataDir, resolveUserPath } from './core/config/paths.js';
 import { resolveApiKeys } from './api/auth.js';
 import { countActiveManagedApiKeys, validateManagedApiKey } from './core/auth/api-keys.js';
-import { activateRuntimeSettings } from './core/settings/store.js';
+import { activateRuntimeSettings, localArtifactStorageDir, modelConfigFromRuntimeSettings } from './core/settings/store.js';
 import { createLogger, InMemoryLogStore } from './core/observability/logger.js';
 import { Metrics } from './core/observability/metrics.js';
 import type { AgentDefinition } from './types/agent.js';
@@ -311,8 +311,12 @@ async function startServer(opts: { port: string; host: string; dataDir?: string;
 
   // Settings V2 is seeded after legacy config/import data exists, then becomes
   // the runtime source for settings that have a shipped adapter.
-  const runtimeSettings = activateRuntimeSettings(db, { memoryEnabled: Boolean(memory) });
+  const runtimeSettings = activateRuntimeSettings(db, { memoryEnabled: Boolean(memory) }, dataDir);
   const effectiveSettings = runtimeSettings.effective_config;
+  // Legacy models seed Settings V2 once, but Settings V2 owns the live default
+  // model after that point. Agent definitions use the stable "default" name.
+  modelRegistry.clear();
+  modelRegistry.register(modelConfigFromRuntimeSettings(db, effectiveSettings, dataDir));
   if (effectiveSettings.memory.enabled && effectiveSettings.memory.provider === 'sqlite') {
     memory = new SqliteMemoryProvider(db);
   } else {
@@ -353,7 +357,7 @@ async function startServer(opts: { port: string; host: string; dataDir?: string;
     } as EnvironmentConfig;
   };
 
-  const snapshots = new SnapshotManager(db, join(dataDir, 'snapshots'));
+  const snapshots = new SnapshotManager(db, join(localArtifactStorageDir(dataDir, effectiveSettings), 'snapshots'));
 
   // Wire executor (with context compaction + skills enabled)
   const executor = new DefaultSessionExecutor({
@@ -461,6 +465,7 @@ async function startServer(opts: { port: string; host: string; dataDir?: string;
       configPath,
       target,
     },
+    artifactStorageDir: () => localArtifactStorageDir(dataDir, effectiveSettings),
     runtime: {
       models: modelRegistry.listRuntimeInfo(),
       sandboxProviders: sandboxRegistry.listTypes(),

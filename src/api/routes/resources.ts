@@ -484,7 +484,7 @@ async function readMultipartFileRequest(c: any): Promise<{ ok: true; value: File
 function persistFileResource(deps: ServerDeps, input: FileCreateInput) {
   if (!deps.workspace?.dataDir) throw new Error('workspace data directory is not configured');
   const id = `file_${nanoid(18)}`;
-  const storageDir = resolve(deps.workspace.dataDir, 'files');
+  const storageDir = deps.artifactStorageDir?.() ?? resolve(deps.workspace.dataDir, 'files');
   mkdirSync(storageDir, { recursive: true });
   const storagePath = managedFileStoragePath(storageDir, id);
   const now = new Date().toISOString();
@@ -545,7 +545,7 @@ function previewFileResource(row: FileRow, deps: ServerDeps): { content: string;
 
 function isManagedFileStoragePath(path: string, deps: ServerDeps): boolean {
   if (!deps.workspace?.dataDir) return false;
-  const storageDir = resolve(deps.workspace.dataDir, 'files');
+  const storageDir = deps.artifactStorageDir?.() ?? resolve(deps.workspace.dataDir, 'files');
   const resolvedPath = resolve(path);
   const relativePath = relative(storageDir, resolvedPath);
   return Boolean(relativePath) && !relativePath.startsWith('..') && !isAbsolute(relativePath);

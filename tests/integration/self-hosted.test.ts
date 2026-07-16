@@ -41,7 +41,7 @@ describe('WorkQueue', () => {
     expect(claimed!.payload.command).toBe('echo hi');
 
     // Worker completes it
-    queue.complete(id, { exitCode: 0, stdout: 'hi', stderr: '', timedOut: false });
+    queue.complete(id, 'worker_1', { exitCode: 0, stdout: 'hi', stderr: '', timedOut: false });
 
     // Server awaits the result
     const result = await queue.await(id, { timeoutMs: 1000, pollMs: 10 });
@@ -79,7 +79,8 @@ describe('WorkQueue', () => {
 
   it('await rejects on failed items', async () => {
     const id = queue.enqueue('s', 'exec', { command: 'bad' });
-    queue.complete(id, 'boom', true);
+    queue.claim('w');
+    queue.complete(id, 'w', 'boom', true);
     await expect(queue.await(id, { timeoutMs: 500, pollMs: 10 })).rejects.toThrow(/failed/);
   });
 
@@ -114,7 +115,7 @@ describe('SelfHostedSandboxProvider', () => {
       for (let i = 0; i < 50; i++) {
         const item = queue.claim('w1', 'sess_x');
         if (item) {
-          queue.complete(item.id, { exitCode: 0, stdout: 'from worker', stderr: '', timedOut: false });
+          queue.complete(item.id, 'w1', { exitCode: 0, stdout: 'from worker', stderr: '', timedOut: false });
           return;
         }
         await new Promise((r) => setTimeout(r, 10));
@@ -176,9 +177,28 @@ describe('Worker HTTP endpoints', () => {
     queue.claim('w1');
     const res = await app.request('/complete', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id, result: 'file contents' }),
+      body: JSON.stringify({ id, worker_id: 'w1', result: 'file contents' }),
     });
     expect(res.status).toBe(200);
     expect(queue.get(id)!.status).toBe('done');
+  });
+
+  it('rejects completion by a worker that did not claim the item', async () => {
+    const id = queue.enqueue('s', 'read', { path: 'f' });
+    queue.claim('w1');
+    const res = await app.request('/complete', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, worker_id: 'w2', result: 'forged result' }),
+    });
+    expect(res.status).toBe(409);
+    expect(queue.get(id)!.status).toBe('claimed');
+  });
+
+  it('requires worker_id when completing an item', async () => {
+    const res = await app.request('/complete', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: 'work_missing', result: 'x' }),
+    });
+    expect(res.status).toBe(400);
   });
 });

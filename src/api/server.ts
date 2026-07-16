@@ -55,6 +55,8 @@ export interface ServerDeps {
     configPath: string;
     target: string;
   };
+  /** Active local artifact directory resolved from effective runtime settings. */
+  artifactStorageDir?: () => string;
   runtime?: {
     models: RuntimeModelInfo[];
     sandboxProviders: string[];

@@ -1,6 +1,8 @@
 import type { Database } from '@/core/db/database.js';
+import { relative, resolve, sep } from 'node:path';
 import type { RuntimeSettings } from './schema.js';
-import { encryptSecret } from '@/core/security/secrets.js';
+import { decryptSecret, encryptSecret } from '@/core/security/secrets.js';
+import type { ModelConfig } from '@/types/model.js';
 
 export type RuntimeSettingsRecord = {
   schema_version: 1;
@@ -33,11 +35,17 @@ type SettingsRow = {
   restart_required: number;
 };
 
-export function getOrSeedRuntimeSettings(db: Database, seed: RuntimeSettingsSeed = {}): RuntimeSettingsRecord {
+export function getOrSeedRuntimeSettings(db: Database, seed: RuntimeSettingsSeed = {}, dataDir?: string): RuntimeSettingsRecord {
   const existing = readSettingsRow(db);
   if (existing) return rowToRecord(existing);
 
-  const config = legacySettingsSeed(db, seed);
+  const legacyConfig = legacySettingsSeed(db, seed);
+  const config = persistSecrets(db, legacyConfig, legacyConfig, dataDir);
+  // Settings V2 is now the secret authority. Do not preserve literal secrets
+  // in the compatibility models table after importing an existing workspace.
+  if (legacyConfig.model.api_key && !/^\$\{[^}]+\}$/.test(legacyConfig.model.api_key)) {
+    db.prepare('UPDATE models SET api_key = NULL WHERE api_key IS NOT NULL').run();
+  }
   const serialized = JSON.stringify(config);
   db.prepare(`
     INSERT INTO runtime_settings (
@@ -48,8 +56,8 @@ export function getOrSeedRuntimeSettings(db: Database, seed: RuntimeSettingsSeed
 }
 
 /** Apply the last validated saved revision during process startup. */
-export function activateRuntimeSettings(db: Database, seed: RuntimeSettingsSeed = {}): RuntimeSettingsRecord {
-  const current = getOrSeedRuntimeSettings(db, seed);
+export function activateRuntimeSettings(db: Database, seed: RuntimeSettingsSeed = {}, dataDir?: string): RuntimeSettingsRecord {
+  const current = getOrSeedRuntimeSettings(db, seed, dataDir);
   if (!current.restart_required) return current;
   db.prepare(`
     UPDATE runtime_settings
@@ -59,7 +67,7 @@ export function activateRuntimeSettings(db: Database, seed: RuntimeSettingsSeed 
         updated_at = datetime('now')
     WHERE id = 'default'
   `).run();
-  return getOrSeedRuntimeSettings(db, seed);
+  return getOrSeedRuntimeSettings(db, seed, dataDir);
 }
 
 export function maskRuntimeSettings(config: RuntimeSettings): RuntimeSettings {
@@ -81,13 +89,8 @@ export function maskRuntimeSettings(config: RuntimeSettings): RuntimeSettings {
 }
 
 export function runtimeSettingsSecretStates(db: Database, config: RuntimeSettings): RuntimeSettingsSecretStates {
-  const model = db.prepare(`
-    SELECT api_key FROM models
-    ORDER BY is_default DESC, created_at ASC
-    LIMIT 1
-  `).get() as { api_key: string | null } | undefined;
   const stored = getStoredSecret(db, 'model.api_key');
-  const value = stored ? STORED_SECRET_PREFIX : config.model.api_key ?? model?.api_key ?? undefined;
+  const value = stored ? STORED_SECRET_PREFIX : config.model.api_key;
   return { model: { api_key: secretState(value) } };
 }
 
@@ -97,7 +100,7 @@ export function saveRuntimeSettings(
   expectedRevision: number,
   dataDir?: string,
 ): SaveRuntimeSettingsResult {
-  const current = getOrSeedRuntimeSettings(db);
+  const current = getOrSeedRuntimeSettings(db, {}, dataDir);
   if (current.revision !== expectedRevision) {
     return { ok: false, reason: 'revision_conflict', record: current };
   }
@@ -109,7 +112,43 @@ export function saveRuntimeSettings(
     SET config = ?, revision = ?, restart_required = 1, updated_at = datetime('now')
     WHERE id = 'default'
   `).run(JSON.stringify(persisted), nextRevision);
-  return { ok: true, record: getOrSeedRuntimeSettings(db) };
+  return { ok: true, record: getOrSeedRuntimeSettings(db, {}, dataDir) };
+}
+
+/**
+ * Builds the one runtime model configuration from the effective Settings V2
+ * document. Model IDs remain adapter implementation details rather than a
+ * Dashboard setting; the resolved ID can be surfaced as diagnostics only.
+ */
+export function modelConfigFromRuntimeSettings(
+  db: Database,
+  config: RuntimeSettings,
+  dataDir?: string,
+): ModelConfig {
+  return {
+    name: 'default',
+    provider: config.model.vendor,
+    model: defaultModelForVendor(config.model.vendor),
+    base_url: config.model.base_url,
+    api_key: resolveModelApiKey(db, config.model.api_key, dataDir),
+    is_default: true,
+  };
+}
+
+/** Resolve the active local artifact directory without permitting data-dir escapes. */
+export function localArtifactStorageDir(dataDir: string, config: RuntimeSettings): string {
+  if (config.storage.artifacts.provider !== 'local') {
+    throw new Error(`Artifact provider "${config.storage.artifacts.provider}" is not available`);
+  }
+  const configured = config.storage.artifacts.options.base_path;
+  const basePath = typeof configured === 'string' && configured.trim() ? configured.trim() : 'files';
+  const root = resolve(dataDir);
+  const target = resolve(root, basePath);
+  const relativePath = relative(root, target);
+  if (!relativePath || relativePath === '..' || relativePath.startsWith(`..${sep}`) || relativePath.includes(`${sep}..${sep}`)) {
+    throw new Error('Artifact base_path must be a non-empty path inside the runtime data directory');
+  }
+  return target;
 }
 
 function readSettingsRow(db: Database): SettingsRow | undefined {
@@ -244,6 +283,22 @@ function persistSecrets(
 
 function getStoredSecret(db: Database, path: string): boolean {
   return Boolean(db.prepare('SELECT path FROM runtime_settings_secrets WHERE path = ?').get(path));
+}
+
+function resolveModelApiKey(db: Database, value: string | undefined, dataDir?: string): string | undefined {
+  if (value !== `${STORED_SECRET_PREFIX}model.api_key`) return value;
+  const row = db.prepare('SELECT ciphertext, nonce, tag FROM runtime_settings_secrets WHERE path = ?').get('model.api_key') as
+    | { ciphertext: string; nonce: string; tag: string }
+    | undefined;
+  return row ? decryptSecret(row, dataDir) : undefined;
+}
+
+function defaultModelForVendor(vendor: RuntimeSettings['model']['vendor']): string {
+  switch (vendor) {
+    case 'anthropic': return 'claude-sonnet-4-20250514';
+    case 'openai': return 'gpt-4.1';
+    case 'openai_compatible': return 'gpt-4.1';
+  }
 }
 
 function maskObjectSecrets<T extends Record<string, unknown>>(value: T): T {

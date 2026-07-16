@@ -913,6 +913,8 @@ tr[role="button"]:hover td,
 }
 
 .compactToolbar {
+  position: relative;
+  z-index: 2;
   width: 100%;
   max-width: 100%;
   align-items: center;
@@ -1201,6 +1203,10 @@ tr[role="button"]:hover td,
 }
 
 .skillsLayout {
+  display: block;
+}
+
+.skillsLayout.hasDrawer {
   display: grid;
   grid-template-columns: minmax(0, 1fr) clamp(320px, 28vw, 380px);
   gap: 16px;
@@ -1232,8 +1238,9 @@ tr[role="button"]:hover td,
 }
 
 .sourceBadge.anthropic {
-  background: var(--info-soft);
-  color: var(--info);
+  background: var(--surface-muted);
+  color: var(--text-soft);
+  border: 1px solid var(--border);
 }
 
 .sourceBadge.custom {

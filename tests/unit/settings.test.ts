@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { describeSettingsAdapters, availabilityFromDescriptors } from '@/core/settings/adapters.js';
 import { validateRuntimeSettings } from '@/core/settings/schema.js';
 import { Database } from '@/core/db/database.js';
-import { activateRuntimeSettings, getOrSeedRuntimeSettings, saveRuntimeSettings } from '@/core/settings/store.js';
+import { activateRuntimeSettings, getOrSeedRuntimeSettings, localArtifactStorageDir, modelConfigFromRuntimeSettings, saveRuntimeSettings } from '@/core/settings/store.js';
 
 const validConfig = {
   schema_version: 1,
@@ -79,5 +79,25 @@ describe('Settings V2 activation', () => {
     expect(activated.restart_required).toBe(false);
     expect(activated.effective_config.loop_engine.options.default_max_steps).toBe(64);
     db.close();
+  });
+
+  it('builds the default runtime model from the effective settings without a UI model ID', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'ma-settings-model-'));
+    directories.push(directory);
+    const db = new Database(join(directory, 'settings.db'));
+    db.runMigrations();
+    const initial = getOrSeedRuntimeSettings(db);
+    const config = { ...initial.effective_config, model: { vendor: 'anthropic' as const, options: {} } };
+    const model = modelConfigFromRuntimeSettings(db, config, directory);
+    expect(model).toMatchObject({ name: 'default', provider: 'anthropic', model: 'claude-sonnet-4-20250514' });
+    db.close();
+  });
+
+  it('resolves local artifact storage beneath the runtime data directory', () => {
+    expect(localArtifactStorageDir('/tmp/runtime', validConfig)).toBe('/tmp/runtime/files');
+    expect(() => localArtifactStorageDir('/tmp/runtime', {
+      ...validConfig,
+      storage: { ...validConfig.storage, artifacts: { provider: 'local' as const, options: { base_path: '../escape' } } },
+    })).toThrow(/inside the runtime data directory/);
   });
 });

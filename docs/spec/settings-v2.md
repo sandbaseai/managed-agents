@@ -564,3 +564,58 @@ Exit criteria: no page offers an action that the backend cannot perform.
 - mem0 or MemU selection before their adapters exist.
 - A visual workflow builder.
 
+## 13. Architecture review and delivery priorities
+
+Review date: 2026-07-16
+
+The first Settings V2 implementation establishes the configuration document,
+validation API, encrypted Settings secret storage, and the Dashboard editing
+surface. It is intentionally not the final runtime cutover. Until the items
+below are complete, the Dashboard must describe availability accurately and
+must not imply that a planned adapter is active.
+
+### 13.1 Current effective-behavior matrix
+
+| Area | Current behavior | Required before claiming full support |
+| --- | --- | --- |
+| Model | Settings V2 is persisted, but the runtime ModelRegistry still starts from the legacy `models` table. | Construct the default model adapter from Settings V2 and migrate legacy rows once. |
+| Loop engine | `builtin` default max steps is applied by the executor. | Replace direct strategy construction with an engine factory before enabling other engines. |
+| Metadata storage | SQLite is the real metadata store. | Add a migration/backup/rollback contract before exposing external databases. |
+| Artifact storage | Local artifact path is resolved from effective Settings V2 and is used by File resources and snapshots. | Introduce a shared ArtifactStore interface before adding generated artifact and S3 support. |
+| Memory | SQLite enable/disable is wired. mem0 and MemU are unavailable. | Add real adapters and connection tests before making either selectable. |
+| Sandbox | The workspace setting is used as the `env_default` fallback; named Environments override it. | Expose precedence clearly and add adapter-specific health checks. |
+
+### 13.2 Findings
+
+1. **Single source of truth is incomplete.** Legacy model, memory-provider, and
+   storage-provider controls still coexist with Settings V2. The compatibility
+   period must be read-only for legacy controls: no new writes may be added.
+2. **Model vendor needs an adapter-owned resolved model.** Settings must not
+   ask for a Model ID, but a concrete provider request still needs one. Each
+   shipped vendor adapter therefore owns a versioned default mapping and
+   reports the resolved model as read-only diagnostics.
+3. **Security boundaries require completion before remote use.** Local shell
+   commands must receive an allowlisted environment only. Self-hosted workers
+   may complete only work they claimed. API credentials must use the single
+   SecretStore rather than legacy plaintext columns.
+4. **The Console has stale control surfaces.** Settings overview cards still
+   use plural “provider plugin” language, the disabled search input has no
+   purpose, and Skills must start as a table without an open drawer.
+5. **The composition roots are too broad.** `src/index.ts` and the Console
+   `App.tsx` should be split after runtime cutover into settings/bootstrap,
+   adapter registries, and independently loaded feature modules.
+
+### 13.3 Priority order
+
+1. **P0 — Safety and integrity:** sandbox environment allowlist; worker claim
+   ownership enforcement; CORS/auth deployment policy; move legacy plaintext
+   provider secrets into SecretStore.
+2. **P0 — Runtime cutover:** settings-driven ModelRegistry and ArtifactStore;
+   add end-to-end tests proving a saved setting changes execution after restart.
+3. **P1 — Honest Console:** remove legacy provider write paths and stale copy;
+   close Skills drawer by default; show unavailable adapters as unavailable.
+4. **P2 — Maintainability:** split Console features and runtime bootstrap;
+   replace global Console `Promise.all` loading with page/domain-level loading.
+
+No configuration page may offer a save action whose adapter is not connected
+to observable runtime behavior.

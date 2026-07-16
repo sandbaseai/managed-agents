@@ -4398,11 +4398,11 @@ function SettingsGeneral({ data, setView }: { data: ConsoleData; setView: (view:
     ? data.workspace.name
     : 'Default';
   const cards: Array<{ id: ViewId; title: string; body: string; icon: ReactNode; meta: string | number }> = [
-    { id: 'models', title: 'Models', body: 'Provider model IDs, base URLs, and API key state.', icon: <Brain size={20} />, meta: data.runtime?.models.length ?? 0 },
-    { id: 'loop-engine', title: 'Loop engine', body: 'Provider plugins for agent turns, tools, events, and approvals.', icon: <Gauge size={20} />, meta: 'provider' },
-    { id: 'storage', title: 'Storage', body: 'Provider plugins for metadata, files, skills, and audit records.', icon: <Database size={20} />, meta: 'provider' },
-    { id: 'memory', title: 'Memory', body: 'Provider plugins for memory stores, mounting, and context injection.', icon: <Brain size={20} />, meta: data.runtime?.memory ?? 'disabled' },
-    { id: 'sandbox', title: 'Sandbox', body: 'Provider plugins for local execution and environment isolation.', icon: <Shield size={20} />, meta: data.runtime?.sandbox_providers.length ?? 0 },
+    { id: 'models', title: 'Models', body: 'One default model vendor, base URL, and credential state.', icon: <Brain size={20} />, meta: data.settings?.effective_config.model.vendor ?? 'not configured' },
+    { id: 'loop-engine', title: 'Loop engine', body: 'Default execution engine and step limit for agent turns.', icon: <Gauge size={20} />, meta: data.settings?.effective_config.loop_engine.provider ?? 'builtin' },
+    { id: 'storage', title: 'Storage', body: 'Metadata storage and artifact storage for this workspace.', icon: <Database size={20} />, meta: data.settings?.effective_config.storage.metadata.provider ?? 'sqlite' },
+    { id: 'memory', title: 'Memory', body: 'One context-memory backend; Memory Stores remain session resources.', icon: <Brain size={20} />, meta: data.settings?.effective_config.memory.enabled ? data.settings.effective_config.memory.provider : 'disabled' },
+    { id: 'sandbox', title: 'Sandbox', body: 'Default session isolation; named Environments may override it.', icon: <Shield size={20} />, meta: data.settings?.effective_config.sandbox.provider ?? 'local' },
     { id: 'api-keys', title: 'API keys', body: 'Bearer tokens for local API access and dashboard auth.', icon: <KeyRound size={20} />, meta: data.apiKeys.filter((key) => key.status === 'active').length },
     { id: 'api-reference', title: 'API reference', body: 'HTTP endpoints, SDK snippets, and Skill upload examples.', icon: <Keyboard size={20} />, meta: '/v1' },
     { id: 'logs', title: 'Logs', body: 'Runtime logs, refresh, and process restart controls.', icon: <FileText size={20} />, meta: data.runtime?.status ?? 'starting' },
