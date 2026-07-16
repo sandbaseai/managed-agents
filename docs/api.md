@@ -524,6 +524,16 @@ the effective document currently used by the process. Response excerpt:
 }
 ```
 
+The Dashboard validates a changed candidate before enabling save, and API
+clients should follow the same sequence: `GET /v1/x/settings`, edit the complete
+document, `POST /v1/x/settings/validate`, optionally `POST /v1/x/settings/test`,
+then `PUT /v1/x/settings` with the current `revision`. A successful save updates
+`saved_config` and sets `restart_required` when the running process still uses
+the older `effective_config`. The next CLI-managed restart promotes the last
+valid saved revision to `effective_config`. If a saved row is corrupted outside
+the API, startup keeps the last valid effective document instead of activating
+the bad candidate.
+
 Validate a candidate document:
 
 ```bash

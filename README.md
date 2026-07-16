@@ -538,8 +538,10 @@ display the current process log buffer. Runtime configuration is organized
 under `Settings > Models`, `Settings > Loop engine`, `Settings > Storage`,
 `Settings > Memory`, and `Settings > Sandbox`. Each page edits the same
 versioned Settings V2 document, supports Form and JSON modes, and can validate
-or test the local capability before saving. The same log controls are available
-through `POST /v1/x/restart` and `GET /v1/x/logs`.
+or test the local capability before saving. Save is enabled only after a changed
+candidate validates successfully; saved settings become the effective runtime
+configuration after restart when a restart is required. The same log controls
+are available through `POST /v1/x/restart` and `GET /v1/x/logs`.
 
 ## Release Checks
 
