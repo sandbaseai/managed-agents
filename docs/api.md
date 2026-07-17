@@ -474,6 +474,16 @@ Extension endpoints expose local runtime operations.
 | `GET` | `/v1/x/logs?limit=200&level=info&q=term` | Recent in-process structured runtime logs. |
 | `GET` | `/v1/x/metrics` | Prometheus metrics, when enabled. |
 | `GET` | `/v1/x/mcp/status?session_id=...` | MCP connection status for a session. |
+| `GET` | `/v1/x/model-providers` | Read-only legacy model provider compatibility rows. |
+| `POST` | `/v1/x/model-providers` | Deprecated legacy mutation; returns `410 Gone`. |
+| `POST` | `/v1/x/model-providers/{name}/default` | Deprecated legacy mutation; returns `410 Gone`. |
+| `GET` | `/v1/x/memory-providers` | Read-only legacy memory provider compatibility rows. |
+| `POST` | `/v1/x/memory-providers` | Deprecated legacy mutation; returns `410 Gone`. |
+| `POST` | `/v1/x/memory-providers/{name}/default` | Deprecated legacy mutation; returns `410 Gone`. |
+| `GET` | `/v1/x/storage-providers?role=metadata` | Read-only legacy storage provider compatibility rows. |
+| `POST` | `/v1/x/storage-providers` | Deprecated legacy mutation; returns `410 Gone`. |
+| `POST` | `/v1/x/storage-providers/{name}/initialize` | Deprecated legacy mutation; returns `410 Gone`. |
+| `POST` | `/v1/x/storage-providers/{name}/default` | Deprecated legacy mutation; returns `410 Gone`. |
 
 `GET /v1/x/runtime` returns runtime-safe introspection data. Model entries expose
 configuration metadata only:
@@ -496,6 +506,12 @@ configuration metadata only:
 ```
 
 The runtime never returns raw API keys or resolved secret values to the Console.
+
+Legacy provider endpoints are compatibility-only in Settings V2. The `GET`
+endpoints remain available for older clients that inspect existing rows, but
+all legacy provider mutation endpoints return `410 Gone` with a
+`legacy_provider_mutation_unsupported` error. New clients should read and write
+runtime configuration through `/v1/x/settings`.
 
 Settings V2 is the source of truth for model vendor, loop engine, storage,
 memory, and sandbox configuration. Responses include both the saved document and

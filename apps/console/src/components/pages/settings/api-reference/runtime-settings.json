@@ -239,9 +239,14 @@
     "summary": "Request runtime restart so saved settings can become effective.",
     "response": [
       {
-        "name": "scheduled",
+        "name": "restarting",
         "type": "boolean",
         "description": "True when restart was scheduled."
+      },
+      {
+        "name": "status",
+        "type": "scheduled",
+        "description": "Restart scheduling status."
       }
     ]
   }

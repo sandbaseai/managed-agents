@@ -83,6 +83,7 @@ describe('API reference docs', () => {
   it('documents the full Runtime Settings response shape used by the Console', () => {
     const getSettings = API_REFERENCE_DOCS.find((endpoint) => endpoint.id === 'settings-get');
     const saveSettings = API_REFERENCE_DOCS.find((endpoint) => endpoint.id === 'settings-save');
+    const restartRuntime = API_REFERENCE_DOCS.find((endpoint) => endpoint.id === 'runtime-restart');
     const expectedStateFields = [
       'schema_version',
       'revision',
@@ -103,6 +104,7 @@ describe('API reference docs', () => {
       'adapters',
     ]));
     expect(saveSettings?.response.map((field) => field.name)).toEqual(expect.arrayContaining(expectedStateFields));
+    expect(restartRuntime?.response.map((field) => field.name)).toEqual(['restarting', 'status']);
   });
 
   it('keeps every endpoint schema complete and route identity unique', () => {
