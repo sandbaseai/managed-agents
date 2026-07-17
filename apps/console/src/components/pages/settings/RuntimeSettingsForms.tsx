@@ -22,17 +22,15 @@ function AdapterSelect({
   adapters,
   value,
   onChange,
-  allowUnavailable = false,
 }: {
   adapters: AdapterOption[];
   value: string;
   onChange: (value: string) => void;
-  allowUnavailable?: boolean;
 }) {
   return (
     <select value={value} onChange={(event) => onChange(event.target.value)}>
       {adapters.map((item) => (
-        <option key={item.id} value={item.id} disabled={allowUnavailable ? item.status === 'invalid' : item.status !== 'available'}>
+        <option key={item.id} value={item.id} disabled={item.status !== 'available'}>
           {item.label}{item.status === 'available' ? '' : ` - ${item.status}`}
         </option>
       ))}
@@ -154,7 +152,6 @@ export function StorageSettingsForm({
           <AdapterSelect
             adapters={metadataAdapters}
             value={config.storage.metadata.provider}
-            allowUnavailable
             onChange={(provider) => changeMetadataProvider(provider as RuntimeSettingsConfig['storage']['metadata']['provider'])}
           />
         </FormField>
@@ -195,7 +192,6 @@ export function StorageSettingsForm({
           <AdapterSelect
             adapters={artifactAdapters}
             value={config.storage.artifacts.provider}
-            allowUnavailable
             onChange={(provider) => changeArtifactProvider(provider as RuntimeSettingsConfig['storage']['artifacts']['provider'])}
           />
         </FormField>

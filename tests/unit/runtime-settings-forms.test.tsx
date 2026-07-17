@@ -185,7 +185,7 @@ describe('Runtime Settings forms', () => {
     expect(html).not.toContain('<table');
   });
 
-  it('renders multiple metadata and artifact storage providers with provider-specific fields', () => {
+  it('renders multiple metadata and artifact storage providers without enabling unavailable adapters', () => {
     const s3Config: RuntimeSettingsConfig = {
       ...config,
       storage: {
@@ -227,8 +227,9 @@ describe('Runtime Settings forms', () => {
     expect(html).toContain('Secret key');
     expect(html).toContain('Path-style requests');
     expect(html).toContain('Storage adapter availability');
-    expect(html).not.toMatch(/value="postgres" disabled=""/);
-    expect(html).not.toMatch(/value="s3" disabled=""/);
+    expect(html).toMatch(/value="postgres" disabled=""/);
+    expect(html).toMatch(/value="mysql" disabled=""/);
+    expect(html).toMatch(/value="s3" disabled=""/);
   });
 
   it('derives option defaults from storage adapter schemas', () => {
