@@ -196,14 +196,16 @@ The user-facing form contains:
 - Vendor
 - Base URL when the vendor supports or requires it
 - API key
-- Advanced JSON options
-- Validate button
 
 There is no required Model ID field in Settings. The selected vendor adapter
-owns its default model behavior. If an adapter needs extra routing details,
-they live in `model.options` and must have documented defaults. Agent-level
-model selection is outside Settings V2 and must not reintroduce a workspace
-provider list.
+owns its default model behavior. The first Dashboard release intentionally does
+not expose a Model advanced-options editor: the editable Model form is limited
+to vendor, base URL, and API key so the page cannot imply support for arbitrary
+provider-specific routing fields. The JSON document keeps `model.options` as an
+empty adapter-owned extension point for API compatibility and future adapters;
+any future non-empty options must have documented defaults before they are
+shown in the UI. Agent-level model selection is outside Settings V2 and must
+not reintroduce a workspace provider list.
 
 Validation checks:
 
@@ -232,7 +234,6 @@ The built-in form contains:
 - Provider
 - Default max steps
 - Advanced JSON options
-- Validate button
 
 Agent `max_turns` overrides `default_max_steps`. The engine registry replaces
 the direct `new DefaultStrategy()` construction at startup.
@@ -303,7 +304,6 @@ The form contains:
 - Provider
 - Provider-specific fields
 - Advanced JSON options
-- Validate or Check configuration button
 
 When disabled, the runtime does not retrieve or extract long-term context.
 When enabled, the selected adapter is injected into `ContextBuilder`.
@@ -333,7 +333,6 @@ The form contains:
 - Default provider
 - Timeout
 - Provider-specific options
-- Validate button
 - Link to Environments
 
 Validation examples:
@@ -499,14 +498,15 @@ merges only that section back into the complete document.
 
 Required actions:
 
-- Validate
-- Check configuration when supported
 - Save
-- Discard changes
+- Discard changes when the page is dirty
 - Restart runtime when required
 
-Save remains disabled until the candidate is changed and valid. Validation
-errors are shown both next to form fields and as JSON paths.
+Save validates the candidate before persisting it. Optional diagnostics such as
+Validate and Check configuration may be available as secondary actions, but the
+default page chrome must stay minimal and must not repeat restart controls on
+every settings section. Validation errors are shown both next to form fields and
+as JSON paths.
 
 Storage is one page with Metadata storage followed by Artifact storage. Memory
 is one backend configuration, not a table. Loop engine is one engine

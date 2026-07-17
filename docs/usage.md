@@ -110,10 +110,10 @@ section, and saving merges the section back into the versioned document.
 The usual sequence is:
 
 1. Change the relevant field.
-2. Click `Validate`.
-3. Optionally click `Check configuration` for a local capability check.
-4. Click `Save settings`.
-5. Restart the runtime when the page shows `Restart required`.
+2. Click `Save settings`; the Dashboard validates the change before saving.
+3. Optionally run `Check configuration` for a local capability check when you
+   need diagnostics before or after saving.
+4. Restart the runtime when the page shows `Restart required`.
 
 All first-release Settings V2 fields require a runtime restart before they
 become effective. Until restart, API responses expose both `saved_config` and
