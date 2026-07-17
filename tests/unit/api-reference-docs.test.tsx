@@ -1,5 +1,7 @@
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { API_REFERENCE_DOCS } from '../../apps/console/src/components/pages/settings/apiReferenceDocs';
 import {
@@ -28,6 +30,32 @@ const context: ApiReferenceExampleContext = {
 };
 
 describe('API reference docs', () => {
+  it('documents every mounted backend route', () => {
+    const mountedRouteFiles: Record<string, string> = {
+      'agents.ts': '/v1/agents',
+      'api-keys.ts': '/v1/api-keys',
+      'extended.ts': '/v1/x',
+      'resources.ts': '/v1',
+      'sessions.ts': '/v1/sessions',
+      'skills.ts': '/v1/skills',
+      'stream.ts': '/v1/sessions',
+      'worker.ts': '/v1/x/worker',
+    };
+    const documented = new Set(API_REFERENCE_DOCS.map((endpoint) => routeKey(endpoint.method, endpoint.path)));
+    const mounted = new Set<string>();
+
+    for (const [file, mountPath] of Object.entries(mountedRouteFiles)) {
+      const source = readFileSync(join(process.cwd(), 'src/api/routes', file), 'utf8');
+      for (const match of source.matchAll(/app\.(get|post|put|delete|patch)\('([^']+)'/g)) {
+        const method = match[1].toUpperCase();
+        const route = match[2] === '/' ? '' : match[2].replace(/:([A-Za-z0-9_]+)/g, '{$1}');
+        mounted.add(routeKey(method, `${mountPath}${route}`));
+      }
+    }
+
+    expect([...mounted].sort()).toEqual([...documented].sort());
+  });
+
   it('loads a broad endpoint set instead of only create endpoints', () => {
     const methods = new Set(API_REFERENCE_DOCS.map((endpoint) => endpoint.method));
     const ids = new Set(API_REFERENCE_DOCS.map((endpoint) => endpoint.id));
@@ -184,3 +212,7 @@ describe('API reference docs', () => {
     expect(html).toContain("curl -sS &#x27;http://127.0.0.1:3000/v1/custom/custom_123&#x27;");
   });
 });
+
+function routeKey(method: string, path: string): string {
+  return `${method} ${path.replace(/\{[^}]+\}/g, '{}')}`;
+}
