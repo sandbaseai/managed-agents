@@ -9,6 +9,7 @@ import memory_stores from './api-reference/memory-stores.json';
 import runtime_settings from './api-reference/runtime-settings.json';
 import api_keys from './api-reference/api-keys.json';
 import operations from './api-reference/operations.json';
+import legacy_providers from './api-reference/legacy-providers.json';
 import worker from './api-reference/worker.json';
 
 export const API_REFERENCE_DOCS: ApiReferenceEndpoint[] = [
@@ -22,5 +23,6 @@ export const API_REFERENCE_DOCS: ApiReferenceEndpoint[] = [
   ...(runtime_settings as unknown as ApiReferenceEndpoint[]),
   ...(api_keys as unknown as ApiReferenceEndpoint[]),
   ...(operations as unknown as ApiReferenceEndpoint[]),
+  ...(legacy_providers as unknown as ApiReferenceEndpoint[]),
   ...(worker as unknown as ApiReferenceEndpoint[]),
 ];

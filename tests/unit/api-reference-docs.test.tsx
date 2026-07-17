@@ -42,10 +42,13 @@ describe('API reference docs', () => {
       'Files',
       'Runtime settings',
       'Operations',
+      'Legacy providers',
     ]));
     expect(Array.from(methods)).toEqual(expect.arrayContaining(['GET', 'POST', 'PUT', 'DELETE']));
     expect(API_REFERENCE_DOCS.some((endpoint) => !endpoint.id.includes('create'))).toBe(true);
     expect(API_REFERENCE_DOCS.some((endpoint) => endpoint.id.includes('delete'))).toBe(true);
+    expect(API_REFERENCE_DOCS.some((endpoint) => endpoint.id === 'legacy-storage-providers-initialize')).toBe(true);
+    expect(API_REFERENCE_DOCS.some((endpoint) => endpoint.summary.includes('410 Gone'))).toBe(true);
     expect(ids.has(DEFAULT_API_REFERENCE_ENDPOINT_ID)).toBe(true);
   });
 
@@ -130,7 +133,7 @@ describe('API reference docs', () => {
   });
 
   it('filters, groups, and derives default headers for endpoint docs', () => {
-    const visible = getVisibleApiEndpoints(API_REFERENCE_DOCS, 'runtime settings');
+    const visible = getVisibleApiEndpoints(API_REFERENCE_DOCS, 'check settings area');
 
     expect(visible.length).toBeGreaterThan(0);
     expect(visible.every((endpoint) => [
