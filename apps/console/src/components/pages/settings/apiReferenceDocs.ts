@@ -1,197 +1,26 @@
-import type { ApiReferenceEndpoint } from './SettingsApiReference';
+import type { ApiReferenceEndpoint } from './apiReferenceTypes';
+import sessions from './api-reference/sessions.json';
+import agents from './api-reference/agents.json';
+import skills from './api-reference/skills.json';
+import files from './api-reference/files.json';
+import environments from './api-reference/environments.json';
+import credential_vaults from './api-reference/credential-vaults.json';
+import memory_stores from './api-reference/memory-stores.json';
+import runtime_settings from './api-reference/runtime-settings.json';
+import api_keys from './api-reference/api-keys.json';
+import operations from './api-reference/operations.json';
+import worker from './api-reference/worker.json';
 
 export const API_REFERENCE_DOCS: ApiReferenceEndpoint[] = [
-  {
-    id: 'sessions-create',
-    group: 'Sessions',
-    title: 'Create session',
-    method: 'POST',
-    path: '/v1/sessions',
-    summary: 'Create an executable agent session in an environment. Sessions persist a resumable event log and can be continued through messages or raw events.',
-    parameters: [
-      { name: 'agent', type: 'string | object', required: true, description: 'Agent id, or an object with an id and optional version.' },
-      { name: 'environment_id', type: 'string', required: true, description: 'Environment template used to prepare the session runtime.' },
-      { name: 'title', type: 'string', description: 'Optional human-readable session title.' },
-      { name: 'resources', type: 'array', description: 'Files, GitHub repositories, or memory stores mounted into the session.' },
-      { name: 'vault_ids', type: 'string[]', description: 'Credential vault ids available to tools during this session.' },
-      { name: 'metadata', type: 'object', description: 'Opaque key-value tags for audit and external bookkeeping.' },
-    ],
-    response: [
-      { name: 'id', type: 'string', description: 'Server-generated sess_... identifier.' },
-      { name: 'status', type: 'idle | running | error | archived', description: 'Current session lifecycle state.' },
-      { name: 'agent', type: 'object', description: 'Pinned agent id, name, and version used by this session.' },
-      { name: 'usage', type: 'object', description: 'Input and output token counters recorded by the runtime.' },
-      { name: 'created_at', type: 'datetime', description: 'RFC 3339 creation timestamp.' },
-    ],
-  },
-  {
-    id: 'sessions-message',
-    group: 'Sessions',
-    title: 'Send message',
-    method: 'POST',
-    path: '/v1/sessions/{session_id}/messages',
-    summary: 'Append a user message and run the agent loop. Set stream to true for Server-Sent Events compatible with browser clients and SDK iterators.',
-    parameters: [
-      { name: 'content', type: 'string | content[]', required: true, description: 'User message text or structured content blocks.' },
-      { name: 'stream', type: 'boolean', description: 'When true, returns an SSE stream of session and agent events.' },
-      { name: 'metadata', type: 'object', description: 'Optional event-level metadata.' },
-    ],
-    response: [
-      { name: 'event', type: 'SSE event', description: 'Streaming event when stream is true.' },
-      { name: 'session', type: 'object', description: 'Updated session envelope for non-streaming calls.' },
-    ],
-  },
-  {
-    id: 'agents-create',
-    group: 'Agents',
-    title: 'Create agent',
-    method: 'POST',
-    path: '/v1/agents',
-    summary: 'Create a managed agent definition using the Claude-style runtime shape. Console-created agents are stored in SQLite and versioned on update.',
-    parameters: [
-      { name: 'name', type: 'string', required: true, description: 'Human-readable agent name.' },
-      { name: 'description', type: 'string', description: 'Short agent purpose shown in lists and details.' },
-      { name: 'model', type: 'string | object', required: true, description: 'Model id string, or object with id and speed.' },
-      { name: 'system', type: 'string', required: true, description: 'System prompt used to drive the agent.' },
-      { name: 'mcp_servers', type: 'array', description: 'MCP server definitions referenced by mcp_toolset entries.' },
-      { name: 'tools', type: 'array', description: 'Built-in and MCP toolsets with permission policy configuration.' },
-      { name: 'skills', type: 'array', description: 'Skill references attached to this agent.' },
-      { name: 'metadata', type: 'object', description: 'Opaque agent metadata.' },
-    ],
-    response: [
-      { name: 'id', type: 'string', description: 'Server-generated agent_... identifier.' },
-      { name: 'version', type: 'number', description: 'Initial version, incremented by updates.' },
-      { name: 'status', type: 'active | archived', description: 'Current agent state.' },
-      { name: 'created_at', type: 'datetime', description: 'RFC 3339 creation timestamp.' },
-    ],
-  },
-  {
-    id: 'skills-create',
-    group: 'Skills',
-    title: 'Create skill',
-    method: 'POST',
-    path: '/v1/skills',
-    summary: 'Upload a reusable Skill package. A valid package contains one top-level folder with SKILL.md at its root.',
-    parameters: [
-      { name: 'files', type: 'multipart file[] | JSON file[]', required: true, description: 'Zip, .skill file, directory upload, or JSON file list.' },
-      { name: 'display_title', type: 'string', description: 'Optional human label not included in model prompts.' },
-    ],
-    response: [
-      { name: 'id', type: 'string', description: 'Server-generated skill_... identifier for custom uploads.' },
-      { name: 'display_title', type: 'string', description: 'Human-readable title.' },
-      { name: 'latest_version', type: 'string', description: 'Latest uploaded version identifier.' },
-      { name: 'source', type: 'custom | anthropic', description: 'Skill origin.' },
-    ],
-  },
-  {
-    id: 'files-upload',
-    group: 'Files',
-    title: 'Upload file',
-    method: 'POST',
-    path: '/v1/files',
-    summary: 'Upload files once and mount them into sessions as resources. Metadata is stored in SQLite; bytes live in the runtime data directory.',
-    parameters: [
-      { name: 'file', type: 'multipart file', required: true, description: 'File payload for multipart uploads.' },
-      { name: 'name', type: 'string', description: 'Filename for JSON uploads.' },
-      { name: 'content', type: 'string', description: 'JSON upload content, encoded as utf8 or base64.' },
-    ],
-    response: [
-      { name: 'id', type: 'string', description: 'Server-generated file_... identifier.' },
-      { name: 'filename', type: 'string', description: 'Original or supplied filename.' },
-      { name: 'size_bytes', type: 'number', description: 'Stored file size.' },
-      { name: 'created_at', type: 'datetime', description: 'RFC 3339 upload timestamp.' },
-    ],
-  },
-  {
-    id: 'environments-create',
-    group: 'Environments',
-    title: 'Create environment',
-    method: 'POST',
-    path: '/v1/environments',
-    summary: 'Create a reusable environment template for session containers, package policy, sandboxing, and network access.',
-    parameters: [
-      { name: 'name', type: 'string', required: true, description: 'Human-readable environment name.' },
-      { name: 'hosting_type', type: 'cloud | self_hosted', description: 'Where session work is expected to run.' },
-      { name: 'network', type: 'object', description: 'Limited or unrestricted network policy.' },
-      { name: 'packages', type: 'array', description: 'Package manager and package declarations available in this environment.' },
-      { name: 'metadata', type: 'object', description: 'Opaque environment tags.' },
-    ],
-    response: [
-      { name: 'id', type: 'string', description: 'Server-generated env_... identifier.' },
-      { name: 'status', type: 'active | archived', description: 'Current environment state.' },
-      { name: 'hosting_type', type: 'cloud | self_hosted', description: 'Configured hosting mode.' },
-    ],
-  },
-  {
-    id: 'vaults-credential-create',
-    group: 'Credential vaults',
-    title: 'Add credential',
-    method: 'POST',
-    path: '/v1/credential-vaults/{vault_id}/credentials',
-    summary: 'Add an OAuth, bearer token, or environment variable credential to a workspace vault.',
-    parameters: [
-      { name: 'auth_type', type: 'mcp_oauth | bearer_token | environment_variable', required: true, description: 'Credential type and injection mode.' },
-      { name: 'name', type: 'string', description: 'Optional human-readable label.' },
-      { name: 'value', type: 'string', description: 'Secret value. Stored encrypted and never returned in list responses.' },
-      { name: 'network', type: 'object', description: 'Allowed hosts and access mode for this credential.' },
-      { name: 'injection_locations', type: 'array', description: 'Request header or body injection locations.' },
-    ],
-    response: [
-      { name: 'id', type: 'string', description: 'Server-generated vcrd_... identifier.' },
-      { name: 'value_hint', type: 'string', description: 'Masked hint for the stored secret.' },
-      { name: 'status', type: 'active | archived', description: 'Current credential state.' },
-    ],
-  },
-  {
-    id: 'memory-create',
-    group: 'Memory stores',
-    title: 'Create memory',
-    method: 'POST',
-    path: '/v1/memory_stores/{memory_store_id}/memories',
-    summary: 'Write a persistent memory entry into a mounted store. Memory paths are slash-prefixed and rendered as a tree in the Console.',
-    parameters: [
-      { name: 'path', type: 'string', required: true, description: 'Absolute memory path, such as /notes/release.' },
-      { name: 'content', type: 'string', required: true, description: 'Memory text content.' },
-      { name: 'metadata', type: 'object', description: 'Optional bookkeeping tags.' },
-    ],
-    response: [
-      { name: 'id', type: 'string', description: 'Server-generated mem_... identifier.' },
-      { name: 'path', type: 'string', description: 'Normalized memory path.' },
-      { name: 'updated_at', type: 'datetime', description: 'Last write timestamp.' },
-    ],
-  },
-  {
-    id: 'api-keys-create',
-    group: 'API keys',
-    title: 'Create API key',
-    method: 'POST',
-    path: '/v1/api-keys',
-    summary: 'Create a local bearer token for shared dashboard or API access. The full secret is returned once.',
-    parameters: [
-      { name: 'name', type: 'string', required: true, description: 'Human-readable key label.' },
-      { name: 'metadata', type: 'object', description: 'Optional key tags.' },
-    ],
-    response: [
-      { name: 'id', type: 'string', description: 'Server-generated key_... identifier.' },
-      { name: 'key_prefix', type: 'string', description: 'Safe display prefix.' },
-      { name: 'secret_key', type: 'string', description: 'Full bearer token, returned only on create.' },
-    ],
-  },
-  {
-    id: 'logs-list',
-    group: 'Operations',
-    title: 'List runtime logs',
-    method: 'GET',
-    path: '/v1/x/logs',
-    summary: 'Read recent structured runtime logs from the current process. Use this for local operations and troubleshooting.',
-    parameters: [
-      { name: 'limit', type: 'number', description: 'Maximum log lines to return.' },
-      { name: 'level', type: 'debug | info | warn | error', description: 'Minimum severity filter.' },
-      { name: 'q', type: 'string', description: 'Text search against the rendered log message.' },
-    ],
-    response: [
-      { name: 'data', type: 'RuntimeLogEntry[]', description: 'Recent structured log lines.' },
-      { name: 'has_more', type: 'boolean', description: 'Whether older rows exist outside the page.' },
-    ],
-  },
+  ...(sessions as unknown as ApiReferenceEndpoint[]),
+  ...(agents as unknown as ApiReferenceEndpoint[]),
+  ...(skills as unknown as ApiReferenceEndpoint[]),
+  ...(files as unknown as ApiReferenceEndpoint[]),
+  ...(environments as unknown as ApiReferenceEndpoint[]),
+  ...(credential_vaults as unknown as ApiReferenceEndpoint[]),
+  ...(memory_stores as unknown as ApiReferenceEndpoint[]),
+  ...(runtime_settings as unknown as ApiReferenceEndpoint[]),
+  ...(api_keys as unknown as ApiReferenceEndpoint[]),
+  ...(operations as unknown as ApiReferenceEndpoint[]),
+  ...(worker as unknown as ApiReferenceEndpoint[]),
 ];

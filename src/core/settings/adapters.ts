@@ -1,6 +1,6 @@
 import type { RuntimeSettings, SettingsAvailability } from './schema.js';
 
-export type AdapterStatus = 'available' | 'unavailable';
+export type AdapterStatus = 'available' | 'unavailable' | 'invalid';
 
 export type AdapterDescriptor = {
   id: string;
@@ -8,6 +8,7 @@ export type AdapterDescriptor = {
   version: string;
   status: AdapterStatus;
   restart_policy: 'none' | 'runtime';
+  options_schema: Record<string, unknown>;
 };
 
 export type SettingsAdapterDescriptors = {
@@ -22,39 +23,73 @@ export type SettingsAdapterDescriptors = {
 };
 
 export function describeSettingsAdapters(installedSandboxes: string[] = ['local']): SettingsAdapterDescriptors {
-  const sandboxAvailable = new Set(installedSandboxes.map((item) => item === 'self_hosted' ? 'remote' : item));
+  const knownSandboxIds = new Set(['local', 'docker', 'remote']);
+  const normalizedSandboxIds = installedSandboxes.map((item) => item === 'self_hosted' ? 'remote' : item);
+  const sandboxAvailable = new Set(normalizedSandboxIds);
+  const invalidSandboxes = [...new Set(normalizedSandboxIds)]
+    .filter((item) => !knownSandboxIds.has(item))
+    .map((item) => invalidDescriptor(item, `Unknown sandbox (${item})`, 'runtime', objectSchema()));
   return {
     model: [
-      descriptor('openai', 'OpenAI', true, 'runtime'),
-      descriptor('anthropic', 'Anthropic', true, 'runtime'),
-      descriptor('openai_compatible', 'OpenAI compatible', true, 'runtime'),
+      descriptor('openai', 'OpenAI', true, 'runtime', objectSchema()),
+      descriptor('anthropic', 'Anthropic', true, 'runtime', objectSchema()),
+      descriptor('openai_compatible', 'OpenAI compatible', true, 'runtime', objectSchema()),
     ],
     loop_engine: [
-      descriptor('builtin', 'Managed Agents', true, 'runtime'),
-      descriptor('harness', 'Harness', false, 'runtime'),
-      descriptor('codex', 'Codex', false, 'runtime'),
-      descriptor('claude', 'Claude', false, 'runtime'),
+      descriptor('builtin', 'Default', true, 'runtime', objectSchema({
+        default_max_steps: { type: 'integer', minimum: 1, maximum: 1000, default: 25 },
+      })),
+      descriptor('harness', 'Harness', false, 'runtime', objectSchema()),
+      descriptor('codex', 'Codex', false, 'runtime', objectSchema()),
+      descriptor('claude', 'Claude', false, 'runtime', objectSchema()),
     ],
     storage: {
       metadata: [
-        descriptor('sqlite', 'SQLite', true, 'runtime'),
-        descriptor('postgres', 'Postgres', false, 'runtime'),
-        descriptor('mysql', 'MySQL', false, 'runtime'),
+        descriptor('sqlite', 'SQLite', true, 'runtime', objectSchema()),
+        descriptor('postgres', 'Postgres', false, 'runtime', objectSchema({
+          connection_string: { type: 'string', format: 'password', default: '${DATABASE_URL}' },
+        })),
+        descriptor('mysql', 'MySQL', false, 'runtime', objectSchema({
+          connection_string: { type: 'string', format: 'password', default: '${DATABASE_URL}' },
+        })),
       ],
       artifacts: [
-        descriptor('local', 'Local filesystem', true, 'runtime'),
-        descriptor('s3', 'S3-compatible', false, 'runtime'),
+        descriptor('local', 'Local filesystem', true, 'runtime', objectSchema({
+          base_path: { type: 'string', default: 'files' },
+        })),
+        descriptor('s3', 'S3-compatible', false, 'runtime', objectSchema({
+          endpoint: { type: 'string', format: 'uri', default: 'https://s3.amazonaws.com' },
+          bucket: { type: 'string', default: '${S3_BUCKET}' },
+          region: { type: 'string', default: '${AWS_REGION}' },
+          access_key: { type: 'string', format: 'password', default: '${AWS_ACCESS_KEY_ID}' },
+          secret_key: { type: 'string', format: 'password', default: '${AWS_SECRET_ACCESS_KEY}' },
+          force_path_style: { type: 'boolean', default: false },
+        })),
       ],
     },
     memory: [
-      descriptor('sqlite', 'SQLite', true, 'runtime'),
-      descriptor('memu', 'MemU', false, 'runtime'),
-      descriptor('mem0', 'mem0', false, 'runtime'),
+      descriptor('sqlite', 'SQLite', true, 'runtime', objectSchema()),
+      descriptor('memu', 'MemU', false, 'runtime', objectSchema({
+        api_key: { type: 'string', format: 'password' },
+      })),
+      descriptor('mem0', 'mem0', false, 'runtime', objectSchema({
+        api_key: { type: 'string', format: 'password' },
+      })),
     ],
     sandbox: [
-      descriptor('local', 'Local', sandboxAvailable.has('local'), 'runtime'),
-      descriptor('docker', 'Docker', sandboxAvailable.has('docker'), 'runtime'),
-      descriptor('remote', 'Remote', sandboxAvailable.has('remote'), 'runtime'),
+      descriptor('local', 'Local', sandboxAvailable.has('local'), 'runtime', objectSchema({
+        timeout_seconds: { type: 'integer', minimum: 1, maximum: 86400, default: 300 },
+      })),
+      descriptor('docker', 'Docker', sandboxAvailable.has('docker'), 'runtime', objectSchema({
+        timeout_seconds: { type: 'integer', minimum: 1, maximum: 86400, default: 300 },
+        image: { type: 'string' },
+      })),
+      descriptor('remote', 'Remote', sandboxAvailable.has('remote'), 'runtime', objectSchema({
+        timeout_seconds: { type: 'integer', minimum: 1, maximum: 86400, default: 300 },
+        endpoint: { type: 'string', format: 'uri', default: '${MANAGED_AGENTS_API_URL}' },
+        api_key: { type: 'string', format: 'password', default: '${MANAGED_AGENTS_WORKER_API_KEY}' },
+      })),
+      ...invalidSandboxes,
     ],
   };
 }
@@ -75,6 +110,7 @@ function descriptor(
   label: string,
   available: boolean,
   restartPolicy: AdapterDescriptor['restart_policy'],
+  optionsSchema: Record<string, unknown>,
 ): AdapterDescriptor {
   return {
     id,
@@ -82,6 +118,31 @@ function descriptor(
     version: '1',
     status: available ? 'available' : 'unavailable',
     restart_policy: restartPolicy,
+    options_schema: optionsSchema,
+  };
+}
+
+function invalidDescriptor(
+  id: string,
+  label: string,
+  restartPolicy: AdapterDescriptor['restart_policy'],
+  optionsSchema: Record<string, unknown>,
+): AdapterDescriptor {
+  return {
+    id,
+    label,
+    version: '1',
+    status: 'invalid',
+    restart_policy: restartPolicy,
+    options_schema: optionsSchema,
+  };
+}
+
+function objectSchema(properties: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    type: 'object',
+    additionalProperties: true,
+    properties,
   };
 }
 
@@ -92,4 +153,3 @@ function availableIds<T extends string>(items: AdapterDescriptor[]): Set<T> {
 export function sandboxSettingForRuntime(value: string): RuntimeSettings['sandbox']['provider'] {
   return value === 'self_hosted' ? 'remote' : value === 'docker' ? 'docker' : 'local';
 }
-

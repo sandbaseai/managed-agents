@@ -1,0 +1,211 @@
+[
+  {
+    "id": "memory-stores-list",
+    "group": "Memory stores",
+    "title": "List memory stores",
+    "method": "GET",
+    "path": "/v1/memory_stores",
+    "summary": "List persistent memory stores available for sessions and resources.",
+    "response": [
+      {
+        "name": "data",
+        "type": "MemoryStore[]",
+        "description": "Memory store descriptors."
+      }
+    ]
+  },
+  {
+    "id": "memory-stores-create",
+    "group": "Memory stores",
+    "title": "Create memory store",
+    "method": "POST",
+    "path": "/v1/memory_stores",
+    "summary": "Create a persistent memory store.",
+    "parameters": [
+      {
+        "name": "name",
+        "type": "string",
+        "required": true,
+        "description": "Human-readable store name."
+      },
+      {
+        "name": "description",
+        "type": "string",
+        "description": "Optional store description."
+      },
+      {
+        "name": "metadata",
+        "type": "object",
+        "description": "Opaque tags."
+      }
+    ],
+    "response": [
+      {
+        "name": "id",
+        "type": "string",
+        "description": "Memory store identifier."
+      },
+      {
+        "name": "memory_store",
+        "type": "object",
+        "description": "Created or updated memory_store resource."
+      }
+    ]
+  },
+  {
+    "id": "memory-stores-get",
+    "group": "Memory stores",
+    "title": "Get memory store",
+    "method": "GET",
+    "path": "/v1/memory_stores/{memory_store_id}",
+    "summary": "Fetch one memory store descriptor.",
+    "response": [
+      {
+        "name": "id",
+        "type": "string",
+        "description": "Memory store identifier."
+      },
+      {
+        "name": "memory_store",
+        "type": "object",
+        "description": "Created or updated memory_store resource."
+      }
+    ]
+  },
+  {
+    "id": "memory-list",
+    "group": "Memory stores",
+    "title": "List memories",
+    "method": "GET",
+    "path": "/v1/memory_stores/{memory_store_id}/memories",
+    "summary": "List persistent memory entries in a store.",
+    "response": [
+      {
+        "name": "data",
+        "type": "Memory[]",
+        "description": "Memory entries ordered by path."
+      }
+    ]
+  },
+  {
+    "id": "memory-create",
+    "group": "Memory stores",
+    "title": "Create memory",
+    "method": "POST",
+    "path": "/v1/memory_stores/{memory_store_id}/memories",
+    "summary": "Write a persistent memory entry into a mounted store. Memory paths are slash-prefixed and rendered as a tree in the Console.",
+    "parameters": [
+      {
+        "name": "path",
+        "type": "string",
+        "required": true,
+        "description": "Absolute memory path, such as /notes/release."
+      },
+      {
+        "name": "content",
+        "type": "string",
+        "required": true,
+        "description": "Memory text content."
+      },
+      {
+        "name": "metadata",
+        "type": "object",
+        "description": "Optional bookkeeping tags."
+      }
+    ],
+    "response": [
+      {
+        "name": "id",
+        "type": "string",
+        "description": "Server-generated mem_... identifier."
+      },
+      {
+        "name": "path",
+        "type": "string",
+        "description": "Normalized memory path."
+      },
+      {
+        "name": "updated_at",
+        "type": "datetime",
+        "description": "Last write timestamp."
+      }
+    ]
+  },
+  {
+    "id": "memory-update",
+    "group": "Memory stores",
+    "title": "Update memory",
+    "method": "PUT",
+    "path": "/v1/memory_stores/{memory_store_id}/memories/{memory_id}",
+    "summary": "Update a memory entry content, path, or metadata.",
+    "parameters": [
+      {
+        "name": "path",
+        "type": "string",
+        "description": "New absolute memory path."
+      },
+      {
+        "name": "content",
+        "type": "string",
+        "description": "Updated memory text."
+      },
+      {
+        "name": "metadata",
+        "type": "object",
+        "description": "Updated tags."
+      }
+    ],
+    "response": [
+      {
+        "name": "id",
+        "type": "string",
+        "description": "Memory identifier."
+      },
+      {
+        "name": "memory",
+        "type": "object",
+        "description": "Created or updated memory resource."
+      }
+    ]
+  },
+  {
+    "id": "memory-delete",
+    "group": "Memory stores",
+    "title": "Delete memory",
+    "method": "DELETE",
+    "path": "/v1/memory_stores/{memory_store_id}/memories/{memory_id}",
+    "summary": "Archive one memory entry.",
+    "response": [
+      {
+        "name": "id",
+        "type": "string",
+        "description": "Memory identifier."
+      },
+      {
+        "name": "memory",
+        "type": "object",
+        "description": "Created or updated memory resource."
+      }
+    ]
+  },
+  {
+    "id": "memory-stores-archive",
+    "group": "Memory stores",
+    "title": "Archive memory store",
+    "method": "POST",
+    "path": "/v1/memory_stores/{memory_store_id}/archive",
+    "summary": "Archive a memory store and hide it from active resource selection.",
+    "response": [
+      {
+        "name": "id",
+        "type": "string",
+        "description": "Memory store identifier."
+      },
+      {
+        "name": "memory_store",
+        "type": "object",
+        "description": "Created or updated memory_store resource."
+      }
+    ]
+  }
+]

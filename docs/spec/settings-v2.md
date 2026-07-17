@@ -60,6 +60,8 @@ CREATE TABLE runtime_settings (
   revision INTEGER NOT NULL DEFAULT 1,
   effective_revision INTEGER NOT NULL DEFAULT 1,
   restart_required INTEGER NOT NULL DEFAULT 0,
+  activation_status TEXT NOT NULL DEFAULT 'active',
+  activation_errors TEXT NOT NULL DEFAULT '[]',
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -132,6 +134,24 @@ Literal secrets must be encrypted at rest with the existing AES-GCM secret
 facility. JSON returned by GET endpoints must contain a masked placeholder,
 not ciphertext or plaintext.
 
+The first implementation treats `model.api_key` and nested `options` keys
+whose final segment contains a secret-looking token such as `api_key`,
+`access_key`, `secret`, `token`, `password`, or `credential` as secrets.
+Literal values are stored in
+`runtime_settings_secrets` by complete JSON path and the configuration document
+stores only an internal reference. `${ENV_NAME}` references remain in the
+document. `********` preserves an existing value; omitting a secret removes it.
+Secret mutation and revision update occur in one transaction. GET, validate,
+save, and test responses must mask every recognized secret key with the same
+path-matching rule, including `access_key`; internal managed-secret references
+are never part of the public API. If a managed-secret reference appears during
+validation, it is valid only when it points to the same JSON path and a stored
+secret exists at that path. While a restart-required revision is pending,
+secrets referenced by either `saved_config` or `effective_config` must be kept;
+after activation, unreferenced Settings secrets are removed. Future adapter
+schemas should replace name-based discovery with an explicit secret annotation
+while preserving these wire semantics.
+
 ## 5. Adapter contract
 
 Each configurable area uses a registry of adapters. The initial contract is:
@@ -141,7 +161,7 @@ interface SettingsAdapter<TOptions> {
   readonly id: string;
   readonly label: string;
   readonly version: string;
-  readonly status: 'available' | 'unavailable';
+  readonly status: 'available' | 'unavailable' | 'invalid';
   readonly restartPolicy: 'none' | 'runtime';
 
   describe(): AdapterDescriptor;
@@ -283,10 +303,13 @@ The form contains:
 - Provider
 - Provider-specific fields
 - Advanced JSON options
-- Validate or Test connection button
+- Validate or Check configuration button
 
 When disabled, the runtime does not retrieve or extract long-term context.
 When enabled, the selected adapter is injected into `ContextBuilder`.
+Credential validation for memory adapter options runs only while memory is
+enabled, so stale credentials for a disabled backend do not block saving the
+workspace configuration.
 
 Changing memory provider requires a runtime restart in the initial release.
 Future hot swapping may be added only after in-flight session behavior is
@@ -319,8 +342,9 @@ Validation examples:
 - Docker: Docker is installed, daemon is reachable, and image is valid;
 - Remote: endpoint and credentials are valid and a health check succeeds.
 
-The UI distinguishes `installed`, `available`, `unavailable`, and
-`connection_failed` states.
+Adapter descriptors distinguish `available` and `unavailable`. Capability
+checks report `ok`, `failed`, or `skipped`; a failed connection check does not
+change whether an installed adapter is selectable.
 
 ## 7. API
 
@@ -334,13 +358,25 @@ Returns:
 {
   "schema_version": 1,
   "revision": 4,
+  "effective_revision": 3,
   "saved_config": {},
   "effective_config": {},
-  "restart_required": false,
+  "restart_required": true,
+  "activation_status": "pending",
+  "activation_errors": [],
+  "diagnostics": { "metadata": { "path": ".../data.db", "health": "ok" } },
   "adapters": {},
   "secret_states": {}
 }
 ```
+
+Each adapter descriptor returned under `adapters` contains `id`, `label`,
+`version`, `status`, `restart_policy`, and an `options_schema` JSON Schema.
+`invalid` is reserved for runtime-reported providers that Settings V2 does
+not recognize, so the Dashboard can show and disable the mismatch instead of
+silently hiding it.
+The first-release UI renders known controls directly, but this schema remains
+the backend-owned contract for adapter-specific options.
 
 ### 7.2 Validate configuration
 
@@ -390,7 +426,13 @@ validation. The first implementation performs local capability checks only:
 credential resolution, URL shape, SQLite quick check, local artifact
 writability, memory enablement, and local sandbox data-dir writability. It
 does not perform live vendor authentication against OpenAI, Anthropic, S3,
-Docker, mem0, or MemU until those adapters are real runtime implementations.
+Docker, mem0, or MemU until those adapters are real runtime implementations;
+registered non-local sandbox providers return a skipped live-health check.
+Model checks run the same credential validation as save/validate for the model
+area. Non-model area checks are scoped to their own adapter so storage, memory,
+and sandbox diagnostics can still run in a workspace whose model credential has
+not been configured yet; they still validate credentials that belong to the
+tested area.
 
 ### 7.4 Save configuration
 
@@ -414,6 +456,22 @@ The existing restart endpoint applies saved settings. After a successful
 restart, saved and effective revisions match and `restart_required` becomes
 false.
 
+All Settings V2 fields use `restartPolicy = runtime` in schema version 1. A
+save therefore always creates a pending revision. Hot activation must not be
+introduced until in-flight session behavior and path-level activation results
+are defined.
+
+If the saved document cannot be parsed, fails schema validation, selects a
+schema-valid but unavailable adapter, or contains a required credential that no
+longer resolves at startup, the runtime keeps the last valid effective
+document and reports `activation_status = failed`, `activation_errors`, the
+saved `revision`, and the older `effective_revision`. The pending document is
+retained for diagnosis and repair; it is never copied over the effective
+document.
+Activation uses the providers registered by the current process. For example,
+a saved Docker sandbox default is not promoted unless Docker was actually
+registered in the runtime sandbox registry for that startup.
+
 ## 8. Dashboard UX
 
 Settings keeps a Codex-style secondary vertical menu:
@@ -431,12 +489,17 @@ Settings keeps a Codex-style secondary vertical menu:
 Each configurable page has two editing modes over the same state:
 
 1. `Form`: focused controls for common fields;
-2. `JSON`: full document or area JSON using a code editor.
+2. `JSON`: the current page's configuration section using a code editor.
+
+The backend stores and validates one complete versioned runtime settings
+document, but the Console projects that document into page-level sections:
+`model`, `loop_engine`, `storage`, `memory`, and `sandbox`. Saving from a page
+merges only that section back into the complete document.
 
 Required actions:
 
 - Validate
-- Test connection when supported
+- Check configuration when supported
 - Save
 - Discard changes
 - Restart runtime when required
@@ -497,7 +560,6 @@ errors, and existing workspaces produce a correct effective document.
   overrides.
 - [x] Report saved/effective revisions and restart requirements.
 - [x] Implement save and adapter test APIs for implemented adapters.
-- [ ] Add real non-local adapters only when their runtime implementations exist.
 
 Exit criteria: changing every available setting changes observable runtime
 behavior after the documented activation step.
@@ -513,7 +575,6 @@ behavior after the documented activation step.
   validate-before-save gating.
 - [x] Keep unavailable adapters visible only as neutral, disabled capability
   descriptors.
-- [ ] Continue Claude/Codex visual polish after behavior remains stable.
 
 Exit criteria: no page offers an action that the backend cannot perform.
 
@@ -524,11 +585,16 @@ Exit criteria: no page offers an action that the backend cannot perform.
 - [x] Remove legacy provider arrays from the Console page-state model.
 - [x] Update README, installation, usage, API, and configuration documentation.
 - [x] Add upgrade notes for workspaces created before Settings V2.
-- [ ] Remove legacy read endpoints after the compatibility window ends.
 
 Compatibility decision: legacy provider `GET` endpoints remain readable for
 one release so older clients can inspect existing rows. Legacy provider
 mutation endpoints return `410 Gone` and point callers to `/v1/x/settings`.
+
+Deferred compatibility/future backlog:
+
+- Add real non-local adapters only after their runtime implementations exist.
+- Continue Claude/Codex visual polish after behavior remains stable.
+- Remove legacy read endpoints after the compatibility window ends.
 
 Upgrade note for existing workspaces: existing YAML model entries and legacy
 provider rows are treated as bootstrap/import data only. On first Settings V2
@@ -579,7 +645,8 @@ SQLite under the user data directory and do not rewrite source-controlled YAML.
 
 ### Dashboard tests
 
-- Form edits update JSON and JSON edits update form fields.
+- Form edits update the current section JSON and section JSON edits update form
+  fields after validation.
 - Invalid JSON and field errors prevent save.
 - Select controls open above cards and drawers.
 - Storage sections are vertically flattened without horizontal scrolling.
@@ -602,6 +669,15 @@ SQLite under the user data directory and do not rewrite source-controlled YAML.
 7. Change the local artifact base path and upload/read/delete a file.
 8. Create an Environment that overrides the default sandbox and run a tool.
 9. Confirm logs and audit data record settings changes without secret values.
+
+### Schema-version compatibility
+
+The runtime accepts schema version `1` only. A document with an unknown newer
+version is rejected and must not replace the effective document. Future schema
+versions require an explicit, idempotent document migration that runs before
+adapter validation, preserves secret references by JSON path, and records the
+result as a new revision. Downgrade startup keeps the last readable effective
+revision and reports an activation error instead of rewriting newer data.
 
 ## 12. Non-goals for the first release
 
@@ -628,11 +704,11 @@ must not imply that a planned adapter is active.
 | Area | Current behavior | Required before claiming full support |
 | --- | --- | --- |
 | Model | Runtime ModelRegistry is constructed from effective Settings V2. Vendor adapters own internal default model IDs. | Add optional live credential tests before claiming remote vendor health. |
-| Loop engine | `builtin` default max steps is applied by the executor. Planned engines are unavailable. | Replace direct strategy construction with an engine factory before enabling other engines. |
+| Loop engine | `builtin` default max steps is applied by the executor through the runtime loop-engine bootstrap helper. Planned engines are unavailable. | Add real adapters before enabling non-builtin engines. |
 | Metadata storage | SQLite is the real metadata store. | Add a migration/backup/rollback contract before exposing external databases. |
 | Artifact storage | Local artifact path is resolved from effective Settings V2 through a shared `ArtifactStore`, used by File resources and snapshots. | Add generated artifact consumers and a real S3 implementation before exposing S3 as selectable. |
 | Memory | SQLite enable/disable is wired and locally testable. mem0 and MemU are unavailable. | Add real adapters before making either selectable. |
-| Sandbox | The workspace setting is used as the `env_default` fallback; named Environments override it. Local sandbox writability is testable. | Add Docker and remote health checks when those adapters are implemented. |
+| Sandbox | The workspace setting is used as the `env_default` fallback; named Environments override it. Local, Docker, and remote/self-hosted providers are selectable only when registered by the current runtime; local writability is testable. | Add Docker daemon/image and remote endpoint health checks before claiming live connection validation for those providers. |
 
 ### 13.2 Findings
 
@@ -700,7 +776,9 @@ to observable runtime behavior.
 The first-release Settings V2 scope is implemented when all available adapters
 are truthful, configurable, validated, and wired to runtime behavior. Planned
 adapters remain visible only as unavailable capability descriptors until their
-runtime implementations exist.
+runtime implementations exist; sandbox providers are the exception where
+Docker and remote/self-hosted availability is reported from the current runtime
+registry.
 
 Implemented for this release:
 
@@ -714,7 +792,8 @@ Implemented for this release:
   Sandbox, with Save gated by a changed and validated candidate;
 - read-only legacy provider compatibility and `410 Gone` legacy mutations;
 - documentation for local setup, API usage, upgrade behavior, and adapter
-  availability.
+  availability, including the README, installation guide, usage guide, and API
+  reference.
 - incremental Console decomposition for Settings data loading, navigation,
   editor pages, Workspace, logs, API keys, Monitoring, API Reference, endpoint
   docs data, section router, Agents pages, Sessions pages, Environments pages,
@@ -730,6 +809,8 @@ Implemented for this release:
   Environments.
 - runtime ModelRegistry bootstrap helper for config model seeding, DB provider
   precedence, provider registration, and default model selection.
+- runtime loop-engine bootstrap helper for the built-in strategy and configured
+  default max steps.
 - runtime Agent/Skill bootstrap helper for YAML Agent seed import, custom Skill
   seed import, built-in/custom Skill reference validation, and reload-time Agent
   refresh.

@@ -10,7 +10,6 @@ import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { Database } from './core/db/database.js';
-import { DefaultStrategy } from './strategy/default-strategy.js';
 import { createServer } from './api/server.js';
 import { resolveDataDir, resolveUserPath } from './core/config/paths.js';
 import { composeRuntimeFromSettings } from './core/runtime/composition.js';
@@ -19,6 +18,7 @@ import { createRuntimeStopper } from './core/runtime/lifecycle.js';
 import { loadRuntimeAgentSkillState, reloadRuntimeAgents } from './core/runtime/agent-skill-bootstrap.js';
 import { bootstrapRuntimeModelRegistry } from './core/runtime/model-bootstrap.js';
 import { bootstrapRuntimeSandboxes } from './core/runtime/sandbox-bootstrap.js';
+import { bootstrapRuntimeLoopEngine } from './core/runtime/loop-engine-bootstrap.js';
 import { resolveRuntimeApiAuth } from './core/runtime/api-auth.js';
 import { createRuntimeSessionServices } from './core/runtime/session-runtime.js';
 import { attachRuntimeServerErrorHandler, parseCsv, runtimeStartupBannerLines } from './core/runtime/http-server.js';
@@ -58,6 +58,7 @@ async function startServer(opts: StartServerOptions) {
   const agentSkillState = loadRuntimeAgentSkillState({ db, agentsDir, skillsDir });
   const agents = agentSkillState.agents;
   const skills = agentSkillState.skills;
+  const { sandboxProvider, sandboxRegistry, workQueue } = bootstrapRuntimeSandboxes({ db, dataDir });
 
   // Settings V2 is seeded after legacy config/import data exists, then becomes
   // the runtime source for settings that have a shipped adapter.
@@ -66,12 +67,12 @@ async function startServer(opts: StartServerOptions) {
     dataDir,
     modelRegistry,
     memorySeedEnabled: Boolean(configBootstrap.memory),
+    sandboxProviders: sandboxRegistry.listTypes(),
   });
   const effectiveSettings = runtimeComposition.settings.effective_config;
   const memory = runtimeComposition.memory;
 
-  const strategy = new DefaultStrategy();
-  const { sandboxProvider, sandboxRegistry, workQueue } = bootstrapRuntimeSandboxes({ db, dataDir });
+  const loopEngine = bootstrapRuntimeLoopEngine(effectiveSettings);
   const artifactStore = runtimeComposition.artifactStore;
   const {
     sessionManager,
@@ -84,11 +85,11 @@ async function startServer(opts: StartServerOptions) {
     sandboxProvider,
     sandboxRegistry,
     runtimeComposition,
-    strategy,
+    strategy: loopEngine.strategy,
     skills,
     memory,
     artifactStore,
-    defaultMaxSteps: effectiveSettings.loop_engine.options.default_max_steps,
+    defaultMaxSteps: loopEngine.defaultMaxSteps,
   });
   if (reconciled > 0) {
     console.log(`  Recovery:  reconciled ${reconciled} interrupted session(s)`);
@@ -136,7 +137,7 @@ async function startServer(opts: StartServerOptions) {
       models: modelRegistry.listRuntimeInfo(),
       sandboxProviders: sandboxRegistry.listTypes(),
       memory: memory ? memory.name : 'disabled',
-      authEnabled: runtimeApiAuth.apiKeys.length > 0,
+      authEnabled: runtimeApiAuth.hasApiKeys(),
     },
     listRuntimeModels: () => modelRegistry.listRuntimeInfo(),
     registerModelProvider: (config) => modelRegistry.register(config),

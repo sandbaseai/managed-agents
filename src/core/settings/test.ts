@@ -177,7 +177,11 @@ function testMemory(db: Database, config: RuntimeSettings): RuntimeSettingsTestC
 
 function testSandbox(dataDir: string | undefined, config: RuntimeSettings): RuntimeSettingsTestCheck[] {
   if (config.sandbox.provider !== 'local') {
-    return [{ name: 'sandbox_provider', status: 'failed', message: `Sandbox provider "${config.sandbox.provider}" is not installed.` }];
+    return [{
+      name: 'sandbox_live_health',
+      status: 'skipped',
+      message: `Sandbox provider "${config.sandbox.provider}" is selected. Live health checks are not implemented for this provider yet.`,
+    }];
   }
   if (!dataDir) return [{ name: 'sandbox_data_dir', status: 'failed', message: 'Runtime data directory is not available.' }];
   const timeout = config.sandbox.options.timeout_seconds;

@@ -309,8 +309,9 @@ export type SettingsAdapterDescriptor = {
   id: string;
   label: string;
   version: string;
-  status: 'available' | 'unavailable';
+  status: 'available' | 'unavailable' | 'invalid';
   restart_policy: 'none' | 'runtime';
+  options_schema: Record<string, unknown>;
 };
 
 export type RuntimeSettingsConfig = {
@@ -328,9 +329,13 @@ export type RuntimeSettingsConfig = {
 export type RuntimeSettings = {
   schema_version: 1;
   revision: number;
+  effective_revision: number;
   saved_config: RuntimeSettingsConfig;
   effective_config: RuntimeSettingsConfig;
   restart_required: boolean;
+  activation_status: 'active' | 'pending' | 'failed';
+  activation_errors: Array<{ path: string; code: string; message: string }>;
+  diagnostics: { metadata: { path: string | null; health: 'ok' | 'failed' } };
   secret_states: { model: { api_key: RuntimeConfigState } };
   adapters: {
     model: SettingsAdapterDescriptor[];

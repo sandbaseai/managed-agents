@@ -89,11 +89,48 @@ The Dashboard includes:
 - Workspace and local runtime status
 - Agent templates and agent versions
 - Session creation and session debug timelines
+- Runtime Settings for the single workspace model vendor, loop engine,
+  storage backends, context-memory backend, and default sandbox
 - Environments
 - Credential vaults and credentials
 - Memory stores and memory entries
 - File upload and file resources
 - Skill upload and skill details
+
+## Runtime Settings
+
+Open `Settings > Models`, `Loop engine`, `Storage`, `Memory`, or `Sandbox` to
+edit the workspace runtime configuration. Settings V2 stores one versioned JSON
+document in SQLite under the runtime data directory. Each Console page edits its
+own section of that document: `Models` edits `model`, `Loop engine` edits
+`loop_engine`, `Storage` edits `storage`, `Memory` edits `memory`, and
+`Sandbox` edits `sandbox`. The Form and JSON tabs are two views of that current
+section, and saving merges the section back into the versioned document.
+
+The usual sequence is:
+
+1. Change the relevant field.
+2. Click `Validate`.
+3. Optionally click `Check configuration` for a local capability check.
+4. Click `Save settings`.
+5. Restart the runtime when the page shows `Restart required`.
+
+All first-release Settings V2 fields require a runtime restart before they
+become effective. Until restart, API responses expose both `saved_config` and
+`effective_config`; sessions continue using the effective revision.
+
+The workspace has one active model vendor, one built-in loop engine, SQLite
+metadata storage, local artifact storage, one context-memory backend, and one
+default sandbox provider. Named Environments can still override the default
+sandbox per session. Planned adapters such as S3, mem0, MemU, Harness, Codex,
+and Claude remain unavailable until their runtime implementations exist; Docker
+or remote sandbox providers appear as available only when registered by the
+current runtime.
+
+YAML model entries and legacy provider rows are bootstrap/import data for a new
+workspace. After Settings V2 is seeded, normal Dashboard edits do not rewrite
+source-controlled YAML files and legacy provider mutation endpoints are
+read-only compatibility failures.
 
 ## Create An Agent
 

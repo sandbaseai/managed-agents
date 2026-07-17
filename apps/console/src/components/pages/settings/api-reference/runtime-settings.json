@@ -1,0 +1,168 @@
+[
+  {
+    "id": "settings-get",
+    "group": "Runtime settings",
+    "title": "Get settings",
+    "method": "GET",
+    "path": "/v1/x/settings",
+    "summary": "Read saved and effective Settings V2 documents, adapter descriptors, diagnostics, secret states, and activation status.",
+    "response": [
+      {
+        "name": "revision",
+        "type": "number",
+        "description": "Saved settings revision."
+      },
+      {
+        "name": "effective_revision",
+        "type": "number",
+        "description": "Runtime-active revision."
+      },
+      {
+        "name": "saved_config",
+        "type": "RuntimeSettingsConfig",
+        "description": "Saved candidate document with secrets masked."
+      },
+      {
+        "name": "effective_config",
+        "type": "RuntimeSettingsConfig",
+        "description": "Runtime-active document with secrets masked."
+      },
+      {
+        "name": "restart_required",
+        "type": "boolean",
+        "description": "True when saved and effective revisions differ."
+      },
+      {
+        "name": "activation_status",
+        "type": "active | pending | failed",
+        "description": "Activation state for the saved revision."
+      }
+    ]
+  },
+  {
+    "id": "settings-validate",
+    "group": "Runtime settings",
+    "title": "Validate settings",
+    "method": "POST",
+    "path": "/v1/x/settings/validate",
+    "summary": "Validate a full Runtime Settings document without saving it. Responses include normalized config and field-level errors.",
+    "parameters": [
+      {
+        "name": "config",
+        "type": "RuntimeSettingsConfig",
+        "required": true,
+        "description": "Complete candidate settings document."
+      }
+    ],
+    "response": [
+      {
+        "name": "valid",
+        "type": "boolean",
+        "description": "Whether validation passed."
+      },
+      {
+        "name": "normalized_config",
+        "type": "RuntimeSettingsConfig",
+        "description": "Normalized candidate with secrets masked."
+      },
+      {
+        "name": "errors",
+        "type": "array",
+        "description": "Path-addressed validation errors."
+      }
+    ]
+  },
+  {
+    "id": "settings-test",
+    "group": "Runtime settings",
+    "title": "Check settings area",
+    "method": "POST",
+    "path": "/v1/x/settings/test",
+    "summary": "Run local capability checks for one settings area such as model, storage.metadata, storage.artifacts, memory, or sandbox.",
+    "parameters": [
+      {
+        "name": "area",
+        "type": "string",
+        "required": true,
+        "description": "Area name to check."
+      },
+      {
+        "name": "config",
+        "type": "object",
+        "required": true,
+        "description": "Area config."
+      },
+      {
+        "name": "full_config",
+        "type": "RuntimeSettingsConfig",
+        "description": "Complete candidate used for cross-field context."
+      }
+    ],
+    "response": [
+      {
+        "name": "ok",
+        "type": "boolean",
+        "description": "True if all local checks passed or were skipped."
+      },
+      {
+        "name": "status",
+        "type": "ok | failed | skipped",
+        "description": "Overall check state."
+      },
+      {
+        "name": "checks",
+        "type": "array",
+        "description": "Individual local capability checks."
+      }
+    ]
+  },
+  {
+    "id": "settings-save",
+    "group": "Runtime settings",
+    "title": "Save settings",
+    "method": "PUT",
+    "path": "/v1/x/settings",
+    "summary": "Persist a validated complete Runtime Settings document as a new saved revision. Runtime activation occurs on restart.",
+    "parameters": [
+      {
+        "name": "revision",
+        "type": "number",
+        "required": true,
+        "description": "Current revision for optimistic concurrency."
+      },
+      {
+        "name": "config",
+        "type": "RuntimeSettingsConfig",
+        "required": true,
+        "description": "Complete candidate settings document."
+      }
+    ],
+    "response": [
+      {
+        "name": "revision",
+        "type": "number",
+        "description": "New saved revision."
+      },
+      {
+        "name": "restart_required",
+        "type": "boolean",
+        "description": "Whether runtime restart is required."
+      }
+    ]
+  },
+  {
+    "id": "runtime-restart",
+    "group": "Runtime settings",
+    "title": "Restart runtime",
+    "method": "POST",
+    "path": "/v1/x/restart",
+    "summary": "Request runtime restart so saved settings can become effective.",
+    "response": [
+      {
+        "name": "scheduled",
+        "type": "boolean",
+        "description": "True when restart was scheduled."
+      }
+    ]
+  }
+]

@@ -18,13 +18,15 @@ export function composeRuntimeFromSettings({
   dataDir,
   modelRegistry,
   memorySeedEnabled,
+  sandboxProviders = ['local'],
 }: {
   db: Database;
   dataDir: string;
   modelRegistry: ModelRegistry;
   memorySeedEnabled: boolean;
+  sandboxProviders?: string[];
 }): RuntimeComposition {
-  const settings = activateRuntimeSettings(db, { memoryEnabled: memorySeedEnabled }, dataDir);
+  const settings = activateRuntimeSettings(db, { memoryEnabled: memorySeedEnabled }, dataDir, sandboxProviders);
   const effectiveSettings = settings.effective_config;
 
   modelRegistry.clear();

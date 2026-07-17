@@ -1,0 +1,120 @@
+[
+  {
+    "id": "files-list",
+    "group": "Files",
+    "title": "List files",
+    "method": "GET",
+    "path": "/v1/files",
+    "summary": "List uploaded file resources that can be mounted into sessions.",
+    "response": [
+      {
+        "name": "data",
+        "type": "File[]",
+        "description": "File metadata records."
+      }
+    ]
+  },
+  {
+    "id": "files-upload",
+    "group": "Files",
+    "title": "Upload file",
+    "method": "POST",
+    "path": "/v1/files",
+    "summary": "Upload files once and mount them into sessions as resources. Metadata is stored in SQLite; bytes live in the configured artifact store.",
+    "parameters": [
+      {
+        "name": "file",
+        "type": "multipart file",
+        "required": true,
+        "description": "File payload for multipart uploads."
+      },
+      {
+        "name": "name",
+        "type": "string",
+        "description": "Filename for JSON uploads."
+      },
+      {
+        "name": "content",
+        "type": "string",
+        "description": "JSON upload content, encoded as utf8 or base64."
+      }
+    ],
+    "response": [
+      {
+        "name": "id",
+        "type": "string",
+        "description": "Server-generated file_... identifier."
+      },
+      {
+        "name": "filename",
+        "type": "string",
+        "description": "Original or supplied filename."
+      },
+      {
+        "name": "size_bytes",
+        "type": "number",
+        "description": "Stored file size."
+      },
+      {
+        "name": "created_at",
+        "type": "datetime",
+        "description": "RFC 3339 upload timestamp."
+      }
+    ]
+  },
+  {
+    "id": "files-get",
+    "group": "Files",
+    "title": "Get file metadata",
+    "method": "GET",
+    "path": "/v1/files/{file_id}",
+    "summary": "Fetch metadata for one uploaded file.",
+    "response": [
+      {
+        "name": "id",
+        "type": "string",
+        "description": "File identifier."
+      },
+      {
+        "name": "file",
+        "type": "object",
+        "description": "Created or updated file resource."
+      }
+    ]
+  },
+  {
+    "id": "files-content",
+    "group": "Files",
+    "title": "Download file content",
+    "method": "GET",
+    "path": "/v1/files/{file_id}/content",
+    "summary": "Download the stored bytes for an uploaded file.",
+    "response": [
+      {
+        "name": "body",
+        "type": "binary | text",
+        "description": "Stored file content."
+      }
+    ]
+  },
+  {
+    "id": "files-delete",
+    "group": "Files",
+    "title": "Delete file",
+    "method": "DELETE",
+    "path": "/v1/files/{file_id}",
+    "summary": "Archive a file resource and remove it from active resource lists.",
+    "response": [
+      {
+        "name": "id",
+        "type": "string",
+        "description": "Deleted file identifier."
+      },
+      {
+        "name": "file",
+        "type": "object",
+        "description": "Created or updated file resource."
+      }
+    ]
+  }
+]

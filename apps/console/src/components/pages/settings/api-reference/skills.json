@@ -1,0 +1,95 @@
+[
+  {
+    "id": "skills-list",
+    "group": "Skills",
+    "title": "List skills",
+    "method": "GET",
+    "path": "/v1/skills",
+    "summary": "List built-in, imported, and custom uploaded Skills available to agents.",
+    "response": [
+      {
+        "name": "data",
+        "type": "Skill[]",
+        "description": "Skill descriptors with source and version metadata."
+      }
+    ]
+  },
+  {
+    "id": "skills-create",
+    "group": "Skills",
+    "title": "Create skill",
+    "method": "POST",
+    "path": "/v1/skills",
+    "summary": "Upload a reusable Skill package. A valid package contains one top-level folder with SKILL.md at its root.",
+    "parameters": [
+      {
+        "name": "files",
+        "type": "multipart file[] | JSON file[]",
+        "required": true,
+        "description": "Zip, .skill file, directory upload, or JSON file list."
+      },
+      {
+        "name": "display_title",
+        "type": "string",
+        "description": "Optional human label not included in model prompts."
+      }
+    ],
+    "response": [
+      {
+        "name": "id",
+        "type": "string",
+        "description": "Server-generated skill_... identifier for custom uploads."
+      },
+      {
+        "name": "display_title",
+        "type": "string",
+        "description": "Human-readable title."
+      },
+      {
+        "name": "latest_version",
+        "type": "string",
+        "description": "Latest uploaded version identifier."
+      },
+      {
+        "name": "source",
+        "type": "custom | anthropic",
+        "description": "Skill origin."
+      }
+    ]
+  },
+  {
+    "id": "skills-get",
+    "group": "Skills",
+    "title": "Get skill",
+    "method": "GET",
+    "path": "/v1/skills/{skill_id}",
+    "summary": "Fetch one Skill descriptor and package metadata.",
+    "response": [
+      {
+        "name": "id",
+        "type": "string",
+        "description": "Skill identifier."
+      },
+      {
+        "name": "skill",
+        "type": "object",
+        "description": "Created or updated skill resource."
+      }
+    ]
+  },
+  {
+    "id": "skills-delete",
+    "group": "Skills",
+    "title": "Delete skill",
+    "method": "DELETE",
+    "path": "/v1/skills/{skill_id}",
+    "summary": "Delete or archive a custom uploaded Skill from the local workspace.",
+    "response": [
+      {
+        "name": "deleted",
+        "type": "boolean",
+        "description": "True when the Skill was removed."
+      }
+    ]
+  }
+]

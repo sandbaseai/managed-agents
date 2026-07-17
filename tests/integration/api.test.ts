@@ -12,7 +12,9 @@ import { SessionManager } from '@/core/session/session-manager.js';
 import { createServer } from '@/api/server.js';
 import { loadSkills } from '@/core/skills/loader.js';
 import { createLogger, InMemoryLogStore } from '@/core/observability/logger.js';
-import { activateRuntimeSettings } from '@/core/settings/store.js';
+import { composeRuntimeFromSettings } from '@/core/runtime/composition.js';
+import { activateRuntimeSettings, getOrSeedRuntimeSettings, saveRuntimeSettings } from '@/core/settings/store.js';
+import { ModelRegistry } from '@/model/registry.js';
 import type { Session, SessionEvent } from '@/types/session.js';
 import type { UserEvent } from '@/types/cma-protocol.js';
 import type { RuntimeModelInfo } from '@/types/model.js';
@@ -659,6 +661,209 @@ describe('Managed Agents API', () => {
       expect(skills.data.every((item: any) => item.type === 'skill')).toBe(true);
     });
 
+    it('seeds Settings V2 secrets with the workspace data directory when read through the API', async () => {
+      const workspaceRoot = mkdtempSync(join(tmpdir(), 'ma-settings-api-seed-'));
+      const workspaceDataDir = join(workspaceRoot, '.managed-agents');
+      mkdirSync(workspaceDataDir, { recursive: true });
+      const workspaceDb = new Database(join(workspaceRoot, 'settings-api-seed.db'));
+      try {
+        workspaceDb.runMigrations();
+        workspaceDb.prepare('INSERT INTO models (name, provider, model, api_key, is_default) VALUES (?, ?, ?, ?, 1)').run(
+          'legacy',
+          'openai',
+          'gpt-4o',
+          'legacy-secret-value',
+        );
+        const seedApp = createServer({
+          db: workspaceDb,
+          sessionManager: new SessionManager(workspaceDb),
+          agents: [],
+          consoleRoot: null,
+          workspace: {
+            root: workspaceRoot,
+            dataDir: workspaceDataDir,
+            agentsDir: join(workspaceRoot, 'agents'),
+            skillsDir: join(workspaceRoot, 'skills'),
+            target: 'local',
+          },
+          runtime: {
+            models: [],
+            sandboxProviders: ['local'],
+            memory: 'disabled',
+            authEnabled: false,
+          },
+          skills: [],
+          reloadAgents: () => ({ agents: [], errors: [] }),
+        });
+
+        const response = await seedApp.request('/v1/x/settings');
+        const body = await response.json() as any;
+
+        expect(response.status).toBe(200);
+        expect(body.secret_states.model.api_key).toBe('configured');
+        expect(existsSync(join(workspaceDataDir, 'secrets.key'))).toBe(true);
+        expect(JSON.stringify(body)).not.toContain('legacy-secret-value');
+      } finally {
+        workspaceDb.close();
+        rmSync(workspaceRoot, { recursive: true, force: true });
+      }
+    });
+
+    it('reports saved model secret state without being confused by retained effective secrets', async () => {
+      const workspaceRoot = mkdtempSync(join(tmpdir(), 'ma-settings-api-secret-state-'));
+      const workspaceDataDir = join(workspaceRoot, '.managed-agents');
+      mkdirSync(workspaceDataDir, { recursive: true });
+      const workspaceDb = new Database(join(workspaceRoot, 'settings-api-secret-state.db'));
+      try {
+        workspaceDb.runMigrations();
+        workspaceDb.prepare('INSERT INTO models (name, provider, model, api_key, is_default) VALUES (?, ?, ?, ?, 1)').run(
+          'legacy',
+          'openai',
+          'gpt-4o',
+          'legacy-secret-value',
+        );
+        const seedApp = createServer({
+          db: workspaceDb,
+          sessionManager: new SessionManager(workspaceDb),
+          agents: [],
+          consoleRoot: null,
+          workspace: {
+            root: workspaceRoot,
+            dataDir: workspaceDataDir,
+            agentsDir: join(workspaceRoot, 'agents'),
+            skillsDir: join(workspaceRoot, 'skills'),
+            target: 'local',
+          },
+          runtime: {
+            models: [],
+            sandboxProviders: ['local'],
+            memory: 'disabled',
+            authEnabled: false,
+          },
+          skills: [],
+          reloadAgents: () => ({ agents: [], errors: [] }),
+        });
+        await seedApp.request('/v1/x/settings');
+        const row = workspaceDb.prepare('SELECT config FROM runtime_settings WHERE id = ?').get('default') as { config: string };
+        const savedConfig = JSON.parse(row.config);
+        savedConfig.model.api_key = '${SETTINGS_V2_MISSING_MODEL_KEY}';
+        workspaceDb.prepare(`
+          UPDATE runtime_settings
+          SET config = ?, revision = 2, restart_required = 1
+          WHERE id = 'default'
+        `).run(JSON.stringify(savedConfig));
+
+        const response = await seedApp.request('/v1/x/settings');
+        const body = await response.json() as any;
+
+        expect(response.status).toBe(200);
+        expect(body.secret_states.model.api_key).toBe('missing_env');
+        expect(workspaceDb.prepare('SELECT path FROM runtime_settings_secrets').all()).toEqual([{ path: 'model.api_key' }]);
+      } finally {
+        workspaceDb.close();
+        rmSync(workspaceRoot, { recursive: true, force: true });
+      }
+    });
+
+    it('returns persisted Settings activation failures through the read API', async () => {
+      const workspaceRoot = mkdtempSync(join(tmpdir(), 'ma-settings-api-activation-failure-'));
+      const workspaceDataDir = join(workspaceRoot, '.managed-agents');
+      mkdirSync(workspaceDataDir, { recursive: true });
+      const workspaceDb = new Database(join(workspaceRoot, 'settings-api-activation-failure.db'));
+      try {
+        workspaceDb.runMigrations();
+        const failureApp = createServer({
+          db: workspaceDb,
+          sessionManager: new SessionManager(workspaceDb),
+          agents: [],
+          consoleRoot: null,
+          workspace: {
+            root: workspaceRoot,
+            dataDir: workspaceDataDir,
+            agentsDir: join(workspaceRoot, 'agents'),
+            skillsDir: join(workspaceRoot, 'skills'),
+            target: 'local',
+          },
+          runtime: {
+            models: [],
+            sandboxProviders: ['local'],
+            memory: 'disabled',
+            authEnabled: false,
+          },
+          skills: [],
+          reloadAgents: () => ({ agents: [], errors: [] }),
+        });
+        const seeded = await failureApp.request('/v1/x/settings');
+        const body = await seeded.json() as any;
+        workspaceDb.prepare(`
+          UPDATE runtime_settings
+          SET config = ?, revision = 2, restart_required = 1
+          WHERE id = 'default'
+        `).run(JSON.stringify({
+          ...body.saved_config,
+          loop_engine: { provider: 'codex', options: { default_max_steps: 25 } },
+        }));
+
+        activateRuntimeSettings(workspaceDb, {}, workspaceDataDir);
+        const failed = await failureApp.request('/v1/x/settings');
+        const failedBody = await failed.json() as any;
+
+        expect(failed.status).toBe(200);
+        expect(failedBody).toMatchObject({
+          revision: 2,
+          effective_revision: 1,
+          restart_required: true,
+          activation_status: 'failed',
+        });
+        expect(failedBody.activation_errors).toContainEqual(expect.objectContaining({
+          path: 'loop_engine.provider',
+          code: 'adapter_unavailable',
+        }));
+        expect(failedBody.effective_config.loop_engine.provider).toBe('builtin');
+
+        const repair = await failureApp.request('/v1/x/settings', {
+          method: 'PUT',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            revision: failedBody.revision,
+            config: {
+              ...failedBody.effective_config,
+              model: { ...failedBody.effective_config.model, api_key: 'repair-secret' },
+              loop_engine: { provider: 'builtin', options: { default_max_steps: 88 } },
+            },
+          }),
+        });
+        const repairBody = await repair.json() as any;
+        expect(repair.status).toBe(200);
+        expect(repairBody).toMatchObject({
+          revision: 3,
+          effective_revision: 1,
+          restart_required: true,
+          activation_status: 'pending',
+          activation_errors: [],
+        });
+
+        const pending = await failureApp.request('/v1/x/settings');
+        const pendingBody = await pending.json() as any;
+        expect(pendingBody.activation_status).toBe('pending');
+        expect(pendingBody.activation_errors).toEqual([]);
+        activateRuntimeSettings(workspaceDb, {}, workspaceDataDir);
+        const active = await failureApp.request('/v1/x/settings');
+        const activeBody = await active.json() as any;
+        expect(activeBody).toMatchObject({
+          revision: 3,
+          effective_revision: 3,
+          restart_required: false,
+          activation_status: 'active',
+          activation_errors: [],
+        });
+        expect(activeBody.effective_config.loop_engine.options.default_max_steps).toBe(88);
+      } finally {
+        workspaceDb.close();
+        rmSync(workspaceRoot, { recursive: true, force: true });
+      }
+    });
+
     it('keeps legacy model provider endpoints read-only after Settings V2 cutover', async () => {
       const created = await postJson('/v1/x/model-providers', {
         name: 'dashboard-default',
@@ -698,6 +903,8 @@ describe('Managed Agents API', () => {
         schema_version: 1,
         revision: 1,
         restart_required: false,
+        effective_revision: 1,
+        activation_status: 'active',
         secret_states: { model: { api_key: 'not_set' } },
         saved_config: {
           schema_version: 1,
@@ -710,15 +917,41 @@ describe('Managed Agents API', () => {
           sandbox: { provider: 'local' },
         },
       });
+      expect(settings.body.diagnostics.metadata).toMatchObject({ health: 'ok' });
       expect(settings.body.adapters.loop_engine).toEqual(expect.arrayContaining([
         expect.objectContaining({ id: 'builtin', status: 'available' }),
         expect.objectContaining({ id: 'codex', status: 'unavailable' }),
       ]));
+      expect(settings.body.adapters.loop_engine.find((item: any) => item.id === 'builtin').options_schema.properties.default_max_steps).toMatchObject({
+        type: 'integer',
+        minimum: 1,
+        maximum: 1000,
+      });
+      expect(settings.body.adapters.storage.artifacts.find((item: any) => item.id === 'local').options_schema.properties.base_path).toMatchObject({
+        type: 'string',
+        default: 'files',
+      });
       expect(JSON.stringify(settings.body)).not.toContain('test-api-key');
 
-      const valid = await postJson('/v1/x/settings/validate', settings.body.saved_config);
+      const valid = await postJson('/v1/x/settings/validate', {
+        ...settings.body.saved_config,
+        model: { ...settings.body.saved_config.model, api_key: 'validation-only-key' },
+      });
       expect(valid.res.status).toBe(200);
       expect(valid.body).toMatchObject({ valid: true, errors: [] });
+      expect(JSON.stringify(valid.body)).not.toContain('validation-only-key');
+
+      const missingCredential = await postJson('/v1/x/settings/validate', settings.body.saved_config);
+      expect(missingCredential.body).toMatchObject({ valid: false });
+      expect(missingCredential.body.errors).toContainEqual(expect.objectContaining({ path: 'model.api_key', code: 'required' }));
+
+      const missingModelTestCredential = await postJson('/v1/x/settings/test', {
+        area: 'model',
+        config: settings.body.saved_config.model,
+      });
+      expect(missingModelTestCredential.res.status).toBe(422);
+      expect(missingModelTestCredential.body).toMatchObject({ ok: false, area: 'model', status: 'failed' });
+      expect(missingModelTestCredential.body.errors).toContainEqual(expect.objectContaining({ path: 'model.api_key', code: 'required' }));
 
       const modelTest = await postJson('/v1/x/settings/test', {
         area: 'model',
@@ -729,6 +962,7 @@ describe('Managed Agents API', () => {
       expect(modelTest.body.checks).toEqual(expect.arrayContaining([
         expect.objectContaining({ name: 'api_key', status: 'ok' }),
       ]));
+      expect(JSON.stringify(modelTest.body)).not.toContain('test-api-key');
 
       const artifactTest = await postJson('/v1/x/settings/test', {
         area: 'storage.artifacts',
@@ -736,6 +970,15 @@ describe('Managed Agents API', () => {
       });
       expect(artifactTest.res.status).toBe(200);
       expect(artifactTest.body).toMatchObject({ ok: true, area: 'storage.artifacts', status: 'ok' });
+
+      const invalidTestArea = await postJson('/v1/x/settings/test', {
+        area: 'storage',
+        config: settings.body.saved_config.storage,
+      });
+      expect(invalidTestArea.res.status).toBe(400);
+      expect(invalidTestArea.body.error).toMatchObject({
+        type: 'invalid_request',
+      });
 
       const unavailable = await postJson('/v1/x/settings/validate', {
         ...settings.body.saved_config,
@@ -749,6 +992,53 @@ describe('Managed Agents API', () => {
       expect(unavailable.body.errors).toContainEqual(expect.objectContaining({
         path: 'loop_engine.provider',
         code: 'adapter_unavailable',
+      }));
+
+      const missingCompatibleBaseUrl = await postJson('/v1/x/settings/validate', {
+        ...settings.body.saved_config,
+        model: { vendor: 'openai_compatible', api_key: 'validation-only-key', options: {} },
+      });
+      expect(missingCompatibleBaseUrl.body).toMatchObject({ valid: false });
+      expect(missingCompatibleBaseUrl.body.errors).toContainEqual(expect.objectContaining({
+        path: 'model.base_url',
+        code: 'required',
+      }));
+
+      const missingOptionSecretEnv = await postJson('/v1/x/settings/validate', {
+        ...settings.body.saved_config,
+        model: { ...settings.body.saved_config.model, api_key: 'validation-only-key' },
+        memory: {
+          ...settings.body.saved_config.memory,
+          enabled: true,
+          options: { access_token: '${SETTINGS_V2_MISSING_MEMORY_KEY}' },
+        },
+      });
+      expect(missingOptionSecretEnv.body).toMatchObject({ valid: false });
+      expect(missingOptionSecretEnv.body.errors).toContainEqual(expect.objectContaining({
+        path: 'memory.options.access_token',
+        code: 'missing_env',
+      }));
+
+      const disabledMemorySecretEnv = await postJson('/v1/x/settings/validate', {
+        ...settings.body.saved_config,
+        model: { ...settings.body.saved_config.model, api_key: 'validation-only-key' },
+        memory: {
+          ...settings.body.saved_config.memory,
+          enabled: false,
+          provider: 'mem0',
+          options: { api_key: '${SETTINGS_V2_MISSING_DISABLED_MEMORY_KEY}' },
+        },
+      });
+      expect(disabledMemorySecretEnv.body).toMatchObject({ valid: true });
+
+      const forgedManagedSecret = await postJson('/v1/x/settings/validate', {
+        ...settings.body.saved_config,
+        model: { ...settings.body.saved_config.model, api_key: '__managed_secret__:model.api_key' },
+      });
+      expect(forgedManagedSecret.body).toMatchObject({ valid: false });
+      expect(forgedManagedSecret.body.errors).toContainEqual(expect.objectContaining({
+        path: 'model.api_key',
+        code: 'secret_not_configured',
       }));
 
       const updatedConfig = {
@@ -779,6 +1069,9 @@ describe('Managed Agents API', () => {
         'loop_engine.options.default_max_steps',
         'model.api_key',
       ]));
+      expect(auditLogs.at(-1)?.line).not.toContain('settings-secret-value');
+      expect(auditLogs.at(-1)?.line).not.toContain('__managed_secret__');
+      expect(auditLogs.at(-1)?.line).not.toContain('********');
 
       activateRuntimeSettings(db, {}, dataDir);
       const afterActivation = await getJson('/v1/x/settings');
@@ -786,8 +1079,166 @@ describe('Managed Agents API', () => {
       expect(afterActivation.body.restart_required).toBe(false);
       expect(afterActivation.body.effective_config.loop_engine.options.default_max_steps).toBe(42);
 
+      const preservedMaskedSecret = await postJson('/v1/x/settings', {
+        revision: afterActivation.body.revision,
+        config: {
+          ...afterActivation.body.saved_config,
+          loop_engine: {
+            ...afterActivation.body.saved_config.loop_engine,
+            options: { default_max_steps: 43 },
+          },
+        },
+      }, 'PUT');
+      expect(preservedMaskedSecret.res.status).toBe(200);
+      expect(preservedMaskedSecret.body).toMatchObject({
+        revision: 3,
+        secret_states: { model: { api_key: 'configured' } },
+      });
+      expect(preservedMaskedSecret.body.saved_config.model.api_key).toBe('********');
+      expect(JSON.stringify(preservedMaskedSecret.body)).not.toContain('settings-secret-value');
+      activateRuntimeSettings(db, {}, dataDir);
+      const afterMaskedPreserve = await getJson('/v1/x/settings');
+      expect(afterMaskedPreserve.body.restart_required).toBe(false);
+
       const stale = await postJson('/v1/x/settings', { revision: 1, config: updatedConfig }, 'PUT');
       expect(stale.res.status).toBe(409);
+
+      const invalidRevision = await postJson('/v1/x/settings', { revision: 0, config: updatedConfig }, 'PUT');
+      expect(invalidRevision.res.status).toBe(400);
+      expect(invalidRevision.body.error).toMatchObject({
+        type: 'invalid_request',
+        message: 'revision must be a positive integer',
+      });
+
+      const rotatedSecret = await postJson('/v1/x/settings', {
+        revision: afterMaskedPreserve.body.revision,
+        config: {
+          ...afterMaskedPreserve.body.saved_config,
+          model: {
+            ...afterMaskedPreserve.body.saved_config.model,
+            api_key: 'rotated-settings-secret-value',
+            options: {
+              access_key: 'rotated-settings-option-secret',
+            },
+          },
+        },
+      }, 'PUT');
+      expect(rotatedSecret.res.status).toBe(200);
+      const rotatedAudit = logStore.list({ query: 'runtime_settings_saved' }).at(-1);
+      expect(rotatedAudit?.changed_paths).toContain('model.api_key');
+      expect(rotatedAudit?.changed_paths).toContain('model.options.access_key');
+      expect(rotatedAudit?.line).not.toContain('rotated-settings-secret-value');
+      expect(rotatedAudit?.line).not.toContain('rotated-settings-option-secret');
+    });
+
+    it('uses runtime-registered non-local sandbox availability for settings APIs', async () => {
+      const workspaceRoot = mkdtempSync(join(tmpdir(), 'ma-settings-api-sandbox-registry-'));
+      const workspaceDataDir = join(workspaceRoot, '.managed-agents');
+      mkdirSync(workspaceDataDir, { recursive: true });
+      const workspaceDb = new Database(join(workspaceRoot, 'sandbox-registry.db'));
+      try {
+        workspaceDb.runMigrations();
+        const sandboxApp = createServer({
+          db: workspaceDb,
+          sessionManager: new SessionManager(workspaceDb),
+          agents: [],
+          consoleRoot: null,
+          workspace: {
+            root: workspaceRoot,
+            dataDir: workspaceDataDir,
+            agentsDir: join(workspaceRoot, 'agents'),
+            skillsDir: join(workspaceRoot, 'skills'),
+            target: 'local',
+          },
+          runtime: {
+            models: [],
+            sandboxProviders: ['local', 'docker', 'self_hosted'],
+            memory: 'disabled',
+            authEnabled: false,
+          },
+          skills: [],
+          reloadAgents: () => ({ agents: [], errors: [] }),
+        });
+
+        const settingsResponse = await sandboxApp.request('/v1/x/settings');
+        const settings = await settingsResponse.json() as any;
+        expect(settingsResponse.status).toBe(200);
+        expect(settings.adapters.sandbox).toContainEqual(expect.objectContaining({
+          id: 'docker',
+          status: 'available',
+        }));
+        expect(settings.adapters.sandbox).toContainEqual(expect.objectContaining({
+          id: 'remote',
+          status: 'available',
+        }));
+
+        const dockerConfig = {
+          ...settings.saved_config,
+          model: { ...settings.saved_config.model, api_key: 'registry-test-key' },
+          sandbox: { provider: 'docker' as const, options: { timeout_seconds: 300 } },
+        };
+        const validationResponse = await sandboxApp.request('/v1/x/settings/validate', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(dockerConfig),
+        });
+        const validation = await validationResponse.json() as any;
+        expect(validationResponse.status).toBe(200);
+        expect(validation).toMatchObject({ valid: true });
+
+        const testResponse = await sandboxApp.request('/v1/x/settings/test', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            area: 'sandbox',
+            config: dockerConfig.sandbox,
+            full_config: dockerConfig,
+          }),
+        });
+        const testResult = await testResponse.json() as any;
+        expect(testResponse.status).toBe(200);
+        expect(testResult).toMatchObject({
+          ok: true,
+          area: 'sandbox',
+          status: 'skipped',
+        });
+        expect(testResult.checks).toContainEqual(expect.objectContaining({
+          name: 'sandbox_live_health',
+          status: 'skipped',
+        }));
+
+        const remoteMissingCredential = {
+          ...settings.saved_config,
+          sandbox: {
+            provider: 'remote' as const,
+            options: {
+              timeout_seconds: 300,
+              api_key: '${SETTINGS_V2_MISSING_REMOTE_SANDBOX_KEY}',
+            },
+          },
+        };
+        const remoteTestResponse = await sandboxApp.request('/v1/x/settings/test', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            area: 'sandbox',
+            config: remoteMissingCredential.sandbox,
+            full_config: remoteMissingCredential,
+          }),
+        });
+        const remoteTest = await remoteTestResponse.json() as any;
+        expect(remoteTestResponse.status).toBe(422);
+        expect(remoteTest.errors).toContainEqual(expect.objectContaining({
+          path: 'sandbox.options.api_key',
+          code: 'missing_env',
+        }));
+        expect(remoteTest.errors).not.toContainEqual(expect.objectContaining({
+          path: 'model.api_key',
+        }));
+      } finally {
+        workspaceDb.close();
+        rmSync(workspaceRoot, { recursive: true, force: true });
+      }
     });
 
     it('keeps legacy memory provider endpoints read-only after Settings V2 cutover', async () => {
@@ -1079,6 +1530,84 @@ description: Uploaded from a compressed package.
       expect(create.body.id).toMatch(/^file_/);
       expect(create.body.id).not.toBe('file_/../../escape.txt');
       expect(existsSync(join(dataDir, 'escape.txt'))).toBe(false);
+    });
+
+    it('stores file resources under the effective Settings V2 artifact base path', async () => {
+      const workspaceRoot = mkdtempSync(join(tmpdir(), 'ma-settings-api-artifact-path-'));
+      const workspaceDataDir = join(workspaceRoot, '.managed-agents');
+      mkdirSync(workspaceDataDir, { recursive: true });
+      const workspaceDb = new Database(join(workspaceRoot, 'artifact-path.db'));
+      try {
+        workspaceDb.runMigrations();
+        const initial = getOrSeedRuntimeSettings(workspaceDb, {}, workspaceDataDir);
+        const changed = {
+          ...initial.saved_config,
+          model: { ...initial.saved_config.model, api_key: 'model-secret' },
+          storage: {
+            ...initial.saved_config.storage,
+            artifacts: { provider: 'local' as const, options: { base_path: 'artifacts-v2' } },
+          },
+        };
+        const saved = saveRuntimeSettings(workspaceDb, changed, initial.revision, workspaceDataDir);
+        expect(saved.ok).toBe(true);
+        const modelRegistry = new ModelRegistry();
+        const runtimeComposition = composeRuntimeFromSettings({
+          db: workspaceDb,
+          dataDir: workspaceDataDir,
+          modelRegistry,
+          memorySeedEnabled: false,
+          sandboxProviders: ['local'],
+        });
+        const artifactApp = createServer({
+          db: workspaceDb,
+          sessionManager: new SessionManager(workspaceDb),
+          agents: [],
+          consoleRoot: null,
+          workspace: {
+            root: workspaceRoot,
+            dataDir: workspaceDataDir,
+            agentsDir: join(workspaceRoot, 'agents'),
+            skillsDir: join(workspaceRoot, 'skills'),
+            target: 'local',
+          },
+          runtime: {
+            models: modelRegistry.listRuntimeInfo(),
+            sandboxProviders: ['local'],
+            memory: 'disabled',
+            authEnabled: false,
+          },
+          artifactStore: () => runtimeComposition.artifactStore,
+          skills: [],
+          reloadAgents: () => ({ agents: [], errors: [] }),
+        });
+
+        const response = await artifactApp.request('/v1/files', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ name: 'configured.txt', content: 'configured artifact path' }),
+        });
+        const body = await response.json() as any;
+        const row = workspaceDb.prepare('SELECT storage_path FROM files WHERE id = ?').get(body.id) as { storage_path: string };
+
+        expect(response.status).toBe(201);
+        expect(row.storage_path.startsWith(join(workspaceDataDir, 'artifacts-v2'))).toBe(true);
+        expect(existsSync(row.storage_path)).toBe(true);
+        expect(existsSync(join(workspaceDataDir, 'files', body.id))).toBe(false);
+
+        const content = await artifactApp.request(`/v1/files/${body.id}/content`);
+        expect(content.status).toBe(200);
+        expect(await content.text()).toBe('configured artifact path');
+
+        const archived = await artifactApp.request(`/v1/files/${body.id}`, { method: 'DELETE' });
+        expect(archived.status).toBe(200);
+        const archivedBody = await archived.json() as any;
+        expect(archivedBody.status).toBe('archived');
+        const missingContent = await artifactApp.request(`/v1/files/${body.id}/content`);
+        expect(missingContent.status).toBe(404);
+      } finally {
+        workspaceDb.close();
+        rmSync(workspaceRoot, { recursive: true, force: true });
+      }
     });
 
     it('uploads file resources with multipart form data', async () => {

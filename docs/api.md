@@ -505,6 +505,7 @@ the effective document currently used by the process. Response excerpt:
 {
   "schema_version": 1,
   "revision": 2,
+  "effective_revision": 1,
   "saved_config": {
     "schema_version": 1,
     "model": {
@@ -516,13 +517,49 @@ the effective document currently used by the process. Response excerpt:
   },
   "effective_config": {},
   "restart_required": true,
+  "activation_status": "pending",
+  "activation_errors": [],
+  "diagnostics": {
+    "metadata": {
+      "path": ".managed-agents/data.db",
+      "health": "ok"
+    }
+  },
   "secret_states": {
     "model": {
       "api_key": "configured"
     }
+  },
+  "adapters": {
+    "loop_engine": [
+      {
+        "id": "builtin",
+        "label": "Default",
+        "status": "available",
+        "restart_policy": "runtime",
+        "options_schema": {
+          "type": "object",
+          "properties": {
+            "default_max_steps": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000,
+              "default": 25
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    ]
   }
 }
 ```
+
+Secret-looking adapter option keys, including `api_key`, `access_key`,
+`secret`, `token`, `password`, and `credential`, are always masked in public
+settings responses.
+Adapter descriptors include backend-owned `options_schema` metadata for
+adapter-specific options.
 
 The Dashboard validates a changed candidate before enabling save, and API
 clients should follow the same sequence: `GET /v1/x/settings`, edit the complete
@@ -532,7 +569,9 @@ then `PUT /v1/x/settings` with the current `revision`. A successful save updates
 the older `effective_config`. The next CLI-managed restart promotes the last
 valid saved revision to `effective_config`. If a saved row is corrupted outside
 the API, startup keeps the last valid effective document instead of activating
-the bad candidate.
+the bad candidate and returns `activation_status: "failed"` with
+`activation_errors` on subsequent settings reads until the saved document is
+repaired.
 
 Validate a candidate document:
 
@@ -555,8 +594,15 @@ curl -X POST http://127.0.0.1:3000/v1/x/settings/test \
         "base_path": "files"
       }
     }
-  }'
+}'
 ```
+
+Model tests apply the same credential validation used by validate and save.
+Other area tests are scoped to their adapter so local storage, memory, and
+sandbox diagnostics can run before a model API key has been configured.
+Those scoped checks still validate credentials that belong to the tested area.
+Registered non-local sandbox providers return a skipped live-health check until
+their provider-specific health checks are implemented.
 
 Save the complete document with optimistic concurrency:
 
@@ -607,6 +653,10 @@ curl -X PUT http://127.0.0.1:3000/v1/x/settings \
 
 Literal secrets are encrypted at rest. API responses return masked placeholders
 and `secret_states`; they never return plaintext or ciphertext.
+
+Successful saves emit a `runtime_settings_saved` structured log with only the
+old revision, new revision, changed JSON paths, and restart flag. Secret values
+and internal managed-secret references are not logged.
 
 `GET /v1/x/logs` returns a standard page envelope with the most recent log
 entries captured by the current process. `level` is a minimum severity filter

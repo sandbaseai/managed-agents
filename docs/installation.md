@@ -123,7 +123,7 @@ http://127.0.0.1:3000/dashboard#models
 ```
 
 Configure the workspace model vendor, then click `Validate` or
-`Test connection` before saving:
+`Check configuration` before saving:
 
 - `Vendor`: `anthropic`, `openai`, or `openai_compatible`
 - `Base URL`: required for OpenAI-compatible local or hosted endpoints
@@ -137,9 +137,10 @@ Config-file model entries are only used as optional bootstrap data for a new
 workspace.
 
 The same Settings page also configures the single active Loop engine, Storage
-backends, Memory backend, and default Sandbox. Planned adapters such as S3,
-mem0, MemU, Docker, Codex, Harness, and Claude are shown as unavailable until a
-real runtime adapter exists.
+backends, Memory backend, and default Sandbox. Docker appears as available only
+when the runtime detects Docker support. Planned adapters such as S3, mem0,
+MemU, Codex, Harness, and Claude are shown as unavailable until a real runtime
+adapter exists.
 
 ## Configure Environments
 

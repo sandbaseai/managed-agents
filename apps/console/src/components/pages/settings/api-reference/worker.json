@@ -1,0 +1,63 @@
+[
+  {
+    "id": "worker-claim",
+    "group": "Worker",
+    "title": "Claim work item",
+    "method": "POST",
+    "path": "/v1/x/worker/claim",
+    "summary": "Self-hosted sandbox workers poll this endpoint to claim pending tool-execution work.",
+    "parameters": [
+      {
+        "name": "worker_id",
+        "type": "string",
+        "description": "Worker identity for lease ownership."
+      }
+    ],
+    "response": [
+      {
+        "name": "item",
+        "type": "object | null",
+        "description": "Claimed work item, or null when no work is pending."
+      }
+    ]
+  },
+  {
+    "id": "worker-complete",
+    "group": "Worker",
+    "title": "Complete work item",
+    "method": "POST",
+    "path": "/v1/x/worker/complete",
+    "summary": "Self-hosted sandbox workers report completion, failure, and output for a claimed work item.",
+    "parameters": [
+      {
+        "name": "id",
+        "type": "string",
+        "required": true,
+        "description": "Claimed work item id."
+      },
+      {
+        "name": "status",
+        "type": "completed | failed",
+        "required": true,
+        "description": "Terminal work item status."
+      },
+      {
+        "name": "result",
+        "type": "object",
+        "description": "Tool execution result payload."
+      },
+      {
+        "name": "error",
+        "type": "object",
+        "description": "Failure details."
+      }
+    ],
+    "response": [
+      {
+        "name": "ok",
+        "type": "boolean",
+        "description": "True when completion was accepted."
+      }
+    ]
+  }
+]

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 const optionsSchema = z.record(z.unknown()).default({});
+const STORED_SECRET_PREFIX = '__managed_secret__:';
 
 export const runtimeSettingsSchema = z.object({
   schema_version: z.literal(1),
@@ -82,6 +83,7 @@ export function validateRuntimeSettings(
 
   const config = parsed.data;
   const errors: SettingsValidationIssue[] = [];
+  validateModelSettings(errors, config);
   requireAvailable(errors, 'model.vendor', config.model.vendor, availability.modelVendors);
   requireAvailable(errors, 'loop_engine.provider', config.loop_engine.provider, availability.loopEngines);
   requireAvailable(errors, 'storage.metadata.provider', config.storage.metadata.provider, availability.metadataStorage);
@@ -97,6 +99,46 @@ export function validateRuntimeSettings(
     errors,
     warnings: [],
   };
+}
+
+function validateModelSettings(errors: SettingsValidationIssue[], config: RuntimeSettings): void {
+  const baseUrl = config.model.base_url;
+  if (config.model.vendor === 'openai_compatible' && !baseUrl) {
+    errors.push({
+      path: 'model.base_url',
+      code: 'required',
+      message: 'OpenAI-compatible model vendors require a base URL',
+    });
+    return;
+  }
+  if (!baseUrl) return;
+  const protocol = new URL(baseUrl).protocol;
+  if (protocol !== 'http:' && protocol !== 'https:') {
+    errors.push({
+      path: 'model.base_url',
+      code: 'invalid_protocol',
+      message: 'Model base URL must use http or https',
+    });
+  }
+}
+
+export function validateRuntimeSettingsCredentials(
+  config: RuntimeSettings,
+  hasStoredSecret: (path: string) => boolean = () => false,
+): SettingsValidationIssue[] {
+  const errors: SettingsValidationIssue[] = [];
+  const value = config.model.api_key;
+  if (!value) {
+    errors.push({ path: 'model.api_key', code: 'required', message: 'A model API key is required' });
+  }
+  collectSecretCredentialIssues(config.model, 'model', hasStoredSecret, errors);
+  collectSecretCredentialIssues(config.loop_engine, 'loop_engine', hasStoredSecret, errors);
+  collectSecretCredentialIssues(config.storage, 'storage', hasStoredSecret, errors);
+  if (config.memory.enabled) {
+    collectSecretCredentialIssues(config.memory, 'memory', hasStoredSecret, errors);
+  }
+  collectSecretCredentialIssues(config.sandbox, 'sandbox', hasStoredSecret, errors);
+  return errors;
 }
 
 export function defaultSettingsAvailability(): SettingsAvailability {
@@ -124,3 +166,48 @@ function requireAvailable<T extends string>(
   });
 }
 
+function collectSecretCredentialIssues(
+  value: unknown,
+  path: string,
+  hasStoredSecret: (path: string) => boolean,
+  errors: SettingsValidationIssue[],
+): void {
+  if (typeof value === 'string') {
+    if (!isSecretPath(path)) return;
+    if (value.startsWith(STORED_SECRET_PREFIX)) {
+      const referencedPath = value.slice(STORED_SECRET_PREFIX.length);
+      if (referencedPath !== path || !hasStoredSecret(path)) {
+        errors.push({
+          path,
+          code: 'secret_not_configured',
+          message: `The stored secret reference at ${path} has no stored value`,
+        });
+      }
+      return;
+    }
+    if (value === '********' && !hasStoredSecret(path)) {
+      errors.push({
+        path,
+        code: 'secret_not_configured',
+        message: `The masked secret at ${path} has no stored value`,
+      });
+      return;
+    }
+    const environment = /^\$\{([^}]+)\}$/.exec(value);
+    if (environment && !process.env[environment[1]]) {
+      errors.push({ path, code: 'missing_env', message: `${environment[1]} is not set` });
+    }
+    return;
+  }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return;
+  for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+    collectSecretCredentialIssues(item, path ? `${path}.${key}` : key, hasStoredSecret, errors);
+  }
+}
+
+function isSecretPath(path: string): boolean {
+  if (path === 'model.api_key') return true;
+  if (!path.includes('.options.')) return false;
+  const key = path.split('.').at(-1) ?? '';
+  return /(api[_-]?key|access[_-]?key|secret|token|password|credential)/i.test(key);
+}

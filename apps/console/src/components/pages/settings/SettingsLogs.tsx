@@ -48,7 +48,7 @@ export function SettingsLogs({ data }: { data: ConsoleData }) {
   };
 
   return (
-    <section className="stack">
+    <section className="stack settingsLogsPage">
       <div className="pageIntro">
         <div>
           <h1>Logs</h1>

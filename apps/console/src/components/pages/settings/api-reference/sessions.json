@@ -1,0 +1,247 @@
+[
+  {
+    "id": "sessions-list",
+    "group": "Sessions",
+    "title": "List sessions",
+    "method": "GET",
+    "path": "/v1/sessions",
+    "summary": "List active and recent sessions with agent, environment, status, usage, and timestamps.",
+    "response": [
+      {
+        "name": "data",
+        "type": "Session[]",
+        "description": "Session envelopes visible to the current workspace."
+      }
+    ]
+  },
+  {
+    "id": "sessions-create",
+    "group": "Sessions",
+    "title": "Create session",
+    "method": "POST",
+    "path": "/v1/sessions",
+    "summary": "Create an executable agent session in an environment. Sessions persist a resumable event log and can be continued through messages or raw events.",
+    "parameters": [
+      {
+        "name": "agent",
+        "type": "string | object",
+        "required": true,
+        "description": "Agent id, or an object with an id and optional version."
+      },
+      {
+        "name": "environment_id",
+        "type": "string",
+        "required": true,
+        "description": "Environment template used to prepare the session runtime."
+      },
+      {
+        "name": "title",
+        "type": "string",
+        "description": "Optional human-readable session title."
+      },
+      {
+        "name": "resources",
+        "type": "array",
+        "description": "Files, GitHub repositories, or memory stores mounted into the session."
+      },
+      {
+        "name": "vault_ids",
+        "type": "string[]",
+        "description": "Credential vault ids available to tools during this session."
+      },
+      {
+        "name": "metadata",
+        "type": "object",
+        "description": "Opaque key-value tags for audit and external bookkeeping."
+      }
+    ],
+    "response": [
+      {
+        "name": "id",
+        "type": "string",
+        "description": "Server-generated sess_... identifier."
+      },
+      {
+        "name": "status",
+        "type": "idle | running | error | archived",
+        "description": "Current session lifecycle state."
+      },
+      {
+        "name": "agent",
+        "type": "object",
+        "description": "Pinned agent id, name, and version used by this session."
+      },
+      {
+        "name": "usage",
+        "type": "object",
+        "description": "Input and output token counters recorded by the runtime."
+      },
+      {
+        "name": "created_at",
+        "type": "datetime",
+        "description": "RFC 3339 creation timestamp."
+      }
+    ]
+  },
+  {
+    "id": "sessions-get",
+    "group": "Sessions",
+    "title": "Get session",
+    "method": "GET",
+    "path": "/v1/sessions/{session_id}",
+    "summary": "Fetch one session envelope including current status, resources, usage, and pinned agent/environment metadata.",
+    "response": [
+      {
+        "name": "id",
+        "type": "string",
+        "description": "Session identifier."
+      },
+      {
+        "name": "session",
+        "type": "object",
+        "description": "Created or updated session resource."
+      }
+    ]
+  },
+  {
+    "id": "sessions-events-list",
+    "group": "Sessions",
+    "title": "List session events",
+    "method": "GET",
+    "path": "/v1/sessions/{session_id}/events",
+    "summary": "Read the durable event log for a session. Use after non-streaming runs or to reconstruct a timeline.",
+    "response": [
+      {
+        "name": "data",
+        "type": "SessionEvent[]",
+        "description": "Events ordered by creation sequence."
+      }
+    ]
+  },
+  {
+    "id": "sessions-events-create",
+    "group": "Sessions",
+    "title": "Append raw event",
+    "method": "POST",
+    "path": "/v1/sessions/{session_id}/events",
+    "summary": "Append a raw event to a session log. This is lower-level than the message convenience endpoint.",
+    "parameters": [
+      {
+        "name": "type",
+        "type": "string",
+        "required": true,
+        "description": "Event type such as message.created or tool.result."
+      },
+      {
+        "name": "payload",
+        "type": "object",
+        "description": "Event payload stored with the session."
+      },
+      {
+        "name": "metadata",
+        "type": "object",
+        "description": "Optional event metadata."
+      }
+    ],
+    "response": [
+      {
+        "name": "id",
+        "type": "string",
+        "description": "Server-generated event identifier."
+      },
+      {
+        "name": "event",
+        "type": "object",
+        "description": "Created or updated event resource."
+      }
+    ]
+  },
+  {
+    "id": "sessions-message",
+    "group": "Sessions",
+    "title": "Send message",
+    "method": "POST",
+    "path": "/v1/sessions/{session_id}/messages",
+    "summary": "Append a user message and run the agent loop. Set stream to true for Server-Sent Events compatible with browser clients and SDK iterators.",
+    "parameters": [
+      {
+        "name": "content",
+        "type": "string | content[]",
+        "required": true,
+        "description": "User message text or structured content blocks."
+      },
+      {
+        "name": "stream",
+        "type": "boolean",
+        "description": "When true, returns an SSE stream of session and agent events."
+      },
+      {
+        "name": "metadata",
+        "type": "object",
+        "description": "Optional event-level metadata."
+      }
+    ],
+    "response": [
+      {
+        "name": "event",
+        "type": "SSE event",
+        "description": "Streaming event when stream is true."
+      },
+      {
+        "name": "session",
+        "type": "object",
+        "description": "Updated session envelope for non-streaming calls."
+      }
+    ]
+  },
+  {
+    "id": "sessions-events-stream",
+    "group": "Sessions",
+    "title": "Stream session events",
+    "method": "GET",
+    "path": "/v1/sessions/{session_id}/events/stream",
+    "summary": "Subscribe to live Server-Sent Events for a running session.",
+    "response": [
+      {
+        "name": "event",
+        "type": "SSE event",
+        "description": "Live session and agent-loop events."
+      }
+    ]
+  },
+  {
+    "id": "sessions-stop",
+    "group": "Sessions",
+    "title": "Stop session",
+    "method": "POST",
+    "path": "/v1/sessions/{session_id}/stop",
+    "summary": "Request cancellation for the active run in a session.",
+    "response": [
+      {
+        "name": "id",
+        "type": "string",
+        "description": "Stopped session identifier."
+      },
+      {
+        "name": "session",
+        "type": "object",
+        "description": "Created or updated session resource."
+      }
+    ]
+  },
+  {
+    "id": "sessions-delete",
+    "group": "Sessions",
+    "title": "Delete session",
+    "method": "DELETE",
+    "path": "/v1/sessions/{session_id}",
+    "summary": "Delete a session and its runtime state from the local workspace.",
+    "response": [
+      {
+        "name": "deleted",
+        "type": "boolean",
+        "description": "True when the session was deleted."
+      }
+    ]
+  }
+]
