@@ -125,7 +125,9 @@ default sandbox provider. Named Environments can still override the default
 sandbox per session. Planned adapters such as S3, mem0, MemU, Harness, Codex,
 and Claude remain unavailable until their runtime implementations exist; Docker
 or remote sandbox providers appear as available only when registered by the
-current runtime.
+current runtime. Remote sandbox maps to the self-hosted worker queue: configure
+the worker API URL and key so external workers can claim and complete queued
+work items; the Settings check calls the remote `/v1/x/health` endpoint.
 
 YAML model entries and legacy provider rows are bootstrap/import data for a new
 workspace. After Settings V2 is seeded, normal Dashboard edits do not rewrite

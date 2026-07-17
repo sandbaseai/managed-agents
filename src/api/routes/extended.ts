@@ -141,7 +141,7 @@ export function extendedRoutes(deps: ServerDeps) {
       }, 422);
     }
 
-    const result = testRuntimeSettingsArea({
+    const result = await testRuntimeSettingsArea({
       db: deps.db,
       dataDir: deps.workspace?.dataDir,
       area: area as RuntimeSettingsTestArea,

@@ -84,6 +84,7 @@ export function validateRuntimeSettings(
   const config = parsed.data;
   const errors: SettingsValidationIssue[] = [];
   validateModelSettings(errors, config);
+  validateSandboxSettings(errors, config);
   requireAvailable(errors, 'model.vendor', config.model.vendor, availability.modelVendors);
   requireAvailable(errors, 'loop_engine.provider', config.loop_engine.provider, availability.loopEngines);
   requireAvailable(errors, 'storage.metadata.provider', config.storage.metadata.provider, availability.metadataStorage);
@@ -118,6 +119,35 @@ function validateModelSettings(errors: SettingsValidationIssue[], config: Runtim
       path: 'model.base_url',
       code: 'invalid_protocol',
       message: 'Model base URL must use http or https',
+    });
+  }
+}
+
+function validateSandboxSettings(errors: SettingsValidationIssue[], config: RuntimeSettings): void {
+  if (config.sandbox.provider !== 'remote') return;
+  const endpoint = config.sandbox.options.endpoint;
+  if (typeof endpoint !== 'string' || !endpoint.trim()) {
+    errors.push({
+      path: 'sandbox.options.endpoint',
+      code: 'required',
+      message: 'Remote sandbox requires a worker API URL',
+    });
+    return;
+  }
+  try {
+    const protocol = new URL(endpoint).protocol;
+    if (protocol !== 'http:' && protocol !== 'https:') {
+      errors.push({
+        path: 'sandbox.options.endpoint',
+        code: 'invalid_protocol',
+        message: 'Remote sandbox worker API URL must use http or https',
+      });
+    }
+  } catch {
+    errors.push({
+      path: 'sandbox.options.endpoint',
+      code: 'invalid_url',
+      message: 'Remote sandbox worker API URL must be a valid URL',
     });
   }
 }

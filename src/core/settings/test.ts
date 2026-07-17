@@ -52,8 +52,20 @@ export function testRuntimeSettingsArea(params: {
   dataDir?: string;
   area: RuntimeSettingsTestArea;
   config: RuntimeSettings;
-}): RuntimeSettingsTestResult {
-  const checks = runChecks(params);
+}): Promise<RuntimeSettingsTestResult> {
+  return testRuntimeSettingsAreaWithFetch(params);
+}
+
+export async function testRuntimeSettingsAreaWithFetch(
+  params: {
+    db: Database;
+    dataDir?: string;
+    area: RuntimeSettingsTestArea;
+    config: RuntimeSettings;
+  },
+  fetchImpl: typeof fetch = fetch,
+): Promise<RuntimeSettingsTestResult> {
+  const checks = await runChecks(params, fetchImpl);
   const failed = checks.some((check) => check.status === 'failed');
   const skipped = checks.length > 0 && checks.every((check) => check.status === 'skipped');
   return {
@@ -69,7 +81,7 @@ function runChecks(params: {
   dataDir?: string;
   area: RuntimeSettingsTestArea;
   config: RuntimeSettings;
-}): RuntimeSettingsTestCheck[] {
+}, fetchImpl: typeof fetch): RuntimeSettingsTestCheck[] | Promise<RuntimeSettingsTestCheck[]> {
   const { db, dataDir, area, config } = params;
   switch (area) {
     case 'model':
@@ -89,7 +101,7 @@ function runChecks(params: {
     case 'memory':
       return testMemory(db, config);
     case 'sandbox':
-      return testSandbox(dataDir, config);
+      return testSandbox(dataDir, config, fetchImpl);
   }
 }
 
@@ -175,7 +187,10 @@ function testMemory(db: Database, config: RuntimeSettings): RuntimeSettingsTestC
   }
 }
 
-function testSandbox(dataDir: string | undefined, config: RuntimeSettings): RuntimeSettingsTestCheck[] {
+async function testSandbox(dataDir: string | undefined, config: RuntimeSettings, fetchImpl: typeof fetch): Promise<RuntimeSettingsTestCheck[]> {
+  if (config.sandbox.provider === 'remote') {
+    return testRemoteSandbox(config, fetchImpl);
+  }
   if (config.sandbox.provider !== 'local') {
     return [{
       name: 'sandbox_live_health',
@@ -198,6 +213,59 @@ function testSandbox(dataDir: string | undefined, config: RuntimeSettings): Runt
     checks.push({ name: 'local_data_dir', status: 'ok', message: 'Runtime data directory is writable for local sandbox work.' });
   } catch (err) {
     checks.push({ name: 'local_data_dir', status: 'failed', message: err instanceof Error ? err.message : 'Local sandbox directory check failed.' });
+  }
+  return checks;
+}
+
+async function testRemoteSandbox(config: RuntimeSettings, fetchImpl: typeof fetch): Promise<RuntimeSettingsTestCheck[]> {
+  const endpoint = typeof config.sandbox.options.endpoint === 'string'
+    ? config.sandbox.options.endpoint.trim().replace(/\/$/, '')
+    : '';
+  const apiKey = config.sandbox.options.api_key;
+  const checks: RuntimeSettingsTestCheck[] = [{
+    name: 'timeout',
+    status: Number.isInteger(config.sandbox.options.timeout_seconds) && config.sandbox.options.timeout_seconds > 0 ? 'ok' : 'failed',
+    message: `Sandbox timeout is ${config.sandbox.options.timeout_seconds} seconds.`,
+  }];
+  if (!endpoint) {
+    checks.push({
+      name: 'remote_endpoint',
+      status: 'failed',
+      message: 'Remote sandbox requires a worker API URL.',
+    });
+    return checks;
+  }
+  if (typeof apiKey !== 'string' || !apiKey.trim()) {
+    checks.push({
+      name: 'remote_api_key',
+      status: 'failed',
+      message: 'Remote sandbox requires a worker API key.',
+    });
+    return checks;
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 3000);
+  try {
+    const response = await fetchImpl(`${endpoint}/v1/x/health`, {
+      headers: { authorization: `Bearer ${apiKey}` },
+      signal: controller.signal,
+    });
+    checks.push({
+      name: 'remote_health',
+      status: response.ok ? 'ok' : 'failed',
+      message: response.ok
+        ? `Remote sandbox worker API responded at ${endpoint}.`
+        : `Remote sandbox worker API returned HTTP ${response.status}.`,
+    });
+  } catch (err) {
+    checks.push({
+      name: 'remote_health',
+      status: 'failed',
+      message: err instanceof Error ? err.message : 'Remote sandbox worker API health check failed.',
+    });
+  } finally {
+    clearTimeout(timeout);
   }
   return checks;
 }

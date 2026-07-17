@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { describeSettingsAdapters, availabilityFromDescriptors } from '@/core/settings/adapters.js';
 import { validateRuntimeSettings, validateRuntimeSettingsCredentials } from '@/core/settings/schema.js';
-import { testRuntimeSettingsArea } from '@/core/settings/test.js';
+import { testRuntimeSettingsArea, testRuntimeSettingsAreaWithFetch } from '@/core/settings/test.js';
 import { Database } from '@/core/db/database.js';
 import { activateRuntimeSettings, getOrSeedRuntimeSettings, localArtifactStorageDir, maskRuntimeSettings, modelConfigFromRuntimeSettings, runtimeSettingsSecretStates, saveRuntimeSettings } from '@/core/settings/store.js';
 import { composeRuntimeFromSettings } from '@/core/runtime/composition.js';
@@ -79,11 +79,11 @@ describe('Settings V2 schema', () => {
     expect(result.valid).toBe(true);
   });
 
-  it('skips live health checks for registered non-local sandboxes', () => {
+  it('skips live health checks for registered Docker sandbox checks', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'ma-settings-sandbox-test-'));
     const db = new Database(join(directory, 'settings.db'));
     try {
-      const result = testRuntimeSettingsArea({
+      const result = await testRuntimeSettingsArea({
         db,
         dataDir: directory,
         area: 'sandbox',
@@ -104,6 +104,97 @@ describe('Settings V2 schema', () => {
           }),
         ],
       });
+    } finally {
+      db.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('requires a remote sandbox worker API URL during validation', () => {
+    const descriptors = describeSettingsAdapters(['local', 'self_hosted']);
+    const result = validateRuntimeSettings({
+      ...validConfig,
+      sandbox: { provider: 'remote', options: { timeout_seconds: 300, api_key: 'worker-key' } },
+    }, availabilityFromDescriptors(descriptors));
+
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContainEqual(expect.objectContaining({
+      path: 'sandbox.options.endpoint',
+      code: 'required',
+    }));
+  });
+
+  it('checks remote sandbox worker API health when configured', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'ma-settings-remote-sandbox-test-'));
+    const db = new Database(join(directory, 'settings.db'));
+    try {
+      const result = await testRuntimeSettingsAreaWithFetch({
+        db,
+        dataDir: directory,
+        area: 'sandbox',
+        config: {
+          ...validConfig,
+          sandbox: {
+            provider: 'remote',
+            options: {
+              timeout_seconds: 300,
+              endpoint: 'https://worker.example.test',
+              api_key: 'worker-key',
+            },
+          },
+        },
+      }, async (input, init) => {
+        expect(String(input)).toBe('https://worker.example.test/v1/x/health');
+        expect((init?.headers as Record<string, string>).authorization).toBe('Bearer worker-key');
+        return new Response(JSON.stringify({ status: 'healthy' }), { status: 200 });
+      });
+
+      expect(result).toMatchObject({
+        ok: true,
+        area: 'sandbox',
+        status: 'ok',
+      });
+      expect(result.checks).toContainEqual(expect.objectContaining({
+        name: 'remote_health',
+        status: 'ok',
+      }));
+    } finally {
+      db.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('fails remote sandbox health checks when the worker API is unreachable', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'ma-settings-remote-sandbox-test-'));
+    const db = new Database(join(directory, 'settings.db'));
+    try {
+      const result = await testRuntimeSettingsAreaWithFetch({
+        db,
+        dataDir: directory,
+        area: 'sandbox',
+        config: {
+          ...validConfig,
+          sandbox: {
+            provider: 'remote',
+            options: {
+              timeout_seconds: 300,
+              endpoint: 'https://worker.example.test',
+              api_key: 'worker-key',
+            },
+          },
+        },
+      }, async () => new Response('nope', { status: 503 }));
+
+      expect(result).toMatchObject({
+        ok: false,
+        area: 'sandbox',
+        status: 'failed',
+      });
+      expect(result.checks).toContainEqual(expect.objectContaining({
+        name: 'remote_health',
+        status: 'failed',
+        message: 'Remote sandbox worker API returned HTTP 503.',
+      }));
     } finally {
       db.close();
       rmSync(directory, { recursive: true, force: true });

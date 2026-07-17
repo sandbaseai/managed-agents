@@ -422,12 +422,13 @@ Implemented request shape:
 `area` is one of `model`, `loop_engine`, `storage.metadata`,
 `storage.artifacts`, `memory`, or `sandbox`. `full_config` is optional; when
 omitted, the server merges `config` into the current saved document before
-validation. The first implementation performs local capability checks only:
-credential resolution, URL shape, SQLite quick check, local artifact
-writability, memory enablement, and local sandbox data-dir writability. It
-does not perform live vendor authentication against OpenAI, Anthropic, S3,
-Docker, mem0, or MemU until those adapters are real runtime implementations;
-registered non-local sandbox providers return a skipped live-health check.
+validation. The implementation performs scoped capability checks: credential
+resolution, URL shape, SQLite quick check, local artifact writability, memory
+enablement, local sandbox data-dir writability, and remote sandbox worker API
+health via `/v1/x/health`. It does not perform live vendor authentication
+against OpenAI, Anthropic, S3, Docker, mem0, or MemU until those adapters are
+real runtime implementations; Docker sandbox live daemon/image validation is
+currently skipped.
 Model checks run the same credential validation as save/validate for the model
 area. Non-model area checks are scoped to their own adapter so storage, memory,
 and sandbox diagnostics can still run in a workspace whose model credential has
@@ -708,7 +709,7 @@ must not imply that a planned adapter is active.
 | Metadata storage | SQLite is the real metadata store. | Add a migration/backup/rollback contract before exposing external databases. |
 | Artifact storage | Local artifact path is resolved from effective Settings V2 through a shared `ArtifactStore`, used by File resources and snapshots. | Add generated artifact consumers and a real S3 implementation before exposing S3 as selectable. |
 | Memory | SQLite enable/disable is wired and locally testable. mem0 and MemU are unavailable. | Add real adapters before making either selectable. |
-| Sandbox | The workspace setting is used as the `env_default` fallback; named Environments override it. Local, Docker, and remote/self-hosted providers are selectable only when registered by the current runtime; local writability is testable. | Add Docker daemon/image and remote endpoint health checks before claiming live connection validation for those providers. |
+| Sandbox | The workspace setting is used as the `env_default` fallback; named Environments override it. Local, Docker, and remote/self-hosted providers are selectable only when registered by the current runtime; local writability and remote worker API health are testable. | Add Docker daemon/image validation before claiming live connection validation for Docker. |
 
 ### 13.2 Findings
 
@@ -836,6 +837,6 @@ Explicitly not part of the first-release done definition:
 - Postgres/MySQL metadata migration;
 - S3 artifact storage;
 - mem0 or MemU memory backends;
-- Docker or remote sandbox health checks;
+- Docker daemon/image sandbox health checks;
 - Harness, Codex, or Claude loop engines;
 - removing legacy read endpoints before the compatibility window ends.

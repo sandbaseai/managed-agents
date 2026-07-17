@@ -601,8 +601,9 @@ Model tests apply the same credential validation used by validate and save.
 Other area tests are scoped to their adapter so local storage, memory, and
 sandbox diagnostics can run before a model API key has been configured.
 Those scoped checks still validate credentials that belong to the tested area.
-Registered non-local sandbox providers return a skipped live-health check until
-their provider-specific health checks are implemented.
+Docker sandbox checks currently skip live daemon/image validation. Remote
+sandbox checks require the worker API URL and key, then call
+`/v1/x/health` on that remote worker API.
 
 Save the complete document with optimistic concurrency:
 
