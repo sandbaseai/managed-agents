@@ -8,6 +8,11 @@
     "summary": "Read saved and effective Settings V2 documents, adapter descriptors, diagnostics, secret states, and activation status.",
     "response": [
       {
+        "name": "schema_version",
+        "type": "number",
+        "description": "Runtime settings document schema version."
+      },
+      {
         "name": "revision",
         "type": "number",
         "description": "Saved settings revision."
@@ -36,6 +41,26 @@
         "name": "activation_status",
         "type": "active | pending | failed",
         "description": "Activation state for the saved revision."
+      },
+      {
+        "name": "activation_errors",
+        "type": "SettingsValidationError[]",
+        "description": "Activation errors when startup kept the older effective revision."
+      },
+      {
+        "name": "diagnostics",
+        "type": "RuntimeSettingsDiagnostics",
+        "description": "Runtime-derived paths and health summaries used by the Dashboard."
+      },
+      {
+        "name": "adapters",
+        "type": "RuntimeSettingsAdapters",
+        "description": "Available, unavailable, and invalid adapter descriptors with options schemas."
+      },
+      {
+        "name": "secret_states",
+        "type": "object",
+        "description": "Secret configuration states such as configured, missing_env, or not_set; secret values are never returned."
       }
     ]
   },
@@ -69,6 +94,11 @@
         "name": "errors",
         "type": "array",
         "description": "Path-addressed validation errors."
+      },
+      {
+        "name": "warnings",
+        "type": "array",
+        "description": "Non-blocking validation warnings."
       }
     ]
   },
@@ -113,6 +143,16 @@
         "name": "checks",
         "type": "array",
         "description": "Individual local capability checks."
+      },
+      {
+        "name": "errors",
+        "type": "array",
+        "description": "Validation errors when the candidate area cannot be checked."
+      },
+      {
+        "name": "warnings",
+        "type": "array",
+        "description": "Non-blocking validation warnings."
       }
     ]
   },
@@ -139,14 +179,54 @@
     ],
     "response": [
       {
+        "name": "schema_version",
+        "type": "number",
+        "description": "Runtime settings document schema version."
+      },
+      {
         "name": "revision",
         "type": "number",
         "description": "New saved revision."
       },
       {
+        "name": "effective_revision",
+        "type": "number",
+        "description": "Runtime-active revision."
+      },
+      {
+        "name": "saved_config",
+        "type": "RuntimeSettingsConfig",
+        "description": "Saved candidate document with secrets masked."
+      },
+      {
+        "name": "effective_config",
+        "type": "RuntimeSettingsConfig",
+        "description": "Runtime-active document with secrets masked."
+      },
+      {
         "name": "restart_required",
         "type": "boolean",
         "description": "Whether runtime restart is required."
+      },
+      {
+        "name": "activation_status",
+        "type": "active | pending | failed",
+        "description": "Activation state for the saved revision."
+      },
+      {
+        "name": "activation_errors",
+        "type": "SettingsValidationError[]",
+        "description": "Activation errors when startup kept the older effective revision."
+      },
+      {
+        "name": "diagnostics",
+        "type": "RuntimeSettingsDiagnostics",
+        "description": "Runtime-derived paths and health summaries used by the Dashboard."
+      },
+      {
+        "name": "secret_states",
+        "type": "object",
+        "description": "Secret configuration states such as configured, missing_env, or not_set; secret values are never returned."
       }
     ]
   },

@@ -80,6 +80,31 @@ describe('API reference docs', () => {
     expect(ids.has(DEFAULT_API_REFERENCE_ENDPOINT_ID)).toBe(true);
   });
 
+  it('documents the full Runtime Settings response shape used by the Console', () => {
+    const getSettings = API_REFERENCE_DOCS.find((endpoint) => endpoint.id === 'settings-get');
+    const saveSettings = API_REFERENCE_DOCS.find((endpoint) => endpoint.id === 'settings-save');
+    const expectedStateFields = [
+      'schema_version',
+      'revision',
+      'effective_revision',
+      'saved_config',
+      'effective_config',
+      'restart_required',
+      'activation_status',
+      'activation_errors',
+      'diagnostics',
+      'secret_states',
+    ];
+
+    expect(getSettings).toBeDefined();
+    expect(saveSettings).toBeDefined();
+    expect(getSettings?.response.map((field) => field.name)).toEqual(expect.arrayContaining([
+      ...expectedStateFields,
+      'adapters',
+    ]));
+    expect(saveSettings?.response.map((field) => field.name)).toEqual(expect.arrayContaining(expectedStateFields));
+  });
+
   it('keeps every endpoint schema complete and route identity unique', () => {
     const routeKeys = new Set<string>();
 
