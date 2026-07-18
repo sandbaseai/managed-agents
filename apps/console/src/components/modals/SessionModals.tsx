@@ -3,7 +3,7 @@ import { type Dispatch, type FormEvent, type SetStateAction, useState } from 're
 import { postJson } from '../../api';
 import { EmptyState, RequiredMark } from '../Common';
 import { Modal } from '../Modal';
-import { environmentKind } from '../pages/EnvironmentPages';
+import { environmentKind } from '../pages/EnvironmentPageModel';
 import type { Agent, ConsoleData, SessionResourceDraft, Vault, ViewId } from '../../types';
 
 export function SessionModal({

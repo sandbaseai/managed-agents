@@ -3,7 +3,7 @@ import { type FormEvent, useState } from 'react';
 import { postJson } from '../../api';
 import { RequiredMark } from '../Common';
 import { Modal } from '../Modal';
-import { sandboxProviderForHostingType, splitCsv } from '../pages/EnvironmentPages';
+import { sandboxProviderForHostingType, splitCsv } from '../pages/EnvironmentPageModel';
 import type { CredentialAuthType, EnvironmentHostingType } from '../../types';
 
 export function ResourceModal({ kind, onClose, onSaved }: { kind: 'environment' | 'credential_vault' | 'memory_store'; onClose: () => void; onSaved: () => void }) {
