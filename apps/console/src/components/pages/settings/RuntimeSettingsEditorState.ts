@@ -1,4 +1,5 @@
 import type { ConsoleData, RuntimeSettingsConfig } from '../../../types';
+import { optionDefaultsForAdapter } from './RuntimeSettingsFormShared';
 import type { SettingsSection } from './navigation';
 
 export type RuntimeSettingsSection = Extract<SettingsSection, 'models' | 'loop-engine' | 'storage' | 'memory' | 'sandbox'>;
@@ -93,20 +94,6 @@ function defaultModelApiKey(vendor: RuntimeSettingsConfig['model']['vendor']): s
   if (vendor === 'anthropic') return '${ANTHROPIC_API_KEY}';
   if (vendor === 'openai') return '${OPENAI_API_KEY}';
   return '${MODEL_API_KEY}';
-}
-
-function optionDefaultsForAdapter(
-  adapters: Array<{ id: string; options_schema?: Record<string, unknown> }>,
-  id: string,
-): Record<string, unknown> {
-  const schema = adapters.find((adapter) => adapter.id === id)?.options_schema;
-  if (!schema || typeof schema !== 'object') return {};
-  const properties = (schema as { properties?: unknown }).properties;
-  if (!properties || typeof properties !== 'object' || Array.isArray(properties)) return {};
-  return Object.fromEntries(Object.entries(properties as Record<string, unknown>).flatMap(([key, value]) => {
-    if (!value || typeof value !== 'object' || Array.isArray(value) || !('default' in value)) return [];
-    return [[key, (value as { default: unknown }).default]];
-  }));
 }
 
 export function runtimeSettingsSectionJson(config: RuntimeSettingsConfig, section: RuntimeSettingsSection): string {
