@@ -40,5 +40,8 @@ describe('Agent modals', () => {
     expect(html).toContain('Create agent');
     expect(html).toContain('Agent config');
     expect(html).toContain('Starter agent');
+    expect(html).toContain('<option value="yaml"');
+    expect(html).toContain('<option value="json"');
+    expect(html).toContain('class="yamlKey"');
   });
 });

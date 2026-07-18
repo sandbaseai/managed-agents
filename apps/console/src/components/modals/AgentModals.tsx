@@ -2,19 +2,23 @@ import { ChevronDown, FileText } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { postJson, putJson } from '../../api';
+import { CodeEditor } from '../CodeEditor';
 import { Modal } from '../Modal';
 import type { Agent, AgentToolset, ConsoleData, SkillRef, Template } from '../../types';
+
+type AgentConfigFormat = 'yaml' | 'json';
 
 export function AgentModal({ template, data, onClose, onSaved }: { template?: Template; data: ConsoleData; onClose: () => void; onSaved: () => void }) {
   const initialTemplate = template ?? data.templates[0];
   const [selected, setSelected] = useState<Template | undefined>(initialTemplate);
-  const [yaml, setYaml] = useState(agentDefinitionYaml(initialTemplate?.agent ?? defaultAgentDraft(data)));
+  const [format, setFormat] = useState<AgentConfigFormat>('yaml');
+  const [configText, setConfigText] = useState(formatAgentDefinition(initialTemplate?.agent ?? defaultAgentDraft(data), 'yaml'));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
   const chooseTemplate = (next: Template) => {
     setSelected(next);
-    setYaml(agentDefinitionYaml(next.agent));
+    setConfigText(formatAgentDefinition(next.agent, format));
   };
 
   const submit = async (event: FormEvent) => {
@@ -22,7 +26,7 @@ export function AgentModal({ template, data, onClose, onSaved }: { template?: Te
     setSaving(true);
     setError('');
     try {
-      await postJson('/v1/agents', parseYaml(yaml));
+      await postJson('/v1/agents', parseAgentConfig(configText, format));
       onSaved();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -55,7 +59,13 @@ export function AgentModal({ template, data, onClose, onSaved }: { template?: Te
 
         <section className="composerSection">
           <h2>Agent config</h2>
-          <YamlEditor value={yaml} onChange={setYaml} minRows={18} />
+          <AgentConfigEditor
+            value={configText}
+            format={format}
+            onChange={setConfigText}
+            onFormat={(next) => convertConfigFormat({ value: configText, format, next, setValue: setConfigText, setFormat, setError })}
+            minRows={18}
+          />
         </section>
 
         <div className="modalActions stickyActions">
@@ -67,7 +77,8 @@ export function AgentModal({ template, data, onClose, onSaved }: { template?: Te
 }
 
 export function AgentEditModal({ agent, onClose, onSaved }: { agent: Agent; onClose: () => void; onSaved: () => void }) {
-  const [yaml, setYaml] = useState(agentDefinitionYaml(agentDraftFromApi(agent)));
+  const [format, setFormat] = useState<AgentConfigFormat>('yaml');
+  const [configText, setConfigText] = useState(formatAgentDefinition(agentDraftFromApi(agent), 'yaml'));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -76,7 +87,7 @@ export function AgentEditModal({ agent, onClose, onSaved }: { agent: Agent; onCl
     setSaving(true);
     setError('');
     try {
-      await putJson(`/v1/agents/${agent.id}`, parseYaml(yaml));
+      await putJson(`/v1/agents/${agent.id}`, parseAgentConfig(configText, format));
       onSaved();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -89,7 +100,13 @@ export function AgentEditModal({ agent, onClose, onSaved }: { agent: Agent; onCl
     <Modal title="Edit agent" onClose={onClose} size="medium">
       <form className="agentComposer" onSubmit={submit}>
         {error ? <div className="banner error inlineBanner">{error}</div> : null}
-        <YamlEditor value={yaml} onChange={setYaml} minRows={16} />
+        <AgentConfigEditor
+          value={configText}
+          format={format}
+          onChange={setConfigText}
+          onFormat={(next) => convertConfigFormat({ value: configText, format, next, setValue: setConfigText, setFormat, setError })}
+          minRows={16}
+        />
         <div className="modalActions stickyActions">
           <button className="darkButton" type="submit" disabled={saving}>Save new version</button>
         </div>
@@ -110,20 +127,33 @@ type AgentDraft = {
   metadata?: Record<string, unknown>;
 };
 
-function YamlEditor({ value, onChange, minRows }: { value: string; onChange: (value: string) => void; minRows: number }) {
+function AgentConfigEditor({
+  value,
+  format,
+  onChange,
+  onFormat,
+  minRows,
+}: {
+  value: string;
+  format: AgentConfigFormat;
+  onChange: (value: string) => void;
+  onFormat: (format: AgentConfigFormat) => void;
+  minRows: number;
+}) {
   return (
     <div className="yamlShell">
       <div className="yamlToolbar">
-        <button type="button">YAML <ChevronDown size={16} /></button>
+        <label>
+          <span className="srOnly">Agent config format</span>
+          <select value={format} onChange={(event) => onFormat(event.target.value as AgentConfigFormat)}>
+            <option value="yaml">YAML</option>
+            <option value="json">JSON</option>
+          </select>
+          <ChevronDown size={16} aria-hidden="true" />
+        </label>
         <FileText size={17} />
       </div>
-      <textarea
-        className="yamlTextarea"
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        rows={minRows}
-        spellCheck={false}
-      />
+      <CodeEditor value={value} onChange={onChange} language={format} minRows={minRows} />
     </div>
   );
 }
@@ -155,8 +185,8 @@ function agentDraftFromApi(agent: Agent): AgentDraft {
   };
 }
 
-function agentDefinitionYaml(agent: AgentDraft): string {
-  return stringifyYaml({
+function agentDefinitionObject(agent: AgentDraft): AgentDraft {
+  return {
     name: agent.name,
     ...(agent.description ? { description: agent.description } : {}),
     model: agent.model,
@@ -166,5 +196,52 @@ function agentDefinitionYaml(agent: AgentDraft): string {
     tools: agent.tools ?? [{ type: 'agent_toolset_20260401' }],
     skills: agent.skills ?? [],
     metadata: agent.metadata ?? {},
-  }, { blockQuote: 'literal', lineWidth: 100 });
+  };
+}
+
+function agentDefinitionYaml(agent: AgentDraft): string {
+  return stringifyYaml(agentDefinitionObject(agent), { blockQuote: 'literal', lineWidth: 100 });
+}
+
+function agentDefinitionJson(agent: AgentDraft): string {
+  return `${JSON.stringify(agentDefinitionObject(agent), null, 2)}\n`;
+}
+
+function formatAgentDefinition(agent: AgentDraft, format: AgentConfigFormat): string {
+  return format === 'json' ? agentDefinitionJson(agent) : agentDefinitionYaml(agent);
+}
+
+function parseAgentConfig(value: string, format: AgentConfigFormat): AgentDraft {
+  return format === 'json' ? JSON.parse(value) : parseYaml(value);
+}
+
+function stringifyAgentConfig(value: AgentDraft, format: AgentConfigFormat): string {
+  return format === 'json' ? `${JSON.stringify(value, null, 2)}\n` : stringifyYaml(value, { blockQuote: 'literal', lineWidth: 100 });
+}
+
+function convertConfigFormat({
+  value,
+  format,
+  next,
+  setValue,
+  setFormat,
+  setError,
+}: {
+  value: string;
+  format: AgentConfigFormat;
+  next: AgentConfigFormat;
+  setValue: (value: string) => void;
+  setFormat: (format: AgentConfigFormat) => void;
+  setError: (error: string) => void;
+}) {
+  if (format === next) return;
+
+  try {
+    const parsed = parseAgentConfig(value, format);
+    setValue(stringifyAgentConfig(parsed, next));
+    setFormat(next);
+    setError('');
+  } catch (err) {
+    setError(`Cannot switch to ${next.toUpperCase()}: ${err instanceof Error ? err.message : String(err)}`);
+  }
 }

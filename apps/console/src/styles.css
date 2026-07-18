@@ -622,6 +622,26 @@ button {
   color: #fca5a5;
 }
 
+.codeEditorHighlight .yamlKey {
+  color: #93c5fd;
+}
+
+.codeEditorHighlight .yamlString {
+  color: #86efac;
+}
+
+.codeEditorHighlight .yamlNumber {
+  color: #fbbf24;
+}
+
+.codeEditorHighlight .yamlBoolean {
+  color: #c4b5fd;
+}
+
+.codeEditorHighlight .yamlNull {
+  color: #fca5a5;
+}
+
 .formActions {
   display: flex;
   align-items: center;
@@ -4226,6 +4246,30 @@ label.searchBox input {
   padding: 0 16px;
 }
 
+.yamlToolbar label {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.yamlToolbar select {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--text-soft);
+  font-size: 16px;
+  font-weight: 720;
+  padding: 0 22px 0 0;
+  cursor: pointer;
+}
+
+.yamlToolbar label svg {
+  position: absolute;
+  right: 0;
+  pointer-events: none;
+}
+
 .yamlToolbar button {
   border: 0;
   background: transparent;
@@ -4235,6 +4279,12 @@ label.searchBox input {
   color: var(--text-soft);
   font-size: 16px;
   font-weight: 720;
+}
+
+.yamlShell .codeEditorShell {
+  border: 0;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
 }
 
 .yamlTextarea {
@@ -4252,6 +4302,18 @@ label.searchBox input {
 .yamlTextarea:focus {
   box-shadow: none;
   border-color: transparent;
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .stickyActions {
