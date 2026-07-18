@@ -4089,6 +4089,25 @@ label.searchBox input {
   width: 100%;
 }
 
+.environmentExecutionSection {
+  gap: 18px;
+}
+
+.environmentNestedGrid {
+  display: grid;
+  grid-template-columns: minmax(280px, 1.4fr) minmax(180px, 0.8fr) minmax(160px, 0.6fr);
+  gap: 14px;
+}
+
+.subtleNotice {
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  background: var(--surface-muted);
+  color: var(--muted);
+  padding: 12px 14px;
+  line-height: 1.45;
+}
+
 .editField small {
   color: var(--muted);
   font-size: 14px;

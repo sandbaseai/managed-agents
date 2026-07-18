@@ -170,8 +170,18 @@ process isolation:
 environments:
   docker:
     sandbox_provider: docker
+    image: node:22-slim
+    resources:
+      memory: 1g
+      cpu: 1
     timeout: 300
 ```
+
+Docker mode creates one long-lived container per session and runs tool commands
+with `docker exec` inside `/workspace`. The Docker CLI and daemon must be
+available to the local runtime process; if Docker is not detected, the Console
+marks the adapter unavailable and existing Docker environments cannot start new
+containers until Docker is running again.
 
 ## Start Options
 

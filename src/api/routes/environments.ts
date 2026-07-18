@@ -115,11 +115,13 @@ function normalizeEnvironmentConfig(
   return config;
 }
 
-function environmentHostingType(config: Record<string, unknown>): 'cloud' | 'local' | 'self_hosted' {
+function environmentHostingType(config: Record<string, unknown>): 'cloud' | 'local' | 'docker' | 'self_hosted' {
   if (config.hosting_type === 'self_hosted') return 'self_hosted';
+  if (config.hosting_type === 'docker') return 'docker';
   if (config.hosting_type === 'local') return 'local';
   if (config.hosting_type === 'cloud') return 'cloud';
   if (config.sandbox_provider === 'self_hosted') return 'self_hosted';
+  if (config.sandbox_provider === 'docker') return 'docker';
   if (config.sandbox_provider === 'local') return 'local';
   return 'cloud';
 }

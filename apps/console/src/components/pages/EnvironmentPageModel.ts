@@ -7,6 +7,7 @@ export function environmentKind(environment: Environment) {
 
 export function hostingLabel(type: EnvironmentHostingType) {
   if (type === 'self_hosted') return 'Self-hosted';
+  if (type === 'docker') return 'Docker';
   if (type === 'local') return 'Local';
   return 'Cloud';
 }
@@ -15,6 +16,7 @@ export function environmentHostingType(environment: Environment): EnvironmentHos
   const hostingType = environment.hosting_type ?? environment.config.hosting_type;
   const provider = environment.config.sandbox_provider;
   if (hostingType === 'self_hosted' || provider === 'self_hosted') return 'self_hosted';
+  if (hostingType === 'docker' || provider === 'docker') return 'docker';
   if (hostingType === 'local' || provider === 'local') return 'local';
   return 'cloud';
 }
@@ -71,10 +73,14 @@ export function environmentKeys(environment: Environment): Array<{ id: string; n
 
 export function environmentDraftFromApi(environment: Environment): EnvironmentDraft {
   const network = environmentNetwork(environment);
+  const resources = objectValue(environment.config.resources);
   return {
     name: environment.name,
     description: environment.description,
     hostingType: environmentHostingType(environment),
+    dockerImage: stringValue(environment.config.image) ?? 'node:22-slim',
+    dockerMemory: stringValue(resources.memory) ?? '',
+    dockerCpu: numberOrStringValue(resources.cpu) ?? '',
     networkType: network.type,
     allowMcpServerNetworkAccess: network.allowMcp,
     allowPackageManagerNetworkAccess: network.allowPackageManager,
@@ -96,28 +102,41 @@ export function environmentPayloadFromDraft(draft: EnvironmentDraft) {
       .filter(([key]) => key),
   );
   const metadata = { ...draft.preservedMetadata, ...editableMetadata };
+  const config: Record<string, unknown> = {
+    hosting_type: draft.hostingType,
+    sandbox_provider: sandboxProviderForHostingType(draft.hostingType),
+    network: {
+      type: draft.networkType,
+      allow_mcp_server_network_access: draft.allowMcpServerNetworkAccess,
+      allow_package_manager_network_access: draft.allowPackageManagerNetworkAccess,
+      allowed_hosts: splitCsv(draft.allowedHosts),
+    },
+    packages: draft.packages
+      .map((item) => ({ manager: item.manager.trim(), package: item.package.trim() }))
+      .filter((item) => item.manager || item.package),
+  };
+  if (draft.hostingType === 'docker') {
+    const image = draft.dockerImage.trim() || 'node:22-slim';
+    const memory = draft.dockerMemory.trim();
+    const cpu = Number(draft.dockerCpu);
+    config.image = image;
+    config.resources = {
+      ...(memory ? { memory } : {}),
+      ...(Number.isFinite(cpu) && cpu > 0 ? { cpu } : {}),
+    };
+  }
+
   return {
     name: draft.name.trim(),
     description: draft.description,
-    config: {
-      hosting_type: draft.hostingType,
-      sandbox_provider: sandboxProviderForHostingType(draft.hostingType),
-      network: {
-        type: draft.networkType,
-        allow_mcp_server_network_access: draft.allowMcpServerNetworkAccess,
-        allow_package_manager_network_access: draft.allowPackageManagerNetworkAccess,
-        allowed_hosts: splitCsv(draft.allowedHosts),
-      },
-      packages: draft.packages
-        .map((item) => ({ manager: item.manager.trim(), package: item.package.trim() }))
-        .filter((item) => item.manager || item.package),
-    },
+    config,
     metadata,
   };
 }
 
 export function sandboxProviderForHostingType(hostingType: EnvironmentHostingType) {
   if (hostingType === 'self_hosted') return 'self_hosted';
+  if (hostingType === 'docker') return 'docker';
   if (hostingType === 'local') return 'local';
   return 'cloud';
 }
@@ -132,6 +151,15 @@ function objectValue(value: unknown): Record<string, unknown> {
 
 function arrayOfStrings(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string' && item.length > 0) : [];
+}
+
+function stringValue(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value : undefined;
+}
+
+function numberOrStringValue(value: unknown): string | undefined {
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  return stringValue(value);
 }
 
 function newDraftId() {

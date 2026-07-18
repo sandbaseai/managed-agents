@@ -1,38 +1,31 @@
 import { X } from 'lucide-react';
 import { MetricCard } from '../Common';
-import { formatDateShort, relativeDate, shortId, titleCase } from '../../lib/format';
+import { formatDateShort, relativeDate, shortId } from '../../lib/format';
 import type { Environment, Session } from '../../types';
 import {
   environmentKeys,
+  environmentHostingType,
   environmentMetadataEntries,
-  environmentNetwork,
-  environmentPackages,
+  hostingLabel,
 } from './EnvironmentPageModel';
 
 export function CloudEnvironment({ environment }: { environment: Environment }) {
-  const network = environmentNetwork(environment);
-  const packages = environmentPackages(environment);
   const metadata = environmentMetadataEntries(environment);
+  const executionType = environmentHostingType(environment);
+  const resources = environment.config.resources && typeof environment.config.resources === 'object' && !Array.isArray(environment.config.resources)
+    ? environment.config.resources as Record<string, unknown>
+    : {};
   return (
     <div className="environmentBody">
       <section className="environmentSection">
-        <h2>Networking</h2>
-        <p>Configure network access policies for this environment.</p>
+        <h2>Execution</h2>
+        <p>Sessions created with this environment use this sandbox provider.</p>
         <div className="readonlyFields">
-          <ReadonlyField label="Type" value={titleCase(network.type)} />
-          <ReadonlyField label="Allow MCP server network access" value={network.allowMcp ? 'Enabled' : 'Disabled'} />
-          <ReadonlyField label="Allow package manager network access" value={network.allowPackageManager ? 'Enabled' : 'Disabled'} />
-          <ReadonlyField label="Allowed hosts" value={network.allowedHosts.length ? network.allowedHosts.join(', ') : 'None provided'} wide />
+          <ReadonlyField label="Sandbox provider" value={hostingLabel(executionType)} />
+          {executionType === 'docker' ? <ReadonlyField label="Docker image" value={String(environment.config.image ?? 'node:22-slim')} /> : null}
+          {executionType === 'docker' && resources.memory ? <ReadonlyField label="Memory limit" value={String(resources.memory)} /> : null}
+          {executionType === 'docker' && resources.cpu ? <ReadonlyField label="CPU limit" value={String(resources.cpu)} /> : null}
         </div>
-      </section>
-      <section className="environmentSection">
-        <h2>Packages</h2>
-        <p>Specify packages and their versions available in this environment. Separate multiple values with spaces.</p>
-        <ReadonlyTable
-          empty="No packages configured"
-          rows={packages.map((item) => [item.manager, item.package])}
-          columns={['Manager', 'Package']}
-        />
       </section>
       <section className="environmentSection">
         <h2>Metadata</h2>

@@ -336,20 +336,13 @@ Create an environment:
 curl -X POST http://127.0.0.1:3000/v1/environments \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "Default cloud",
+    "name": "Docker tools",
+    "description": "Runs each session in an isolated Docker container.",
     "config": {
-      "type": "cloud",
-      "networking": {
-        "type": "limited",
-        "allow_mcp_servers": true,
-        "allow_package_managers": true,
-        "allowed_hosts": ["api.github.com"]
-      },
-      "packages": {
-        "type": "packages",
-        "pip": ["pytest"],
-        "npm": ["typescript"]
-      }
+      "hosting_type": "docker",
+      "sandbox_provider": "docker",
+      "image": "node:22-slim",
+      "resources": { "memory": "1g", "cpu": 1 }
     }
   }'
 ```

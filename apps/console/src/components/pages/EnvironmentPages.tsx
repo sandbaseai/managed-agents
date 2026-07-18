@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { postJson, putJson } from '../../api';
 import { EmptyState, FilterSelect, StatusPill, Toolbar } from '../Common';
 import { formatDateShort, shortId } from '../../lib/format';
-import type { ConsoleData, Environment, EnvironmentDraft, EnvironmentNetworkType, EnvironmentPackageDraft, MetadataDraft } from '../../types';
+import type { ConsoleData, Environment, EnvironmentDraft, MetadataDraft } from '../../types';
 import { CloudEnvironment, ReadonlyTable, SelfHostedEnvironment } from './EnvironmentDetailViews';
 import {
   environmentDraftFromApi,
@@ -225,61 +225,74 @@ function EnvironmentEditor({ environment, onCancel, onSaved }: { environment: En
         <textarea value={draft.description} onChange={(event) => setDraft({ ...draft, description: event.target.value })} placeholder="Add a description for this environment (optional)" />
       </label>
 
-      {draft.hostingType === 'self_hosted' ? (
-        <SelfHostedEnvironment environment={environment} sessions={[]} />
-      ) : (
-        <EnvironmentNetworkEditor draft={draft} onDraft={setDraft} />
-      )}
+      <div className="environmentBody">
+        <EnvironmentExecutionEditor draft={draft} onDraft={setDraft} />
+        <EnvironmentMetadataEditor draft={draft} onDraft={setDraft} />
+        {draft.hostingType === 'self_hosted' ? <SelfHostedEnvironment environment={environment} sessions={[]} /> : null}
+      </div>
     </section>
   );
 }
 
-function EnvironmentNetworkEditor({ draft, onDraft }: { draft: EnvironmentDraft; onDraft: (draft: EnvironmentDraft) => void }) {
-  const updatePackage = (id: string, patch: Partial<EnvironmentPackageDraft>) => {
-    onDraft({ ...draft, packages: draft.packages.map((item) => item.id === id ? { ...item, ...patch } : item) });
-  };
+function EnvironmentExecutionEditor({ draft, onDraft }: { draft: EnvironmentDraft; onDraft: (draft: EnvironmentDraft) => void }) {
+  return (
+    <section className="environmentSection environmentExecutionSection">
+      <div>
+        <h2>Execution</h2>
+        <p>Choose where sessions for this environment execute. Docker runs one isolated container per session.</p>
+      </div>
+      <label className="editField">
+        Sandbox provider
+        <select value={draft.hostingType} onChange={(event) => onDraft({ ...draft, hostingType: event.target.value as EnvironmentDraft['hostingType'] })}>
+          <option value="local">Local process</option>
+          <option value="docker">Docker container</option>
+          <option value="self_hosted">Self-hosted worker</option>
+        </select>
+      </label>
+      {draft.hostingType === 'docker' ? (
+        <div className="environmentNestedGrid">
+          <label className="editField">
+            Docker image
+            <input
+              value={draft.dockerImage}
+              onChange={(event) => onDraft({ ...draft, dockerImage: event.target.value })}
+              placeholder="node:22-slim"
+            />
+            <small>Must already be pullable or cached by the local Docker daemon.</small>
+          </label>
+          <label className="editField">
+            Memory limit
+            <input
+              value={draft.dockerMemory}
+              onChange={(event) => onDraft({ ...draft, dockerMemory: event.target.value })}
+              placeholder="512m"
+            />
+            <small>Optional Docker memory value, for example 512m or 2g.</small>
+          </label>
+          <label className="editField">
+            CPU limit
+            <input
+              inputMode="decimal"
+              value={draft.dockerCpu}
+              onChange={(event) => onDraft({ ...draft, dockerCpu: event.target.value })}
+              placeholder="1"
+            />
+            <small>Optional number of CPUs available to the container.</small>
+          </label>
+        </div>
+      ) : null}
+      {draft.hostingType === 'self_hosted' ? (
+        <div className="subtleNotice">Self-hosted sessions are pulled by an external worker. Save this environment, then use the setup instructions on the detail page.</div>
+      ) : null}
+    </section>
+  );
+}
+
+function EnvironmentMetadataEditor({ draft, onDraft }: { draft: EnvironmentDraft; onDraft: (draft: EnvironmentDraft) => void }) {
   const updateMetadata = (id: string, patch: Partial<MetadataDraft>) => {
     onDraft({ ...draft, metadata: draft.metadata.map((item) => item.id === id ? { ...item, ...patch } : item) });
   };
   return (
-    <div className="environmentBody">
-      <section className="environmentSection">
-        <h2>Networking</h2>
-        <p>Configure network access policies for this environment.</p>
-        <label className="editField">
-          Type
-          <select value={draft.networkType} onChange={(event) => onDraft({ ...draft, networkType: event.target.value as EnvironmentNetworkType })}>
-            <option value="unrestricted">Unrestricted</option>
-            <option value="limited">Limited</option>
-          </select>
-        </label>
-        <label className="editField">
-          Allowed hosts
-          <textarea value={draft.allowedHosts} onChange={(event) => onDraft({ ...draft, allowedHosts: event.target.value })} placeholder="www.example1.com, www.example2.com" />
-        </label>
-      </section>
-      <section className="environmentSection editableListSection">
-        <div className="sectionHeaderRow">
-          <div>
-            <h2>Packages</h2>
-            <p>Specify packages and their versions available in this environment. Separate multiple values with spaces.</p>
-          </div>
-          <button className="iconButton" type="button" onClick={() => onDraft({ ...draft, packages: [...draft.packages, { id: newDraftId(), manager: 'pip', package: '' }] })}><Plus size={18} /></button>
-        </div>
-        {draft.packages.length === 0 ? <ReadonlyTable empty="No packages configured" rows={[]} columns={['Manager', 'Package']} /> : null}
-        {draft.packages.map((item) => (
-          <div className="editableRow" key={item.id}>
-            <select value={item.manager} onChange={(event) => updatePackage(item.id, { manager: event.target.value })}>
-              <option value="pip">pip</option>
-              <option value="npm">npm</option>
-              <option value="apt">apt</option>
-              <option value="brew">brew</option>
-            </select>
-            <input value={item.package} onChange={(event) => updatePackage(item.id, { package: event.target.value })} placeholder="package package==1.0.0" />
-            <button className="iconButton quiet" type="button" onClick={() => onDraft({ ...draft, packages: draft.packages.filter((candidate) => candidate.id !== item.id) })}><Trash2 size={18} /></button>
-          </div>
-        ))}
-      </section>
       <section className="environmentSection editableListSection">
         <div className="sectionHeaderRow">
           <div>
@@ -297,7 +310,6 @@ function EnvironmentNetworkEditor({ draft, onDraft }: { draft: EnvironmentDraft;
           </div>
         ))}
       </section>
-    </div>
   );
 }
 

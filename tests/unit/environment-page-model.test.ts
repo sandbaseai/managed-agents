@@ -11,7 +11,9 @@ import type { Environment } from '../../apps/console/src/types';
 describe('environment page model helpers', () => {
   it('maps hosting types to labels and sandbox providers', () => {
     expect(environmentKind(environment({ hosting_type: 'self_hosted' }))).toBe('Self-hosted');
+    expect(environmentKind(environment({ config: { sandbox_provider: 'docker' } }))).toBe('Docker');
     expect(sandboxProviderForHostingType('self_hosted')).toBe('self_hosted');
+    expect(sandboxProviderForHostingType('docker')).toBe('docker');
     expect(sandboxProviderForHostingType('local')).toBe('local');
     expect(sandboxProviderForHostingType('cloud')).toBe('cloud');
   });
@@ -26,6 +28,9 @@ describe('environment page model helpers', () => {
           allowed_hosts: ['example.com'],
         },
         packages: [{ manager: 'npm', package: 'typescript' }],
+        sandbox_provider: 'docker',
+        image: 'node:22-bookworm',
+        resources: { memory: '1g', cpu: 2 },
       },
       metadata: {
         owner: 'runtime',
@@ -34,6 +39,10 @@ describe('environment page model helpers', () => {
     }));
 
     expect(draft.networkType).toBe('unrestricted');
+    expect(draft.hostingType).toBe('docker');
+    expect(draft.dockerImage).toBe('node:22-bookworm');
+    expect(draft.dockerMemory).toBe('1g');
+    expect(draft.dockerCpu).toBe('2');
     expect(draft.allowedHosts).toBe('example.com');
     expect(draft.packages).toMatchObject([{ manager: 'npm', package: 'typescript' }]);
     expect(draft.metadata).toMatchObject([{ key: 'owner', value: 'runtime' }]);
@@ -44,7 +53,10 @@ describe('environment page model helpers', () => {
     const payload = environmentPayloadFromDraft({
       name: '  CI  ',
       description: 'runner',
-      hostingType: 'local',
+      hostingType: 'docker',
+      dockerImage: ' node:22-slim ',
+      dockerMemory: '512m',
+      dockerCpu: '1.5',
       networkType: 'limited',
       allowMcpServerNetworkAccess: true,
       allowPackageManagerNetworkAccess: true,
@@ -57,8 +69,10 @@ describe('environment page model helpers', () => {
     expect(payload).toMatchObject({
       name: 'CI',
       config: {
-        hosting_type: 'local',
-        sandbox_provider: 'local',
+        hosting_type: 'docker',
+        sandbox_provider: 'docker',
+        image: 'node:22-slim',
+        resources: { memory: '512m', cpu: 1.5 },
         network: {
           allowed_hosts: ['example.com', 'api.example.com', 'internal.local'],
         },

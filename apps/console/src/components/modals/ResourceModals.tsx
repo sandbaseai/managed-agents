@@ -10,6 +10,7 @@ export function ResourceModal({ kind, onClose, onSaved }: { kind: 'environment' 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [hostingType, setHostingType] = useState<EnvironmentHostingType>('local');
+  const [dockerImage, setDockerImage] = useState('node:22-slim');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const submit = async (event: FormEvent) => {
@@ -25,6 +26,7 @@ export function ResourceModal({ kind, onClose, onSaved }: { kind: 'environment' 
           config: {
             hosting_type: hostingType,
             sandbox_provider: sandboxProviderForHostingType(hostingType),
+            ...(hostingType === 'docker' ? { image: dockerImage.trim() || 'node:22-slim', resources: {} } : {}),
             network: {
               type: 'limited',
               allow_mcp_server_network_access: false,
@@ -57,10 +59,18 @@ export function ResourceModal({ kind, onClose, onSaved }: { kind: 'environment' 
             Hosting type
             <select value={hostingType} onChange={(event) => setHostingType(event.target.value as EnvironmentHostingType)}>
               <option value="local">Local</option>
+              <option value="docker">Docker</option>
               <option value="cloud">Cloud</option>
               <option value="self_hosted">Self-hosted</option>
             </select>
           </label>
+          {hostingType === 'docker' ? (
+            <label className="editField">
+              Docker image
+              <input value={dockerImage} onChange={(event) => setDockerImage(event.target.value)} placeholder="node:22-slim" />
+              <small>One Docker container will be created per session.</small>
+            </label>
+          ) : null}
           <label className="editField">
             Description
             <textarea value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Optional description for this environment" />

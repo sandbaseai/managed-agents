@@ -12,7 +12,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { SandboxProviderRegistry } from '@/sandbox/registry.js';
 import { LocalSandboxProvider } from '@/sandbox/local-provider.js';
-import { DockerSandboxProvider, isDockerAvailable } from '@/sandbox/docker-provider.js';
+import { DockerSandboxProvider, dockerWorkspacePath, isDockerAvailable } from '@/sandbox/docker-provider.js';
 
 /** Find a locally-cached Docker image so tests don't require registry access. */
 function findLocalImage(): string | undefined {
@@ -58,6 +58,13 @@ describe('SandboxProviderRegistry', () => {
 describe('DockerSandboxProvider', () => {
   it('reports the correct type', () => {
     expect(new DockerSandboxProvider().type).toBe('docker');
+  });
+
+  it('keeps file paths inside the container workspace', () => {
+    expect(dockerWorkspacePath('src/index.ts')).toBe('/workspace/src/index.ts');
+    expect(dockerWorkspacePath('')).toBe('/workspace');
+    expect(() => dockerWorkspacePath('../etc/passwd')).toThrow(/inside \/workspace/);
+    expect(() => dockerWorkspacePath('/etc/passwd')).toThrow(/inside \/workspace/);
   });
 
   const localImage = isDockerAvailable() ? findLocalImage() : undefined;

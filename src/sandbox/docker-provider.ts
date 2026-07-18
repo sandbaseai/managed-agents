@@ -13,7 +13,7 @@
 import { spawn, spawnSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, posix } from 'node:path';
 import type {
   SandboxProvider,
   SandboxInstance,
@@ -43,11 +43,22 @@ export class DockerSandboxProvider implements SandboxProvider {
 
   async provision(sessionId: string, config: EnvironmentConfig): Promise<SandboxInstance> {
     const image = config.image ?? DEFAULT_IMAGE;
-    const containerName = `ma-sandbox-${sessionId}`;
+    const containerName = `ma-sandbox-${safeContainerSuffix(sessionId)}`;
 
     // Override the image's own entrypoint with `sleep` so the container stays
     // alive as a plain command host regardless of what the image declares.
-    const args = ['run', '-d', '--name', containerName, '-w', WORKDIR, '--entrypoint', 'sleep'];
+    const args = [
+      'run',
+      '-d',
+      '--name',
+      containerName,
+      '--label',
+      `managed-agents.session=${sessionId}`,
+      '-w',
+      WORKDIR,
+      '--entrypoint',
+      'sleep',
+    ];
     // Resource limits
     if (config.resources?.memory) args.push('--memory', config.resources.memory);
     if (config.resources?.cpu) args.push('--cpus', String(config.resources.cpu));
@@ -73,7 +84,7 @@ class DockerSandboxInstance implements SandboxInstance {
 
   async execute(command: string, options?: ExecOptions): Promise<ExecResult> {
     const timeout = options?.timeout ?? 300_000;
-    const cwd = options?.cwd ? join(WORKDIR, options.cwd) : WORKDIR;
+    const cwd = options?.cwd ? dockerWorkspacePath(options.cwd) : WORKDIR;
 
     const execArgs = ['exec', '-w', cwd];
     if (options?.env) {
@@ -121,9 +132,10 @@ class DockerSandboxInstance implements SandboxInstance {
     try {
       const localFile = join(staging, 'file');
       writeFileSync(localFile, content);
-      const target = `${this.containerName}:${join(WORKDIR, path)}`;
+      const targetPath = dockerWorkspacePath(path);
+      const target = `${this.containerName}:${targetPath}`;
       // Ensure parent dir exists in the container
-      const dir = join(WORKDIR, path, '..');
+      const dir = posix.dirname(targetPath);
       spawnSync('docker', ['exec', this.containerName, 'mkdir', '-p', dir], { timeout: 10_000 });
       const cp = spawnSync('docker', ['cp', localFile, target], { encoding: 'utf-8', timeout: 15_000 });
       if (cp.status !== 0) throw new Error(`docker cp failed: ${cp.stderr}`);
@@ -136,7 +148,7 @@ class DockerSandboxInstance implements SandboxInstance {
     const staging = mkdtempSync(join(tmpdir(), 'ma-dcp-'));
     try {
       const localFile = join(staging, 'file');
-      const src = `${this.containerName}:${join(WORKDIR, path)}`;
+      const src = `${this.containerName}:${dockerWorkspacePath(path)}`;
       const cp = spawnSync('docker', ['cp', src, localFile], { encoding: 'utf-8', timeout: 15_000 });
       if (cp.status !== 0) throw new Error(`docker cp failed: ${cp.stderr}`);
       return readFileSync(localFile, 'utf-8');
@@ -146,8 +158,8 @@ class DockerSandboxInstance implements SandboxInstance {
   }
 
   async listFiles(path: string): Promise<string[]> {
-    const target = join(WORKDIR, path);
-    const r = await this.execute(`find ${target} -type f`);
+    const target = dockerWorkspacePath(path);
+    const r = await this.execute(`find ${shellQuote(target)} -type f`);
     if (r.exitCode !== 0) return [];
     return r.stdout
       .split('\n')
@@ -159,4 +171,22 @@ class DockerSandboxInstance implements SandboxInstance {
   async cleanup(): Promise<void> {
     spawnSync('docker', ['rm', '-f', this.containerName], { timeout: 15_000 });
   }
+}
+
+export function dockerWorkspacePath(path: string): string {
+  const parts = path.split(/[\\/]+/).filter(Boolean);
+  if (posix.isAbsolute(path) || parts.some((part) => part === '..')) {
+    throw new Error('Docker sandbox paths must stay inside /workspace');
+  }
+  const normalized = posix.normalize(parts.join('/'));
+  if (!normalized || normalized === '.') return WORKDIR;
+  return posix.join(WORKDIR, normalized);
+}
+
+function safeContainerSuffix(value: string): string {
+  return value.replace(/[^a-zA-Z0-9_.-]/g, '-').slice(0, 80) || 'session';
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, `'\\''`)}'`;
 }
