@@ -69,10 +69,30 @@ This document tracks public implementation status for `managed-agents`.
 Before a release:
 
 - [ ] `npm ci`
-- [ ] `npm run typecheck`
-- [ ] `npm test`
-- [ ] `npm run build`
-- [ ] `npm pack --dry-run`
-- [ ] Smoke test `managed-agents init`
-- [ ] Smoke test `examples/basic`
-- [ ] Verify public documentation against current behavior
+- [x] `npm run typecheck`
+- [x] `npm test`
+- [x] `npm run build`
+- [x] `npm pack --dry-run`
+- [x] Smoke test `managed-agents init`
+- [x] Smoke test `examples/basic`
+- [x] Verify public documentation against current behavior
+
+Maintainers can run the local release gate with:
+
+```bash
+npm run release:check
+```
+
+The gate runs typecheck, tests, build, package dry-run, and release smoke
+checks. The source checkout was verified with this gate on 2026-07-18 after the
+Settings V2, Console, and runtime decomposition work. `npm ci` remains the
+fresh-clone CI install step and is intentionally listed separately because it
+mutates `node_modules`.
+
+Known non-blocking release follow-ups:
+
+- Split the Dashboard production bundle if the Vite chunk-size warning becomes
+  a release-size target.
+- Keep expanding standard API conformance tests and Console edge-state tests.
+- Enable deferred adapters only after the backing runtime implementations
+  exist.

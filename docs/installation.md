@@ -67,6 +67,15 @@ npm ci
 npm run build
 ```
 
+Before publishing or handing off a release branch, run:
+
+```bash
+npm run release:check
+```
+
+This validates type safety, tests, production builds, npm package contents, CLI
+workspace initialization, and `examples/basic` startup.
+
 Then create a runtime workspace outside the source checkout:
 
 ```bash

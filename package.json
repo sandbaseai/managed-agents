@@ -23,6 +23,7 @@
     "dist",
     "docs",
     "examples",
+    "scripts",
     "README.md",
     "CONTRIBUTING.md",
     "LICENSE"
@@ -49,6 +50,9 @@
     "test:property": "vitest run tests/property",
     "lint": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
+    "package:check": "npm pack --dry-run",
+    "smoke:release": "node scripts/smoke-release.mjs",
+    "release:check": "npm run typecheck && npm test && npm run build && npm run package:check && npm run smoke:release",
     "format": "node -e \"console.log('No formatter configured yet.')\"",
     "format:check": "node -e \"console.log('No formatter configured yet.')\""
   },

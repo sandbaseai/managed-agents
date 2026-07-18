@@ -526,6 +526,16 @@ npm test
 npm run build
 ```
 
+Before handing a branch to release, run the full local release gate:
+
+```bash
+npm run release:check
+```
+
+That gate runs typecheck, the Vitest suite, production builds, `npm pack
+--dry-run`, and a CLI smoke test that verifies both `managed-agents init` and
+the `examples/basic` workspace startup path.
+
 Run the runtime and Dashboard during development:
 
 ```bash
@@ -549,17 +559,27 @@ Before publishing a release:
 
 ```bash
 npm ci
-npm run typecheck
-npm test
-npm run build
+npm run release:check
 ```
 
-Smoke test the example project:
+`release:check` verifies:
+
+- TypeScript type safety
+- Unit and integration tests
+- Runtime and Dashboard production builds
+- npm package contents with `npm pack --dry-run`
+- `managed-agents init` output in a temporary workspace
+- `examples/basic` startup, health, and agent loading
+
+Manual example smoke, when you want to inspect the running Dashboard:
 
 ```bash
 cd examples/basic
 npx managed-agents start --config managed-agents.config.yaml --agents-dir agents --skills-dir skills
 ```
+
+Then open `http://127.0.0.1:3000/dashboard` and configure
+`Settings > Models` before calling a real hosted model.
 
 ## License
 

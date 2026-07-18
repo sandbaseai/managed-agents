@@ -17,6 +17,17 @@ open-source runtime.
 | [Architecture](spec/architecture.md) | Contributors and operators | System diagrams, data boundaries, session flow, and deployment modes. |
 | [Implementation Status](spec/tasks.md) | Contributors | Completed work, active work, planned items, and release checks. |
 
+## Release Gate
+
+For a source checkout, the maintainer release gate is:
+
+```bash
+npm run release:check
+```
+
+It runs typecheck, tests, production builds, package dry-run, and CLI smoke
+checks for `managed-agents init` plus `examples/basic` startup.
+
 ## Documentation Rules
 
 - Public docs describe this project only.
