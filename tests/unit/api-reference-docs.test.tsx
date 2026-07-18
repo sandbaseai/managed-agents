@@ -36,6 +36,7 @@ describe('API reference docs', () => {
       'api-keys.ts': '/v1/api-keys',
       'extended.ts': '/v1/x',
       'resources.ts': '/v1',
+      'settings.ts': '/v1/x/settings',
       'sessions.ts': '/v1/sessions',
       'skills.ts': '/v1/skills',
       'stream.ts': '/v1/sessions',
