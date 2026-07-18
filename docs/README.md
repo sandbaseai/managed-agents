@@ -16,6 +16,15 @@ open-source runtime.
 | [Technical Design](spec/design.md) | Contributors | Core concepts, data model, extension contracts, and API groups. |
 | [Architecture](spec/architecture.md) | Contributors and operators | System diagrams, data boundaries, session flow, and deployment modes. |
 | [Implementation Status](spec/tasks.md) | Contributors | Completed work, active work, planned items, and release checks. |
+| [Changelog](../CHANGELOG.md) | Users and maintainers | Release notes and first-release boundaries. |
+
+## Screenshots
+
+Screenshots used by the README live in [`assets/`](assets/):
+
+- [`dashboard-overview.png`](assets/dashboard-overview.png)
+- [`dashboard-settings-models.png`](assets/dashboard-settings-models.png)
+- [`dashboard-api-reference.png`](assets/dashboard-api-reference.png)
 
 ## Release Gate
 

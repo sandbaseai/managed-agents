@@ -1,12 +1,16 @@
 {
   "name": "managed-agents",
   "version": "0.1.0",
-  "description": "Local-first runtime layer for enterprise AI agents with Claude Managed Agents-style APIs, sandboxed sessions, memory, tools, audit, and replay.",
+  "description": "Local-first, self-hosted AI agent runtime with Claude Managed Agents-style APIs, sandboxed sessions, memory, tools, audit, replay, and a local Console.",
   "type": "module",
   "homepage": "https://github.com/sandbaseai/managed-agents#readme",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/sandbaseai/managed-agents.git"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
   },
   "bugs": {
     "url": "https://github.com/sandbaseai/managed-agents/issues"
@@ -15,7 +19,7 @@
     "node": ">=22"
   },
   "bin": {
-    "managed-agents": "./dist/index.js"
+    "managed-agents": "dist/index.js"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -25,6 +29,7 @@
     "examples",
     "scripts",
     "README.md",
+    "CHANGELOG.md",
     "CONTRIBUTING.md",
     "LICENSE"
   ],
@@ -75,6 +80,14 @@
     "session-replay",
     "agent-console",
     "skills",
+    "openai-compatible",
+    "ollama",
+    "vercel-ai-sdk",
+    "server-sent-events",
+    "agent-observability",
+    "agent-tools",
+    "ai-sandbox",
+    "developer-tools",
     "typescript",
     "sqlite"
   ],

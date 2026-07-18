@@ -3,6 +3,11 @@
 **SandBase managed-agents is the safe, local-first runtime layer for enterprise
 AI agents.**
 
+`managed-agents@0.1.0` is the first public release candidate: a self-hosted AI
+agent runtime, local agent Console, and Claude Managed Agents-style `/v1` API
+for teams that need auditable sessions, sandboxed tools, memory, credentials,
+and replayable event streams before they move agent workflows into production.
+
 `managed-agents` helps teams move AI agents from demos to production with
 runtime infrastructure for sessions, tools, approvals, sandboxed execution,
 memory, credential vaults, audit trails, replayable events, and operational
@@ -13,6 +18,11 @@ default.
 Use it to build and operate self-hosted AI agents, local developer agents,
 desktop agent runtimes, MCP-enabled workflows, and enterprise proofs of concept
 without locking your runtime layer to a single model provider.
+
+Search-friendly topics: self-hosted AI agents, local-first agent runtime,
+Claude Managed Agents API, OpenAI-compatible agents, MCP tools, sandboxed tool
+execution, agent memory, credential vaults, SSE event replay, and enterprise AI
+agent observability.
 
 ## Why managed-agents?
 
@@ -40,6 +50,20 @@ environments.
 - OpenAI-compatible, Ollama-compatible, and Anthropic model adapters
 - Optional TypeScript convenience SDK at `managed-agents/sdk`
 
+## Screenshots
+
+### Local agent Console
+
+![managed-agents Dashboard showing local agents](docs/assets/dashboard-overview.png)
+
+### Runtime Settings V2
+
+![managed-agents Settings V2 model vendor configuration](docs/assets/dashboard-settings-models.png)
+
+### Built-in API reference
+
+![managed-agents built-in API reference](docs/assets/dashboard-api-reference.png)
+
 ## Common Use Cases
 
 - Run a local Claude Managed Agents-style Console for agent development
@@ -49,6 +73,32 @@ environments.
 - Package reusable agent templates, MCP connectors, permission policies, and
   skills for field deployments
 - Embed an agent runtime in a future desktop app or private internal platform
+
+## 0.1.0 Release Scope
+
+The first release is intentionally local-first and honest about adapter
+availability. It ships the production-shaped control plane and implemented
+local adapters, while planned integrations stay disabled until their backing
+runtime implementations exist.
+
+Included in 0.1.0:
+
+- One workspace model vendor configured through Settings V2
+- Built-in loop engine with configurable max steps
+- SQLite metadata and memory storage
+- Local artifact storage
+- Local sandbox provider plus runtime-registered Docker/self-hosted sandbox
+  availability
+- Agent, Environment, Memory Store, File, Credential Vault, Skill, Session,
+  Event, API key, Logs, Monitoring, and API reference surfaces
+- Release gate: typecheck, tests, build, package dry-run, init smoke, and
+  example workspace startup smoke
+
+Deferred beyond 0.1.0:
+
+- S3 artifact storage, Postgres/MySQL metadata storage, mem0/MemU memory
+  adapters, Harness/Codex/Claude loop engines, live remote model credential
+  checks, and production deployment examples
 
 ## Requirements
 
@@ -137,6 +187,8 @@ Inside the Dashboard, open `Settings > API reference` for a Claude-style
 developer reference page. It shows the active base URL, authentication mode,
 grouped endpoints, parameter descriptions, return fields, and copyable `curl`
 and TypeScript SDK examples generated from your running runtime.
+
+See [CHANGELOG.md](CHANGELOG.md) for the 0.1.0 release notes.
 
 ## Workspace Layout
 
