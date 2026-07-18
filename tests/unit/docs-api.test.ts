@@ -1,10 +1,19 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { API_REFERENCE_DOCS } from '../../apps/console/src/components/pages/settings/apiReferenceDocs';
 
 const apiDocs = readFileSync(join(process.cwd(), 'docs/api.md'), 'utf8');
 
 describe('API documentation', () => {
+  it('mentions every endpoint path shown in the Console API reference', () => {
+    const normalizedDocs = normalizePaths(apiDocs);
+
+    for (const endpoint of API_REFERENCE_DOCS) {
+      expect(normalizedDocs, endpoint.path).toContain(normalizePath(endpoint.path));
+    }
+  });
+
   it('documents Settings V2 legacy provider compatibility endpoints', () => {
     for (const path of [
       '/v1/x/model-providers',
@@ -30,3 +39,11 @@ describe('API documentation', () => {
     expect(apiDocs).not.toContain('"scheduled": true');
   });
 });
+
+function normalizePaths(value: string): string {
+  return value.replace(/\{[^}]+\}/g, '{}').replace(/\?[^`|\s]*/g, '');
+}
+
+function normalizePath(value: string): string {
+  return normalizePaths(value);
+}

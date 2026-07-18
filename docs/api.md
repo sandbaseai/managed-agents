@@ -474,6 +474,8 @@ Extension endpoints expose local runtime operations.
 | `GET` | `/v1/x/logs?limit=200&level=info&q=term` | Recent in-process structured runtime logs. |
 | `GET` | `/v1/x/metrics` | Prometheus metrics, when enabled. |
 | `GET` | `/v1/x/mcp/status?session_id=...` | MCP connection status for a session. |
+| `POST` | `/v1/x/worker/claim` | Self-hosted sandbox worker claims pending tool-execution work. |
+| `POST` | `/v1/x/worker/complete` | Self-hosted sandbox worker reports completed or failed work. |
 | `GET` | `/v1/x/model-providers` | Read-only legacy model provider compatibility rows. |
 | `POST` | `/v1/x/model-providers` | Deprecated legacy mutation; returns `410 Gone`. |
 | `POST` | `/v1/x/model-providers/{name}/default` | Deprecated legacy mutation; returns `410 Gone`. |

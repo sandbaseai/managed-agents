@@ -10,7 +10,13 @@
       {
         "name": "worker_id",
         "type": "string",
+        "required": true,
         "description": "Worker identity for lease ownership."
+      },
+      {
+        "name": "session_id",
+        "type": "string",
+        "description": "Optional session filter."
       }
     ],
     "response": [
@@ -36,10 +42,10 @@
         "description": "Claimed work item id."
       },
       {
-        "name": "status",
-        "type": "completed | failed",
+        "name": "worker_id",
+        "type": "string",
         "required": true,
-        "description": "Terminal work item status."
+        "description": "Worker identity that owns the claim."
       },
       {
         "name": "result",
@@ -47,9 +53,9 @@
         "description": "Tool execution result payload."
       },
       {
-        "name": "error",
-        "type": "object",
-        "description": "Failure details."
+        "name": "failed",
+        "type": "boolean",
+        "description": "True when the work item failed."
       }
     ],
     "response": [

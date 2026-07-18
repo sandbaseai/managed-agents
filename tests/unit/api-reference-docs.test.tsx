@@ -107,6 +107,16 @@ describe('API reference docs', () => {
     expect(restartRuntime?.response.map((field) => field.name)).toEqual(['restarting', 'status']);
   });
 
+  it('keeps self-hosted worker endpoint docs aligned with request bodies', () => {
+    const claim = API_REFERENCE_DOCS.find((endpoint) => endpoint.id === 'worker-claim');
+    const complete = API_REFERENCE_DOCS.find((endpoint) => endpoint.id === 'worker-complete');
+
+    expect(claim?.parameters?.map((field) => field.name)).toEqual(expect.arrayContaining(['worker_id', 'session_id']));
+    expect(complete?.parameters?.map((field) => field.name)).toEqual(expect.arrayContaining(['id', 'worker_id', 'result', 'failed']));
+    expect(complete?.parameters?.map((field) => field.name)).not.toContain('status');
+    expect(complete?.parameters?.map((field) => field.name)).not.toContain('error');
+  });
+
   it('keeps every endpoint schema complete and route identity unique', () => {
     const routeKeys = new Set<string>();
 
