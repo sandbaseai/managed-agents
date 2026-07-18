@@ -117,6 +117,19 @@ describe('API reference docs', () => {
     expect(complete?.parameters?.map((field) => field.name)).not.toContain('error');
   });
 
+  it('documents session raw event append as an events batch', () => {
+    const appendEvents = API_REFERENCE_DOCS.find((endpoint) => endpoint.id === 'sessions-events-create');
+    const message = API_REFERENCE_DOCS.find((endpoint) => endpoint.id === 'sessions-message');
+    const stop = API_REFERENCE_DOCS.find((endpoint) => endpoint.id === 'sessions-stop');
+
+    expect(appendEvents?.parameters?.map((field) => field.name)).toEqual(['events']);
+    expect(appendEvents?.response.map((field) => field.name)).toEqual(['accepted']);
+    expect(appendEvents?.summary).toContain('user.* events');
+    expect(message?.response.map((field) => field.name)).toEqual(expect.arrayContaining(['event', 'accepted']));
+    expect(message?.response.map((field) => field.name)).not.toContain('session');
+    expect(stop?.response.map((field) => field.name)).toEqual(['id', 'status']);
+  });
+
   it('keeps every endpoint schema complete and route identity unique', () => {
     const routeKeys = new Set<string>();
 

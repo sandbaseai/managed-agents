@@ -63,7 +63,7 @@
       },
       {
         "name": "status",
-        "type": "idle | running | error | archived",
+        "type": "idle | running | terminated | failed",
         "description": "Current session lifecycle state."
       },
       {
@@ -124,35 +124,20 @@
     "title": "Append raw event",
     "method": "POST",
     "path": "/v1/sessions/{session_id}/events",
-    "summary": "Append a raw event to a session log. This is lower-level than the message convenience endpoint.",
+    "summary": "Append one or more user.* events to a session log. This is lower-level than the message convenience endpoint.",
     "parameters": [
       {
-        "name": "type",
-        "type": "string",
+        "name": "events",
+        "type": "array",
         "required": true,
-        "description": "Event type such as message.created or tool.result."
-      },
-      {
-        "name": "payload",
-        "type": "object",
-        "description": "Event payload stored with the session."
-      },
-      {
-        "name": "metadata",
-        "type": "object",
-        "description": "Optional event metadata."
+        "description": "Array of user.* events. Each event must be an object with a non-empty string type."
       }
     ],
     "response": [
       {
-        "name": "id",
-        "type": "string",
-        "description": "Server-generated event identifier."
-      },
-      {
-        "name": "event",
-        "type": "object",
-        "description": "Created or updated event resource."
+        "name": "accepted",
+        "type": "boolean",
+        "description": "True when the event batch was accepted."
       }
     ]
   },
@@ -188,9 +173,9 @@
         "description": "Streaming event when stream is true."
       },
       {
-        "name": "session",
-        "type": "object",
-        "description": "Updated session envelope for non-streaming calls."
+        "name": "accepted",
+        "type": "boolean",
+        "description": "True when stream is false and the message was accepted."
       }
     ]
   },
@@ -223,9 +208,9 @@
         "description": "Stopped session identifier."
       },
       {
-        "name": "session",
-        "type": "object",
-        "description": "Created or updated session resource."
+        "name": "status",
+        "type": "terminated",
+        "description": "Terminal session status after cancellation."
       }
     ]
   },
