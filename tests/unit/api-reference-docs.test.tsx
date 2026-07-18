@@ -35,6 +35,7 @@ describe('API reference docs', () => {
       'agents.ts': '/v1/agents',
       'api-keys.ts': '/v1/api-keys',
       'extended.ts': '/v1/x',
+      'legacy-providers.ts': '/v1/x',
       'resources.ts': '/v1',
       'settings.ts': '/v1/x/settings',
       'sessions.ts': '/v1/sessions',
