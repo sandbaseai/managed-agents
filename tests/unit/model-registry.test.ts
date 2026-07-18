@@ -25,4 +25,67 @@ describe('ModelRegistry runtime introspection', () => {
     expect(JSON.stringify(models)).not.toContain('secret-value');
     expect(JSON.stringify(models)).not.toContain('MISSING_BASE_URL');
   });
+
+  it('uses user-provided qualified model ids with matching provider settings', () => {
+    const registry = new ModelRegistry();
+    registry.register({
+      name: 'default',
+      provider: 'openai',
+      model: 'gpt-4o',
+      api_key: '${OPENAI_API_KEY}',
+      base_url: 'https://api.openai.com/v1',
+      is_default: true,
+    });
+
+    const resolved = registry.resolveModelConfig('openai/gpt-5.5');
+
+    expect(resolved).toMatchObject({
+      name: 'openai/gpt-5.5',
+      provider: 'openai',
+      model: 'gpt-5.5',
+      api_key: '${OPENAI_API_KEY}',
+      base_url: 'https://api.openai.com/v1',
+      is_default: false,
+    });
+  });
+
+  it('uses the default provider settings for unqualified user model ids', () => {
+    const registry = new ModelRegistry();
+    registry.register({
+      name: 'default',
+      provider: 'openai',
+      model: 'gpt-4o',
+      api_key: '${OPENAI_API_KEY}',
+      is_default: true,
+    });
+
+    const resolved = registry.resolveModelConfig('gpt-4.1');
+
+    expect(resolved).toMatchObject({
+      name: 'gpt-4.1',
+      provider: 'openai',
+      model: 'gpt-4.1',
+      api_key: '${OPENAI_API_KEY}',
+      is_default: false,
+    });
+  });
+
+  it('does not borrow credentials from a different provider for qualified model ids', () => {
+    const registry = new ModelRegistry();
+    registry.register({
+      name: 'default',
+      provider: 'anthropic',
+      model: 'claude-sonnet',
+      api_key: '${ANTHROPIC_API_KEY}',
+      is_default: true,
+    });
+
+    const resolved = registry.resolveModelConfig('openai/gpt-5.5');
+
+    expect(resolved).toEqual({
+      name: 'openai/gpt-5.5',
+      provider: 'openai',
+      model: 'gpt-5.5',
+    });
+  });
 });
