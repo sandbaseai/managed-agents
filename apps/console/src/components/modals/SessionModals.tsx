@@ -1,9 +1,10 @@
-import { ChevronDown, Database, ExternalLink, FileText, Search, Shield, Trash2 } from 'lucide-react';
+import { ChevronDown, Database, ExternalLink, FileText, Plus, Search, Shield, Trash2 } from 'lucide-react';
 import { type Dispatch, type FormEvent, type SetStateAction, useState } from 'react';
 import { postJson } from '../../api';
 import { EmptyState, RequiredMark } from '../Common';
 import { Modal } from '../Modal';
 import { environmentKind } from '../pages/EnvironmentPageModel';
+import { formatDateShort } from '../../lib/format';
 import type { Agent, ConsoleData, SessionResourceDraft, Vault, ViewId } from '../../types';
 
 export function SessionModal({
