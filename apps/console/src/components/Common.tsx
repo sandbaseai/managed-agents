@@ -96,3 +96,13 @@ export function ResourceBadge({ icon, label, children }: { icon?: ReactNode; lab
     </span>
   );
 }
+
+export function MetricCard({ title, value, subtitle }: { title: string; value: ReactNode; subtitle?: string }) {
+  return (
+    <div className="metricCard">
+      <strong>{title}</strong>
+      <span>{value}</span>
+      {subtitle ? <small>{subtitle}</small> : null}
+    </div>
+  );
+}

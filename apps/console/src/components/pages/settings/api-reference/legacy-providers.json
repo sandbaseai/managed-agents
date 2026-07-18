@@ -1,0 +1,206 @@
+[
+  {
+    "id": "legacy-model-providers-list",
+    "group": "Legacy providers",
+    "title": "List legacy model providers",
+    "method": "GET",
+    "path": "/v1/x/model-providers",
+    "summary": "Read legacy model provider rows during the Settings V2 compatibility window. New configuration should use Runtime settings instead.",
+    "response": [
+      {
+        "name": "data",
+        "type": "RuntimeModelInfo[]",
+        "description": "Legacy model provider rows with API key state only; secret values are never returned."
+      },
+      {
+        "name": "has_more",
+        "type": "boolean",
+        "description": "Always false for this compatibility endpoint."
+      }
+    ]
+  },
+  {
+    "id": "legacy-model-providers-create",
+    "group": "Legacy providers",
+    "title": "Create legacy model provider",
+    "method": "POST",
+    "path": "/v1/x/model-providers",
+    "summary": "Deprecated mutation endpoint. Returns 410 Gone and points clients to /v1/x/settings.",
+    "response": [
+      {
+        "name": "error",
+        "type": "object",
+        "description": "legacy_provider_mutation_unsupported error."
+      }
+    ]
+  },
+  {
+    "id": "legacy-model-providers-default",
+    "group": "Legacy providers",
+    "title": "Set legacy model default",
+    "method": "POST",
+    "path": "/v1/x/model-providers/{name}/default",
+    "summary": "Deprecated mutation endpoint. Returns 410 Gone and points clients to /v1/x/settings.",
+    "parameters": [
+      {
+        "name": "name",
+        "type": "string",
+        "required": true,
+        "description": "Legacy provider name."
+      }
+    ],
+    "response": [
+      {
+        "name": "error",
+        "type": "object",
+        "description": "legacy_provider_mutation_unsupported error."
+      }
+    ]
+  },
+  {
+    "id": "legacy-memory-providers-list",
+    "group": "Legacy providers",
+    "title": "List legacy memory providers",
+    "method": "GET",
+    "path": "/v1/x/memory-providers",
+    "summary": "Read legacy memory provider rows during the Settings V2 compatibility window. New configuration should use Runtime settings instead.",
+    "response": [
+      {
+        "name": "data",
+        "type": "RuntimeMemoryProviderInfo[]",
+        "description": "Legacy memory provider rows with API key state only; secret values are never returned."
+      },
+      {
+        "name": "has_more",
+        "type": "boolean",
+        "description": "Always false for this compatibility endpoint."
+      }
+    ]
+  },
+  {
+    "id": "legacy-memory-providers-create",
+    "group": "Legacy providers",
+    "title": "Create legacy memory provider",
+    "method": "POST",
+    "path": "/v1/x/memory-providers",
+    "summary": "Deprecated mutation endpoint. Returns 410 Gone and points clients to /v1/x/settings.",
+    "response": [
+      {
+        "name": "error",
+        "type": "object",
+        "description": "legacy_provider_mutation_unsupported error."
+      }
+    ]
+  },
+  {
+    "id": "legacy-memory-providers-default",
+    "group": "Legacy providers",
+    "title": "Set legacy memory default",
+    "method": "POST",
+    "path": "/v1/x/memory-providers/{name}/default",
+    "summary": "Deprecated mutation endpoint. Returns 410 Gone and points clients to /v1/x/settings.",
+    "parameters": [
+      {
+        "name": "name",
+        "type": "string",
+        "required": true,
+        "description": "Legacy provider name."
+      }
+    ],
+    "response": [
+      {
+        "name": "error",
+        "type": "object",
+        "description": "legacy_provider_mutation_unsupported error."
+      }
+    ]
+  },
+  {
+    "id": "legacy-storage-providers-list",
+    "group": "Legacy providers",
+    "title": "List legacy storage providers",
+    "method": "GET",
+    "path": "/v1/x/storage-providers",
+    "summary": "Read legacy storage provider rows during the Settings V2 compatibility window. New configuration should use Runtime settings instead.",
+    "parameters": [
+      {
+        "name": "role",
+        "type": "metadata | artifact",
+        "description": "Optional legacy storage role filter."
+      }
+    ],
+    "response": [
+      {
+        "name": "data",
+        "type": "RuntimeStorageProviderInfo[]",
+        "description": "Legacy storage provider rows with access key state only; secret values are never returned."
+      },
+      {
+        "name": "has_more",
+        "type": "boolean",
+        "description": "Always false for this compatibility endpoint."
+      }
+    ]
+  },
+  {
+    "id": "legacy-storage-providers-create",
+    "group": "Legacy providers",
+    "title": "Create legacy storage provider",
+    "method": "POST",
+    "path": "/v1/x/storage-providers",
+    "summary": "Deprecated mutation endpoint. Returns 410 Gone and points clients to /v1/x/settings.",
+    "response": [
+      {
+        "name": "error",
+        "type": "object",
+        "description": "legacy_provider_mutation_unsupported error."
+      }
+    ]
+  },
+  {
+    "id": "legacy-storage-providers-initialize",
+    "group": "Legacy providers",
+    "title": "Initialize legacy storage provider",
+    "method": "POST",
+    "path": "/v1/x/storage-providers/{name}/initialize",
+    "summary": "Deprecated mutation endpoint. Returns 410 Gone and points clients to /v1/x/settings.",
+    "parameters": [
+      {
+        "name": "name",
+        "type": "string",
+        "required": true,
+        "description": "Legacy provider name."
+      }
+    ],
+    "response": [
+      {
+        "name": "error",
+        "type": "object",
+        "description": "legacy_provider_mutation_unsupported error."
+      }
+    ]
+  },
+  {
+    "id": "legacy-storage-providers-default",
+    "group": "Legacy providers",
+    "title": "Set legacy storage default",
+    "method": "POST",
+    "path": "/v1/x/storage-providers/{name}/default",
+    "summary": "Deprecated mutation endpoint. Returns 410 Gone and points clients to /v1/x/settings.",
+    "parameters": [
+      {
+        "name": "name",
+        "type": "string",
+        "required": true,
+        "description": "Legacy provider name."
+      }
+    ],
+    "response": [
+      {
+        "name": "error",
+        "type": "object",
+        "description": "legacy_provider_mutation_unsupported error."
+      }
+    ]
+  }
+]

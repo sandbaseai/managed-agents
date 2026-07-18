@@ -1,0 +1,204 @@
+[
+  {
+    "id": "agents-list",
+    "group": "Agents",
+    "title": "List agents",
+    "method": "GET",
+    "path": "/v1/agents",
+    "summary": "List active agent definitions, including database-created agents and imported seed agents.",
+    "response": [
+      {
+        "name": "data",
+        "type": "Agent[]",
+        "description": "Agent definitions visible in the workspace."
+      }
+    ]
+  },
+  {
+    "id": "agents-create",
+    "group": "Agents",
+    "title": "Create agent",
+    "method": "POST",
+    "path": "/v1/agents",
+    "summary": "Create a managed agent definition using the Claude-style runtime shape. Console-created agents are stored in SQLite and versioned on update.",
+    "parameters": [
+      {
+        "name": "name",
+        "type": "string",
+        "required": true,
+        "description": "Human-readable agent name."
+      },
+      {
+        "name": "description",
+        "type": "string",
+        "description": "Short agent purpose shown in lists and details."
+      },
+      {
+        "name": "model",
+        "type": "string | object",
+        "required": true,
+        "description": "Model id string, or object with id and speed."
+      },
+      {
+        "name": "system",
+        "type": "string",
+        "required": true,
+        "description": "System prompt used to drive the agent."
+      },
+      {
+        "name": "mcp_servers",
+        "type": "array",
+        "description": "MCP server definitions referenced by mcp_toolset entries."
+      },
+      {
+        "name": "tools",
+        "type": "array",
+        "description": "Built-in and MCP toolsets with permission policy configuration."
+      },
+      {
+        "name": "skills",
+        "type": "array",
+        "description": "Skill references attached to this agent."
+      },
+      {
+        "name": "metadata",
+        "type": "object",
+        "description": "Opaque agent metadata."
+      }
+    ],
+    "response": [
+      {
+        "name": "id",
+        "type": "string",
+        "description": "Server-generated agent_... identifier."
+      },
+      {
+        "name": "version",
+        "type": "number",
+        "description": "Initial version, incremented by updates."
+      },
+      {
+        "name": "status",
+        "type": "active | archived",
+        "description": "Current agent state."
+      },
+      {
+        "name": "created_at",
+        "type": "datetime",
+        "description": "RFC 3339 creation timestamp."
+      }
+    ]
+  },
+  {
+    "id": "agents-get",
+    "group": "Agents",
+    "title": "Get agent",
+    "method": "GET",
+    "path": "/v1/agents/{agent_id}",
+    "summary": "Fetch one agent definition and its current version metadata.",
+    "response": [
+      {
+        "name": "id",
+        "type": "string",
+        "description": "Agent identifier."
+      },
+      {
+        "name": "agent",
+        "type": "object",
+        "description": "Created or updated agent resource."
+      }
+    ]
+  },
+  {
+    "id": "agents-update",
+    "group": "Agents",
+    "title": "Update agent",
+    "method": "PUT",
+    "path": "/v1/agents/{agent_id}",
+    "summary": "Update an agent definition. Database-backed agents receive a new version.",
+    "parameters": [
+      {
+        "name": "name",
+        "type": "string",
+        "description": "Human-readable agent name."
+      },
+      {
+        "name": "description",
+        "type": "string",
+        "description": "Short agent purpose."
+      },
+      {
+        "name": "model",
+        "type": "string | object",
+        "description": "Model configuration."
+      },
+      {
+        "name": "system",
+        "type": "string",
+        "description": "System prompt."
+      },
+      {
+        "name": "tools",
+        "type": "array",
+        "description": "Toolset configuration."
+      },
+      {
+        "name": "skills",
+        "type": "array",
+        "description": "Skill references."
+      },
+      {
+        "name": "metadata",
+        "type": "object",
+        "description": "Opaque metadata."
+      }
+    ],
+    "response": [
+      {
+        "name": "id",
+        "type": "string",
+        "description": "Agent identifier."
+      },
+      {
+        "name": "agent",
+        "type": "object",
+        "description": "Created or updated agent resource."
+      }
+    ]
+  },
+  {
+    "id": "agents-versions",
+    "group": "Agents",
+    "title": "List agent versions",
+    "method": "GET",
+    "path": "/v1/agents/{agent_id}/versions",
+    "summary": "List historical versions for a database-backed agent.",
+    "response": [
+      {
+        "name": "data",
+        "type": "AgentVersion[]",
+        "description": "Agent versions ordered newest first."
+      }
+    ]
+  },
+  {
+    "id": "agents-archive",
+    "group": "Agents",
+    "title": "Archive agent",
+    "method": "POST",
+    "path": "/v1/agents/{agent_id}/archive",
+    "summary": "Archive an agent so it no longer appears as active or selectable for new sessions.",
+    "response": [
+      {
+        "name": "id",
+        "type": "string",
+        "description": "Archived agent identifier."
+      },
+      {
+        "name": "agent",
+        "type": "object",
+        "description": "Created or updated agent resource."
+      }
+    ]
+  }
+]

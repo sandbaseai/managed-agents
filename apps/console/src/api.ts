@@ -39,8 +39,8 @@ export async function postJson<T>(path: string, body: unknown): Promise<T> {
 export async function postForm<T>(path: string, body: FormData): Promise<T> {
   const res = await fetch(path, { method: 'POST', headers: authHeaders(), body });
   if (!res.ok) {
-    const detail = await res.json().catch(() => null) as { error?: { message?: string } } | null;
-    throw new Error(detail?.error?.message ?? `${path} returned ${res.status}`);
+    const detail = await res.json().catch(() => null) as ErrorResponse | null;
+    throw new Error(errorMessage(path, res.status, detail));
   }
   return res.json() as Promise<T>;
 }
@@ -52,8 +52,8 @@ export async function putJson<T>(path: string, body: unknown): Promise<T> {
 export async function deleteJson<T>(path: string): Promise<T> {
   const res = await fetch(path, { method: 'DELETE', headers: authHeaders() });
   if (!res.ok) {
-    const detail = await res.json().catch(() => null) as { error?: { message?: string } } | null;
-    throw new Error(detail?.error?.message ?? `${path} returned ${res.status}`);
+    const detail = await res.json().catch(() => null) as ErrorResponse | null;
+    throw new Error(errorMessage(path, res.status, detail));
   }
   return res.json() as Promise<T>;
 }
@@ -65,10 +65,24 @@ async function requestJson<T>(path: string, method: 'POST' | 'PUT', body: unknow
     body: JSON.stringify(body),
   });
   if (!res.ok) {
-    const detail = await res.json().catch(() => null) as { error?: { message?: string } } | null;
-    throw new Error(detail?.error?.message ?? `${path} returned ${res.status}`);
+    const detail = await res.json().catch(() => null) as ErrorResponse | null;
+    throw new Error(errorMessage(path, res.status, detail));
   }
   return res.json() as Promise<T>;
+}
+
+type ErrorResponse = {
+  error?: { message?: string };
+  errors?: Array<{ path?: string; message?: string }>;
+};
+
+function errorMessage(path: string, status: number, detail: ErrorResponse | null): string {
+  if (detail?.errors?.length) {
+    return detail.errors
+      .map((item) => `${item.path || 'config'}: ${item.message || 'Invalid value'}`)
+      .join('\n');
+  }
+  return detail?.error?.message ?? `${path} returned ${status}`;
 }
 
 function authHeaders(): HeadersInit {

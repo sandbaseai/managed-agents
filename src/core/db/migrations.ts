@@ -528,6 +528,11 @@ CREATE TABLE runtime_settings_secrets (
 );
 `;
 
+const M021_RUNTIME_SETTINGS_ACTIVATION_STATE = `
+ALTER TABLE runtime_settings ADD COLUMN activation_status TEXT NOT NULL DEFAULT 'active';
+ALTER TABLE runtime_settings ADD COLUMN activation_errors TEXT NOT NULL DEFAULT '[]';
+`;
+
 export const MIGRATIONS: Migration[] = [
   { version: 1, name: '001_initial', sql: M001_INITIAL },
   { version: 2, name: '002_memory', sql: M002_MEMORY },
@@ -549,4 +554,5 @@ export const MIGRATIONS: Migration[] = [
   { version: 18, name: '018_storage_provider_settings', sql: M018_STORAGE_PROVIDER_SETTINGS },
   { version: 19, name: '019_runtime_settings', sql: M019_RUNTIME_SETTINGS },
   { version: 20, name: '020_runtime_settings_secrets', sql: M020_RUNTIME_SETTINGS_SECRETS },
+  { version: 21, name: '021_runtime_settings_activation_state', sql: M021_RUNTIME_SETTINGS_ACTIVATION_STATE },
 ];

@@ -16,7 +16,7 @@ import { SessionManager } from '@/core/session/session-manager.js';
 import { createServer } from '@/api/server.js';
 import { countActiveManagedApiKeys, validateManagedApiKey } from '@/core/auth/api-keys.js';
 
-function makeApp(apiKeys?: string[]) {
+function makeApp(apiKeys?: string[], corsOrigins: string[] = []) {
   const tmpDir = mkdtempSync(join(tmpdir(), 'ma-auth-'));
   const db = new Database(join(tmpDir, 'test.db'));
   db.runMigrations();
@@ -27,6 +27,7 @@ function makeApp(apiKeys?: string[]) {
     sessionManager: new SessionManager(db),
     agents: [{ name: 'a', model: 'm', system: 'p' }],
     apiKeys,
+    corsOrigins,
     reloadAgents: () => ({ agents: [], errors: [] }),
   });
   return { app, db, tmpDir };
@@ -64,6 +65,33 @@ describe('API authentication', () => {
     it('allows /v1/agents without a token', async () => {
       const res = await ctx.app.request('/v1/agents');
       expect(res.status).toBe(200);
+    });
+  });
+
+  describe('CORS policy', () => {
+    let ctx: ReturnType<typeof makeApp>;
+    beforeEach(() => { ctx = makeApp(undefined, ['https://console.example.com']); });
+    afterEach(() => { ctx.db.close(); rmSync(ctx.tmpDir, { recursive: true, force: true }); });
+
+    it('allows localhost browser origins for the local Dashboard', async () => {
+      const res = await ctx.app.request('/v1/x/health', {
+        headers: { Origin: 'http://localhost:5173' },
+      });
+      expect(res.headers.get('access-control-allow-origin')).toBe('http://localhost:5173');
+    });
+
+    it('allows explicitly configured deployment origins', async () => {
+      const res = await ctx.app.request('/v1/x/health', {
+        headers: { Origin: 'https://console.example.com' },
+      });
+      expect(res.headers.get('access-control-allow-origin')).toBe('https://console.example.com');
+    });
+
+    it('does not emit wildcard CORS for untrusted origins', async () => {
+      const res = await ctx.app.request('/v1/x/health', {
+        headers: { Origin: 'https://evil.example.com' },
+      });
+      expect(res.headers.get('access-control-allow-origin')).toBeNull();
     });
   });
 

@@ -54,7 +54,7 @@ environments.
 
 - Node.js 22 or newer
 - npm 10 or newer
-- A configured model provider key or local OpenAI-compatible endpoint
+- A configured model vendor API key or local OpenAI-compatible endpoint
 
 Docker is optional and is only needed when you want Docker-backed sandboxes.
 
@@ -93,7 +93,7 @@ node ../managed-agents/dist/index.js init
 node ../managed-agents/dist/index.js start
 ```
 
-## Quick Start
+## Run A Workspace
 
 Create a workspace:
 
@@ -120,10 +120,12 @@ Open the Dashboard:
 http://127.0.0.1:3000/dashboard
 ```
 
-Open `Settings > Models` and add a model provider. A provider stores the runtime
-name, provider type, model id, base URL, and API key in SQLite. Mark one
-provider as default; agents that use `model: default` will run through that
-provider. No source-controlled file changes are required for normal local use.
+Open `Settings > Models` and configure the single workspace model vendor:
+vendor, optional base URL, and API key. The Dashboard stores Settings V2 in the
+runtime SQLite database under the user data directory. Agents that use
+`model: default` run through that configured vendor; concrete model IDs remain
+adapter-owned implementation details. No source-controlled file changes are
+required for normal local use.
 
 The API is available at:
 
@@ -213,11 +215,11 @@ metadata:
   template: incident-commander
 ```
 
-Use `model: default` for the common path. The Dashboard default provider maps
-that name to a concrete provider model id such as `claude-opus-4-8`, `gpt-4o`,
-or an OpenAI-compatible model name. Provider settings are stored in SQLite under
-the runtime data directory. API clients may also send a model configuration
-object when they need additional controls such as `speed`.
+Use `model: default` for the common path. The workspace Settings page maps that
+name to the configured vendor, and each vendor adapter owns its default concrete
+model ID. Runtime settings are stored in SQLite under the runtime data
+directory. API clients may also send a model configuration object when they need
+additional controls such as `speed`.
 
 ## Dashboard
 
@@ -533,10 +535,13 @@ npm run dev:console
 
 The Dashboard's `Settings > Logs` page can restart the CLI-managed server and
 display the current process log buffer. Runtime configuration is organized
-under `Settings > Models`, `Settings > Loop engine`, `Settings > Storage`, and
-`Settings > Sandbox`. Model providers created in `Settings > Models` are stored
-in SQLite and applied to new agent runs immediately. The same log controls are
-available through `POST /v1/x/restart` and `GET /v1/x/logs`.
+under `Settings > Models`, `Settings > Loop engine`, `Settings > Storage`,
+`Settings > Memory`, and `Settings > Sandbox`. Each page edits the same
+versioned Settings V2 document, supports Form and JSON modes, and can validate
+or test the local capability before saving. Save is enabled only after a changed
+candidate validates successfully; saved settings become the effective runtime
+configuration after restart when a restart is required. The same log controls
+are available through `POST /v1/x/restart` and `GET /v1/x/logs`.
 
 ## Release Checks
 

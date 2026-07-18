@@ -264,7 +264,31 @@ button {
   max-width: 860px;
 }
 
-.settingsEditorTabs {
+.runtimeSettingsEditor .pageIntro {
+  align-items: flex-start;
+}
+
+/* Shared UI primitives used by settings forms and other detail editors. */
+
+.inlineStatus {
+  width: fit-content;
+  max-width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 9px;
+  color: var(--text-soft);
+  font-size: 12.5px;
+  line-height: 1.35;
+}
+
+.inlineStatus.error span:first-child {
+  color: var(--danger);
+  font-weight: 680;
+}
+
+.segmentedControl {
   display: flex;
   gap: 2px;
   width: fit-content;
@@ -274,7 +298,7 @@ button {
   border-radius: 8px;
 }
 
-.settingsEditorTabs button {
+.segmentedControl button {
   border: 0;
   border-radius: 6px;
   background: transparent;
@@ -284,62 +308,355 @@ button {
   padding: 6px 10px;
 }
 
-.settingsEditorTabs button.active {
+.segmentedControl button.active {
   color: var(--text);
   background: #fff;
   box-shadow: 0 1px 2px rgb(0 0 0 / 8%);
 }
 
 .runtimeSettingsForm {
-  gap: 18px;
-  padding: 22px;
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
 }
 
-.runtimeSettingsForm > label {
+.formField {
+  display: grid;
+  grid-template-columns: minmax(180px, 260px) minmax(0, 1fr);
+  gap: 28px;
+  align-items: start;
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.formField:last-child {
+  border-bottom: 0;
+}
+
+.formFieldMeta {
+  display: grid;
+  gap: 5px;
+}
+
+.formFieldMeta > span {
+  color: var(--text);
+  font-size: 13.5px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.formFieldMeta small {
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.formFieldControl {
   display: grid;
   gap: 7px;
-  color: var(--text-soft);
-  font-size: 13px;
-  font-weight: 600;
+  min-width: 0;
+  max-width: 620px;
 }
 
-.runtimeSettingsForm > label input,
-.runtimeSettingsForm > label select {
+.formFieldControl input,
+.formFieldControl select {
   min-height: 38px;
   font-weight: 450;
+  width: 100%;
 }
 
-.runtimeSettingsForm .checkRow {
+.formOptionsEditor {
+  width: 100%;
+  min-height: 110px;
+  resize: vertical;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: #f8fafc;
+  color: var(--text);
+  font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.formAdvancedOptions {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+  background: var(--surface-muted);
+  padding: 0;
+  margin: 14px 20px;
+}
+
+.formAdvancedOptions summary {
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  color: var(--text-soft);
+  font-size: 13px;
+  font-weight: 650;
+  padding: 0 12px;
+  user-select: none;
+}
+
+.formAdvancedOptions[open] {
+  background: var(--surface);
+}
+
+.formAdvancedOptions[open] summary {
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.formAdvancedOptions .formOptionsEditor {
+  border: 0;
+  border-radius: 0 0 var(--radius) var(--radius);
+  background: #f8fafc;
+}
+
+.formSwitch,
+.toggleSwitch {
   display: flex;
   align-items: center;
   gap: 9px;
   color: var(--text);
+  min-height: 38px;
+  font-size: 13px;
+  font-weight: 650;
 }
 
-.storageSettingsSection + .storageSettingsSection {
-  padding-top: 18px;
+.toggleSwitch {
+  width: fit-content;
+  cursor: pointer;
+  user-select: none;
+}
+
+.toggleSwitch input {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.toggleSwitchTrack {
+  position: relative;
+  width: 42px;
+  height: 24px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: #e5e7eb;
+  box-shadow: inset 0 1px 2px rgb(0 0 0 / 7%);
+  transition: background 160ms ease, border-color 160ms ease;
+}
+
+.toggleSwitchThumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 18%);
+  transition: transform 160ms ease;
+}
+
+.toggleSwitch input:checked + .toggleSwitchTrack {
+  border-color: color-mix(in srgb, var(--success) 42%, var(--border));
+  background: var(--success);
+}
+
+.toggleSwitch input:checked + .toggleSwitchTrack .toggleSwitchThumb {
+  transform: translateX(18px);
+}
+
+.toggleSwitch input:focus-visible + .toggleSwitchTrack {
+  outline: 2px solid color-mix(in srgb, var(--info) 38%, transparent);
+  outline-offset: 2px;
+}
+
+.toggleSwitchLabel {
+  color: var(--text-soft);
+  font-size: 13px;
+  font-weight: 680;
+}
+
+.settingsHeroCard {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  align-items: flex-start;
+  margin: 18px 20px;
+  padding: 18px;
+  border: 1px solid var(--border-subtle);
+  border-radius: calc(var(--radius) + 2px);
+  background:
+    radial-gradient(circle at top left, color-mix(in srgb, var(--info) 10%, transparent), transparent 34%),
+    var(--surface-muted);
+}
+
+.settingsHeroEyebrow {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 760;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.settingsHeroCard h2 {
+  margin: 0;
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 760;
+}
+
+.settingsHeroCard p {
+  margin-top: 6px;
+  max-width: 560px;
+  color: var(--text-soft);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.formSection + .formSection {
   border-top: 1px solid var(--border-subtle);
 }
 
-.storageSettingsSection h2 {
-  margin: 0 0 12px;
+.formSection h2 {
+  margin: 0;
+  padding: 18px 20px 4px;
   font-size: 15px;
 }
 
-.settingsJsonEditor {
-  width: 100%;
-  min-height: 460px;
-  resize: vertical;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 14px;
-  background: #111827;
-  color: #e5e7eb;
-  font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+.fieldError {
+  color: var(--danger);
+  font-size: 12px;
+  line-height: 1.4;
 }
 
-.settingsEditorActions {
+.infoRow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 20px 14px;
+  color: var(--text-soft);
+  font-size: 12px;
+}
+
+.infoRow code {
+  overflow-wrap: anywhere;
+}
+
+.badgeList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 14px 20px 18px;
+}
+
+.codeEditorShell {
+  position: relative;
+  width: 100%;
+  min-height: 280px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #111827;
+  overflow: hidden;
+}
+
+.codeEditorInput,
+.codeEditorHighlight {
+  min-height: 280px;
+  width: 100%;
+  margin: 0;
+  padding: 14px;
+  border: 0;
+  background: transparent;
+  font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  tab-size: 2;
+  white-space: pre;
+}
+
+.codeEditorInput {
+  position: relative;
+  z-index: 1;
+  resize: vertical;
+  color: transparent;
+  caret-color: #e5e7eb;
+  outline: 0;
+  overflow: auto;
+}
+
+.codeEditorInput::selection {
+  color: transparent;
+  background: rgb(96 165 250 / 32%);
+}
+
+.codeEditorHighlight {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  color: #d1d5db;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.codeEditorHighlight .jsonKey {
+  color: #93c5fd;
+}
+
+.codeEditorHighlight .jsonString {
+  color: #86efac;
+}
+
+.codeEditorHighlight .jsonNumber {
+  color: #fbbf24;
+}
+
+.codeEditorHighlight .jsonBoolean {
+  color: #c4b5fd;
+}
+
+.codeEditorHighlight .jsonNull {
+  color: #fca5a5;
+}
+
+.formActions {
+  display: flex;
+  align-items: center;
   justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 4px 0 0;
+}
+
+.formActions .secondaryButton,
+.formActions .primaryButton {
+  box-shadow: none;
+}
+
+.settingsActionsMenu {
+  display: flex;
+}
+
+.settingsMoreMenu {
+  top: 38px;
+  width: 210px;
+}
+
+.actionNotice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.actionNotice .secondaryButton {
+  min-height: 30px;
+  flex: none;
+  background: color-mix(in srgb, var(--surface) 86%, transparent);
+  box-shadow: none;
 }
 
 .consoleNotice {
@@ -1131,6 +1448,21 @@ tr[role="button"]:hover td,
   color: var(--muted);
 }
 
+.providerStateBadge.active {
+  background: var(--success-soft);
+  color: var(--success-text);
+}
+
+.providerStateBadge.error {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.providerStateBadge.disabled {
+  background: var(--surface-muted);
+  color: var(--muted);
+}
+
 .storageModalGrid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1594,6 +1926,17 @@ tr[role="button"]:hover td,
   overflow: hidden;
 }
 
+.settingsLogsPage {
+  min-height: calc(100vh - 40px);
+}
+
+.settingsLogsPage .runtimeLogPanel {
+  display: flex;
+  flex-direction: column;
+  min-height: 520px;
+  flex: 1 1 auto;
+}
+
 .runtimeStatus {
   padding: 12px 14px;
   border-bottom: 1px solid var(--border-subtle);
@@ -1607,20 +1950,21 @@ tr[role="button"]:hover td,
 }
 
 .runtimeLogList {
-  max-height: 420px;
+  height: clamp(520px, calc(100vh - 390px), 820px);
+  min-height: 520px;
   overflow: auto;
   background: #171716;
   color: #f2f2ef;
   font-family: var(--font-mono);
-  font-size: 12px;
-  line-height: 1.55;
+  font-size: 13px;
+  line-height: 1.62;
 }
 
 .runtimeLogLine {
   display: grid;
-  grid-template-columns: 130px minmax(0, 1fr);
-  gap: 12px;
-  padding: 8px 12px;
+  grid-template-columns: 148px minmax(0, 1fr);
+  gap: 14px;
+  padding: 10px 14px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 
@@ -2168,28 +2512,6 @@ label.searchBox input {
   font-weight: 690;
 }
 
-.settingsSearch {
-  min-height: var(--height-large);
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--surface);
-  padding: 0 9px;
-  color: var(--muted);
-  box-shadow: var(--shadow-control);
-}
-
-.settingsSearch input {
-  width: 100%;
-  border: 0;
-  background: transparent;
-  color: var(--muted);
-  min-height: 30px;
-  font-size: 13px;
-}
-
 .settingsGroupLabel {
   color: var(--muted);
   font-size: 11px;
@@ -2240,74 +2562,6 @@ label.searchBox input {
 .settingsContent > .stack {
   max-width: 1120px;
   padding: 32px 40px 52px;
-}
-
-.settingsOverviewGrid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 10px;
-}
-
-.settingsOverviewCard {
-  min-height: 88px;
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius);
-  background: var(--surface);
-  color: var(--text);
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 12px;
-  text-align: left;
-  box-shadow: none;
-}
-
-.settingsOverviewCard:hover {
-  border-color: var(--border-strong);
-  background: var(--surface-hover);
-}
-
-.settingsOverviewIcon {
-  width: 32px;
-  height: 32px;
-  border-radius: var(--radius);
-  background: var(--surface-muted);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-soft);
-}
-
-.settingsOverviewCard strong,
-.settingsOverviewCard small {
-  display: block;
-}
-
-.settingsOverviewCard strong {
-  font-size: 14px;
-  font-weight: 680;
-}
-
-.settingsOverviewCard small {
-  margin-top: 4px;
-  color: var(--muted);
-  line-height: 1.4;
-  font-size: 13px;
-}
-
-.settingsOverviewCard em {
-  min-width: 34px;
-  min-height: 28px;
-  border-radius: 999px;
-  background: var(--surface-muted);
-  color: var(--text-soft);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0 10px;
-  font-style: normal;
-  font-weight: 650;
 }
 
 .pluginSettingsGrid {
@@ -2483,6 +2737,20 @@ label.searchBox input {
   box-shadow: var(--shadow-control);
 }
 
+.apiDocsSearch input {
+  width: 100%;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+}
+
+.apiDocsSearch input::placeholder {
+  color: var(--muted);
+}
+
 .apiDocsRuntime {
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius);
@@ -2531,16 +2799,22 @@ label.searchBox input {
   color: var(--text);
 }
 
+.methodSquare,
+.methodPill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 760;
+  letter-spacing: 0;
+  color: var(--text);
+  background: var(--surface-muted);
+}
+
 .methodSquare {
   width: 25px;
   height: 22px;
   border-radius: 5px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
   font-size: 10px;
-  font-weight: 760;
-  letter-spacing: 0;
 }
 
 .apiDocsArticle {
@@ -2637,9 +2911,13 @@ label.searchBox input {
   color: var(--info);
 }
 
-.apiDocsCodeRail {
-  display: grid;
-  gap: 14px;
+.apiEmptyState {
+  border: 1px dashed var(--border-subtle);
+  border-radius: var(--radius);
+  background: var(--surface-muted);
+  color: var(--muted);
+  font-size: 13px;
+  padding: 12px;
 }
 
 .apiDocsExamples {
@@ -2661,12 +2939,6 @@ label.searchBox input {
   box-shadow: var(--shadow-control);
 }
 
-.apiDocsCodeCard > h2 {
-  padding: 10px 12px;
-  border-bottom: 1px solid var(--border-subtle);
-  font-size: 12.5px;
-}
-
 .apiDocsCodeCard .metricsPreview {
   border: 0;
   border-radius: 0;
@@ -2676,24 +2948,11 @@ label.searchBox input {
   overflow-x: auto;
 }
 
-.apiSnippet {
-  max-height: 280px;
-  font-size: 12px;
-  line-height: 1.55;
-}
-
 .methodPill {
   width: 54px;
   min-height: 24px;
   border-radius: 999px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
   font-size: 11px;
-  font-weight: 760;
-  letter-spacing: 0;
-  color: var(--text);
-  background: var(--surface-muted);
 }
 
 .methodGET {
@@ -4913,8 +5172,7 @@ label.searchBox input {
     grid-template-columns: 1fr;
   }
 
-  .apiDocsNav,
-  .apiDocsCodeRail {
+  .apiDocsNav {
     position: static;
     max-height: none;
   }
@@ -5113,6 +5371,19 @@ label.searchBox input {
   .detailTabs button {
     font-size: 16px;
     white-space: nowrap;
+  }
+
+  .formField {
+    grid-template-columns: 1fr;
+    gap: 10px;
+    padding: 16px;
+  }
+
+  .formAdvancedOptions,
+  .infoRow,
+  .badgeList {
+    margin-left: 16px;
+    margin-right: 16px;
   }
 
   .modal.wide,
