@@ -4011,6 +4011,36 @@ label.searchBox input {
   align-items: center;
 }
 
+.editingEnvironment > .editField,
+.editingEnvironment .environmentSection {
+  border: 1px solid var(--border-subtle);
+  border-radius: 16px;
+  background: var(--surface);
+  box-shadow: 0 1px 2px rgb(15 23 42 / 4%);
+}
+
+.editingEnvironment > .editField {
+  padding: 20px;
+}
+
+.editingEnvironment .environmentBody {
+  gap: 18px;
+}
+
+.editingEnvironment .environmentSection {
+  padding: 20px;
+}
+
+.editingEnvironment .environmentSection > h2,
+.editingEnvironment .sectionHeaderRow h2 {
+  margin: 0;
+}
+
+.editingEnvironment .environmentSection > p,
+.editingEnvironment .sectionHeaderRow p {
+  margin: 4px 0 0;
+}
+
 .editHero {
   margin-bottom: 4px;
 }
@@ -4044,6 +4074,19 @@ label.searchBox input {
 .editField textarea {
   min-height: 96px;
   font-size: 14px;
+}
+
+.editingEnvironment .editField textarea {
+  min-height: 104px;
+}
+
+.editingEnvironment .environmentSection > .editField {
+  margin-top: 4px;
+}
+
+.editingEnvironment .environmentSection > .editField select,
+.editingEnvironment .environmentSection > .editField textarea {
+  width: 100%;
 }
 
 .editField small {

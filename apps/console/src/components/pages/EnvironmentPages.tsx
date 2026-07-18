@@ -253,16 +253,6 @@ function EnvironmentNetworkEditor({ draft, onDraft }: { draft: EnvironmentDraft;
             <option value="limited">Limited</option>
           </select>
         </label>
-        <SwitchRow
-          label="Allow MCP server network access"
-          checked={draft.allowMcpServerNetworkAccess}
-          onChecked={(checked) => onDraft({ ...draft, allowMcpServerNetworkAccess: checked })}
-        />
-        <SwitchRow
-          label="Allow package manager network access"
-          checked={draft.allowPackageManagerNetworkAccess}
-          onChecked={(checked) => onDraft({ ...draft, allowPackageManagerNetworkAccess: checked })}
-        />
         <label className="editField">
           Allowed hosts
           <textarea value={draft.allowedHosts} onChange={(event) => onDraft({ ...draft, allowedHosts: event.target.value })} placeholder="www.example1.com, www.example2.com" />
@@ -308,15 +298,6 @@ function EnvironmentNetworkEditor({ draft, onDraft }: { draft: EnvironmentDraft;
         ))}
       </section>
     </div>
-  );
-}
-
-function SwitchRow({ label, checked, onChecked }: { label: string; checked: boolean; onChecked: (checked: boolean) => void }) {
-  return (
-    <label className="switchRow">
-      <span>{label}</span>
-      <input type="checkbox" checked={checked} onChange={(event) => onChecked(event.target.checked)} />
-    </label>
   );
 }
 
