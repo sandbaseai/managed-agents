@@ -4239,11 +4239,14 @@ label.searchBox input {
 }
 
 .yamlToolbar {
-  min-height: 44px;
+  min-height: 56px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 16px;
+  gap: 12px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
 }
 
 .yamlToolbar label {
@@ -4251,23 +4254,29 @@ label.searchBox input {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  width: fit-content;
 }
 
 .yamlToolbar select {
   appearance: none;
-  border: 0;
-  background: transparent;
+  min-width: 106px;
+  height: 36px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-raised);
   color: var(--text-soft);
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 720;
-  padding: 0 22px 0 0;
+  line-height: 1;
+  padding: 0 34px 0 12px;
   cursor: pointer;
 }
 
 .yamlToolbar label svg {
   position: absolute;
-  right: 0;
+  right: 11px;
   pointer-events: none;
+  color: var(--muted);
 }
 
 .yamlToolbar button {
@@ -4283,7 +4292,6 @@ label.searchBox input {
 
 .yamlShell .codeEditorShell {
   border: 0;
-  border-top: 1px solid var(--border);
   border-radius: 0;
 }
 
