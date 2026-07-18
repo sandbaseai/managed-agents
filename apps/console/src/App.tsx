@@ -12,7 +12,7 @@ import {
   Settings,
   Zap,
 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { Component, type ErrorInfo, type ReactNode, useEffect, useState } from 'react';
 import { EmptyState, LoadingState } from './components/Common';
 import { AgentEditModal, AgentModal } from './components/modals/AgentModals';
 import { SessionModal } from './components/modals/SessionModals';
@@ -159,8 +159,9 @@ export function App() {
       <main className="main">
         {error ? <div className="banner error">{error}</div> : null}
         {loading ? <LoadingState /> : (
-          <View
-            view={view}
+          <ConsoleErrorBoundary resetKey={`${view}:${selectedAgentId ?? ''}:${selectedSessionId ?? ''}:${selectedEnvironmentId ?? ''}:${selectedVaultId ?? ''}:${selectedMemoryStoreId ?? ''}`}>
+            <View
+              view={view}
               data={data}
               setView={setRoute}
               selectedAgentId={selectedAgentId}
@@ -199,6 +200,7 @@ export function App() {
               onNewResource={(kind) => setResourceModal(kind)}
               onRefresh={() => void refresh()}
             />
+          </ConsoleErrorBoundary>
         )}
       </main>
 
@@ -278,6 +280,37 @@ export function App() {
       ) : null}
     </div>
   );
+}
+
+class ConsoleErrorBoundary extends Component<
+  { children: ReactNode; resetKey: string },
+  { error: Error | null }
+> {
+  state = { error: null };
+
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error('Console render error', error, info);
+  }
+
+  componentDidUpdate(prevProps: { resetKey: string }) {
+    if (prevProps.resetKey !== this.props.resetKey && this.state.error) {
+      this.setState({ error: null });
+    }
+  }
+
+  render() {
+    if (!this.state.error) return this.props.children;
+    return (
+      <div className="banner error consoleCrashBanner">
+        <strong>Console view crashed.</strong>
+        <span>{this.state.error.message}</span>
+      </div>
+    );
+  }
 }
 
 function View(props: {

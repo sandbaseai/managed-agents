@@ -152,8 +152,10 @@ export function SessionDetail({
       const page = await getPage<SessionEvent>(`/v1/sessions/${encodeURIComponent(session.id)}/events?limit=1000`);
       setEvents(page.data);
       setSelectedEventId((current) => current && page.data.some((event) => event.id === current) ? current : page.data.at(-1)?.id ?? null);
+      return page.data;
     } catch (err) {
       setEventError(err instanceof Error ? err.message : String(err));
+      return [];
     } finally {
       setLoadingEvents(false);
     }
@@ -183,9 +185,13 @@ export function SessionDetail({
     setSendingMessage(true);
     setMessageError('');
     try {
+      const previousLastEventId = events.at(-1)?.id ?? null;
       await postJson(`/v1/sessions/${encodeURIComponent(session.id)}/messages`, { content, stream: false });
       setMessageDraft('');
-      await loadEvents();
+      const nextEvents = await loadEvents();
+      const newEvents = eventsAfter(nextEvents, previousLastEventId);
+      const errorEvent = [...newEvents].reverse().find((item) => eventKind(item) === 'error');
+      if (errorEvent) setMessageError(eventText(errorEvent) || eventTitle(errorEvent));
       onRefresh();
     } catch (err) {
       setMessageError(err instanceof Error ? err.message : String(err));
@@ -392,8 +398,9 @@ function eventTitle(event: SessionEvent) {
 
 function eventText(event: SessionEvent) {
   if (event.delta) return event.delta;
-  if (!event.content || event.content.length === 0) return '';
-  return event.content.map((part) => {
+  const content = normalizeEventContent(event.content);
+  if (content.length === 0) return '';
+  return content.map((part) => {
     if (part && typeof part === 'object') {
       const record = part as Record<string, unknown>;
       if (typeof record.text === 'string') return record.text;
@@ -402,6 +409,18 @@ function eventText(event: SessionEvent) {
     }
     return typeof part === 'string' ? part : JSON.stringify(part);
   }).join('\n');
+}
+
+function normalizeEventContent(content: SessionEvent['content']): unknown[] {
+  if (Array.isArray(content)) return content;
+  if (content === null || content === undefined) return [];
+  return [content];
+}
+
+function eventsAfter(events: SessionEvent[], previousLastEventId: string | null): SessionEvent[] {
+  if (!previousLastEventId) return events;
+  const index = events.findIndex((event) => event.id === previousLastEventId);
+  return index >= 0 ? events.slice(index + 1) : events;
 }
 
 function eventTime(event: SessionEvent) {
