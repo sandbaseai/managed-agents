@@ -36,6 +36,19 @@ export function parseObject(value: string | null | undefined): Record<string, un
   }
 }
 
+export function parseStringArray(value: string | null | undefined): string[] {
+  if (!value) return [];
+  try {
+    return arrayOfStrings(JSON.parse(value));
+  } catch {
+    return [];
+  }
+}
+
+export function arrayOfStrings(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0).map((item) => item.trim()) : [];
+}
+
 export function invalid(c: any, message: string): Response {
   return c.json({ error: { type: 'invalid_request', message } }, 400);
 }
