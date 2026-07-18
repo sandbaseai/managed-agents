@@ -1,8 +1,19 @@
 import type { Database } from '@/core/db/database.js';
 import { relative, resolve, sep } from 'node:path';
 import { defaultSettingsAvailability, runtimeSettingsSchema, validateRuntimeSettings, validateRuntimeSettingsCredentials, type RuntimeSettings } from './schema.js';
-import { decryptSecret, encryptSecret } from '@/core/security/secrets.js';
 import type { ModelConfig } from '@/types/model.js';
+import {
+  cleanupUnreferencedRuntimeSettingsSecrets,
+  hasRuntimeSettingsSecret,
+  persistRuntimeSettingsSecrets,
+  resolveRuntimeSettingsModelApiKey,
+} from './secrets.js';
+export {
+  hasRuntimeSettingsSecret,
+  maskRuntimeSettings,
+  runtimeSettingsSecretStates,
+  type RuntimeSettingsSecretStates,
+} from './secrets.js';
 
 export type RuntimeSettingsRecord = {
   schema_version: 1;
@@ -15,15 +26,9 @@ export type RuntimeSettingsRecord = {
   activation_errors: Array<{ path: string; code: string; message: string }>;
 };
 
-export type RuntimeSettingsSecretStates = {
-  model: { api_key: 'configured' | 'missing_env' | 'not_set' };
-};
-
 export type SaveRuntimeSettingsResult =
   | { ok: true; record: RuntimeSettingsRecord }
   | { ok: false; reason: 'revision_conflict'; record: RuntimeSettingsRecord };
-
-const STORED_SECRET_PREFIX = '__managed_secret__:';
 
 export type RuntimeSettingsSeed = {
   memoryEnabled?: boolean;
@@ -45,7 +50,7 @@ export function getOrSeedRuntimeSettings(db: Database, seed: RuntimeSettingsSeed
   if (existing) return rowToRecord(existing);
 
   const legacyConfig = legacySettingsSeed(db, seed);
-  const config = persistSecrets(db, legacyConfig, legacyConfig, dataDir);
+  const config = persistRuntimeSettingsSecrets(db, legacyConfig, legacyConfig, dataDir);
   // Settings V2 is now the secret authority. Do not preserve literal secrets
   // in the compatibility models table after importing an existing workspace.
   if (legacyConfig.model.api_key && !/^\$\{[^}]+\}$/.test(legacyConfig.model.api_key)) {
@@ -105,35 +110,9 @@ export function activateRuntimeSettings(
       WHERE id = 'default'
     `).run();
     const activated = getOrSeedRuntimeSettings(db, seed, dataDir);
-    cleanupUnreferencedSecrets(db, activated.saved_config, activated.effective_config);
+    cleanupUnreferencedRuntimeSettingsSecrets(db, activated.saved_config, activated.effective_config);
     return activated;
   });
-}
-
-export function maskRuntimeSettings(config: RuntimeSettings): RuntimeSettings {
-  return {
-    ...config,
-    model: {
-      ...config.model,
-      api_key: config.model.api_key ? maskedSecret(config.model.api_key) : undefined,
-      options: maskObjectSecrets(config.model.options),
-    },
-    loop_engine: { ...config.loop_engine, options: maskObjectSecrets(config.loop_engine.options) },
-    storage: {
-      metadata: { ...config.storage.metadata, options: maskObjectSecrets(config.storage.metadata.options) },
-      artifacts: { ...config.storage.artifacts, options: maskObjectSecrets(config.storage.artifacts.options) },
-    },
-    memory: { ...config.memory, options: maskObjectSecrets(config.memory.options) },
-    sandbox: { ...config.sandbox, options: maskObjectSecrets(config.sandbox.options) },
-  };
-}
-
-export function runtimeSettingsSecretStates(db: Database, config: RuntimeSettings): RuntimeSettingsSecretStates {
-  return { model: { api_key: secretState(db, 'model.api_key', config.model.api_key) } };
-}
-
-export function hasRuntimeSettingsSecret(db: Database, path: string): boolean {
-  return Boolean(getStoredSecret(db, path));
 }
 
 export function saveRuntimeSettings(
@@ -147,7 +126,7 @@ export function saveRuntimeSettings(
     if (current.revision !== expectedRevision) {
       return { ok: false, reason: 'revision_conflict', record: current } as const;
     }
-    const persisted = persistSecrets(db, current.saved_config, config, dataDir, current.effective_config);
+    const persisted = persistRuntimeSettingsSecrets(db, current.saved_config, config, dataDir, current.effective_config);
     const nextRevision = current.revision + 1;
     const result = db.prepare(`
       UPDATE runtime_settings
@@ -181,7 +160,7 @@ export function modelConfigFromRuntimeSettings(
     provider: config.model.vendor,
     model: defaultModelForVendor(config.model.vendor),
     base_url: config.model.base_url,
-    api_key: resolveModelApiKey(db, config.model.api_key, dataDir),
+    api_key: resolveRuntimeSettingsModelApiKey(db, config.model.api_key, dataDir),
     is_default: true,
   };
 }
@@ -360,139 +339,10 @@ function numberValue(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 }
 
-function maskedSecret(value: string): string {
-  return /^\$\{[^}]+\}$/.test(value) ? value : '********';
-}
-
-function secretState(db: Database, path: string, value?: string): RuntimeSettingsSecretStates['model']['api_key'] {
-  if (!value) return 'not_set';
-  if (value === `${STORED_SECRET_PREFIX}${path}`) {
-    return getStoredSecret(db, path) ? 'configured' : 'not_set';
-  }
-  const match = /^\$\{([^}]+)\}$/.exec(value);
-  if (match && !process.env[match[1]]) return 'missing_env';
-  return 'configured';
-}
-
-function persistSecrets(
-  db: Database,
-  current: RuntimeSettings,
-  candidate: RuntimeSettings,
-  dataDir?: string,
-  effective?: RuntimeSettings,
-): RuntimeSettings {
-  const preservedPaths = new Set<string>();
-  if (effective) collectSecretReferences(effective, preservedPaths);
-  const persisted = walkSecrets(candidate, current, '', db, dataDir, preservedPaths) as RuntimeSettings;
-  cleanupUnreferencedSecrets(db, persisted, effective);
-  return persisted;
-}
-
-function cleanupUnreferencedSecrets(db: Database, ...configs: Array<RuntimeSettings | undefined>): void {
-  const referenced = new Set<string>();
-  for (const config of configs) {
-    if (config) collectSecretReferences(config, referenced);
-  }
-  const rows = db.prepare('SELECT path FROM runtime_settings_secrets').all() as Array<{ path: string }>;
-  for (const row of rows) {
-    if (!referenced.has(row.path)) db.prepare('DELETE FROM runtime_settings_secrets WHERE path = ?').run(row.path);
-  }
-}
-
-function collectSecretReferences(value: unknown, paths: Set<string>): void {
-  if (typeof value === 'string' && value.startsWith(STORED_SECRET_PREFIX)) {
-    paths.add(value.slice(STORED_SECRET_PREFIX.length));
-    return;
-  }
-  if (Array.isArray(value)) {
-    for (const item of value) collectSecretReferences(item, paths);
-    return;
-  }
-  if (value && typeof value === 'object') {
-    for (const item of Object.values(value as Record<string, unknown>)) collectSecretReferences(item, paths);
-  }
-}
-
-function walkSecrets(
-  candidate: unknown,
-  current: unknown,
-  path: string,
-  db: Database,
-  dataDir?: string,
-  preservedPaths: Set<string> = new Set(),
-): unknown {
-  if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) return candidate;
-  return Object.fromEntries(Object.entries(candidate as Record<string, unknown>).map(([key, value]) => {
-    const childPath = path ? `${path}.${key}` : key;
-    const currentValue = current && typeof current === 'object' && !Array.isArray(current)
-      ? (current as Record<string, unknown>)[key]
-      : undefined;
-    if (isSecretPath(childPath) && (typeof value === 'string' || value === undefined)) {
-      return [key, persistSecretValue(db, childPath, value, currentValue, dataDir, preservedPaths)];
-    }
-    return [key, walkSecrets(value, currentValue, childPath, db, dataDir, preservedPaths)];
-  }));
-}
-
-function isSecretPath(path: string): boolean {
-  if (path === 'model.api_key') return true;
-  const key = path.split('.').at(-1) ?? '';
-  return /(api[_-]?key|secret|token|password|credential|access[_-]?key)/i.test(key);
-}
-
-function persistSecretValue(
-  db: Database,
-  path: string,
-  value: string | undefined,
-  current: unknown,
-  dataDir?: string,
-  preservedPaths: Set<string> = new Set(),
-): unknown {
-  if (value === '********') return current;
-  if (!value || /^\$\{[^}]+\}$/.test(value)) {
-    if (!preservedPaths.has(path)) {
-      db.prepare('DELETE FROM runtime_settings_secrets WHERE path = ?').run(path);
-    }
-    return value;
-  }
-  if (value === `${STORED_SECRET_PREFIX}${path}`) return value;
-  const encrypted = encryptSecret(value, dataDir);
-  db.prepare(`
-    INSERT INTO runtime_settings_secrets (path, ciphertext, nonce, tag, updated_at)
-    VALUES (?, ?, ?, ?, datetime('now'))
-    ON CONFLICT(path) DO UPDATE SET ciphertext = excluded.ciphertext, nonce = excluded.nonce,
-      tag = excluded.tag, updated_at = datetime('now')
-  `).run(path, encrypted.ciphertext, encrypted.nonce, encrypted.tag);
-  return `${STORED_SECRET_PREFIX}${path}`;
-}
-
-function getStoredSecret(db: Database, path: string): boolean {
-  return Boolean(db.prepare('SELECT path FROM runtime_settings_secrets WHERE path = ?').get(path));
-}
-
-function resolveModelApiKey(db: Database, value: string | undefined, dataDir?: string): string | undefined {
-  if (value !== `${STORED_SECRET_PREFIX}model.api_key`) return value;
-  const row = db.prepare('SELECT ciphertext, nonce, tag FROM runtime_settings_secrets WHERE path = ?').get('model.api_key') as
-    | { ciphertext: string; nonce: string; tag: string }
-    | undefined;
-  return row ? decryptSecret(row, dataDir) : undefined;
-}
-
 function defaultModelForVendor(vendor: RuntimeSettings['model']['vendor']): string {
   switch (vendor) {
     case 'anthropic': return 'claude-sonnet-4-20250514';
     case 'openai': return 'gpt-4.1';
     case 'openai_compatible': return 'gpt-4.1';
   }
-}
-
-function maskObjectSecrets<T extends Record<string, unknown>>(value: T): T {
-  return Object.fromEntries(Object.entries(value).map(([key, item]) => {
-    const secret = /(api[_-]?key|access[_-]?key|secret|token|password|credential)/i.test(key);
-    if (secret && typeof item === 'string') return [key, maskedSecret(item)];
-    if (item && typeof item === 'object' && !Array.isArray(item)) {
-      return [key, maskObjectSecrets(item as Record<string, unknown>)];
-    }
-    return [key, item];
-  })) as T;
 }
