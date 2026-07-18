@@ -2,7 +2,7 @@ import { Archive, ChevronDown, Clock, Cloud, Copy, Download, Keyboard, MessageSq
 import { type Dispatch, type FormEvent, type SetStateAction, useEffect, useState } from 'react';
 import { deleteJson, getPage, postJson } from '../../api';
 import { EmptyState, FilterSelect, LoadingState, ResourceBadge, StatusPill, Toolbar } from '../Common';
-import { downloadJson, formatDateShort, formatDuration, formatUsage, relativeDate, shortId } from '../../lib/format';
+import { downloadJson, formatDateShort, formatDuration, formatUsage, relativeDate, shortId, titleCase } from '../../lib/format';
 import type { Agent, ConsoleData, Session, SessionEvent } from '../../types';
 
 const SESSION_EVENT_KINDS = ['user', 'agent', 'tool', 'error', 'system'] as const;
