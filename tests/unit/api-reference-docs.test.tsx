@@ -40,6 +40,7 @@ describe('API reference docs', () => {
       'sessions.ts': '/v1/sessions',
       'skills.ts': '/v1/skills',
       'stream.ts': '/v1/sessions',
+      'templates.ts': '/v1/x/templates',
       'worker.ts': '/v1/x/worker',
     };
     const documented = new Set(API_REFERENCE_DOCS.map((endpoint) => routeKey(endpoint.method, endpoint.path)));
