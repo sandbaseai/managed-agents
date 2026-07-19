@@ -30,7 +30,7 @@ export function ModelSettingsForm({ adapters, config, onChange, errors, resetKey
       </FormField>
       <FormField
         label="API key"
-        description={apiKeyConfigured ? 'Keep ******** to preserve the stored key, or replace it with an environment placeholder or a new key.' : 'Environment placeholders such as ${OPENAI_API_KEY} are supported.'}
+        description={apiKeyConfigured ? 'The full key is stored encrypted and never shown again. Keep ******** to preserve it, or enter a new key to replace it.' : 'Environment placeholders such as ${OPENAI_API_KEY} are supported.'}
         error={errors?.['model.api_key']}
       >
         <input

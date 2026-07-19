@@ -7,6 +7,7 @@ import type { Agent, ConsoleData, Session, SessionEvent } from '../../types';
 
 const SESSION_EVENT_KINDS = ['user', 'agent', 'tool', 'error', 'system'] as const;
 type SessionEventKind = (typeof SESSION_EVENT_KINDS)[number];
+type SessionDisplayStatus = Session['status'] | 'queued' | 'completed';
 
 export function Sessions({ data, onNewSession, onOpenSession }: { data: ConsoleData; onNewSession: () => void; onOpenSession: (session: Session) => void }) {
   const [query, setQuery] = useState('');
@@ -144,9 +145,10 @@ export function SessionDetail({
   const agent = data.agents.find((item) => item.id === session.agent.id);
   const environment = data.environments.find((item) => item.id === session.environment_id);
   const selectedEvent = events.find((event) => event.id === selectedEventId) ?? events[0] ?? null;
+  const displayStatus = sessionDisplayStatus(session, events);
 
-  const loadEvents = async () => {
-    setLoadingEvents(true);
+  const loadEvents = async (options: { silent?: boolean } = {}) => {
+    if (!options.silent) setLoadingEvents(true);
     setEventError('');
     try {
       const page = await getPage<SessionEvent>(`/v1/sessions/${encodeURIComponent(session.id)}/events?limit=1000`);
@@ -157,13 +159,22 @@ export function SessionDetail({
       setEventError(err instanceof Error ? err.message : String(err));
       return [];
     } finally {
-      setLoadingEvents(false);
+      if (!options.silent) setLoadingEvents(false);
     }
   };
 
   useEffect(() => {
     void loadEvents();
   }, [session.id]);
+
+  useEffect(() => {
+    if (!['queued', 'running'].includes(displayStatus)) return undefined;
+    const timer = window.setInterval(() => {
+      void loadEvents({ silent: true });
+      void onRefresh();
+    }, 1500);
+    return () => window.clearInterval(timer);
+  }, [displayStatus, session.id, onRefresh]);
 
   const visibleEvents = events.filter((event) => {
     const kind = eventKind(event);
@@ -175,8 +186,14 @@ export function SessionDetail({
 
   const canSendMessage = messageDraft.trim().length > 0
     && !sendingMessage
-    && session.status !== 'failed'
-    && session.status !== 'terminated';
+    && displayStatus !== 'failed'
+    && displayStatus !== 'terminated';
+
+  useEffect(() => {
+    if (displayStatus !== 'failed') return;
+    const errorEvent = [...events].reverse().find((item) => eventKind(item) === 'error');
+    if (errorEvent) setMessageError(eventText(errorEvent) || eventTitle(errorEvent));
+  }, [displayStatus, events]);
 
   const sendMessage = async (event?: FormEvent) => {
     event?.preventDefault();
@@ -226,7 +243,7 @@ export function SessionDetail({
         <div className="sessionHeroMain">
           <div className="titleLine">
             <h1>{session.id}</h1>
-            <StatusPill status={session.status} />
+            <StatusPill status={displayStatus} />
           </div>
           <div className="sessionMetaRow">
             <button className="resourceBadge" type="button" onClick={() => agent ? onOpenAgent(agent) : undefined}>
@@ -349,7 +366,7 @@ export function SessionDetail({
           }}
           placeholder="Message this session..."
           aria-label="Message this session"
-          disabled={sendingMessage || session.status === 'failed' || session.status === 'terminated'}
+          disabled={sendingMessage || displayStatus === 'failed' || displayStatus === 'terminated'}
         />
         <button className="primaryButton" type="submit" disabled={!canSendMessage}>
           <Send size={16} />
@@ -421,6 +438,24 @@ function eventsAfter(events: SessionEvent[], previousLastEventId: string | null)
   if (!previousLastEventId) return events;
   const index = events.findIndex((event) => event.id === previousLastEventId);
   return index >= 0 ? events.slice(index + 1) : events;
+}
+
+function sessionDisplayStatus(session: Session, events: SessionEvent[]): SessionDisplayStatus {
+  if (session.status === 'failed' || hasErrorEvent(events)) return 'failed';
+  if (session.status === 'terminated') return 'terminated';
+  const lastStatus = [...events].reverse().find((event) => event.type.startsWith('session.status_'));
+  if (!lastStatus) return session.status;
+  if (lastStatus.type === 'session.status_running') return 'running';
+  if (lastStatus.type === 'session.status_queued') return 'queued';
+  if (lastStatus.type === 'session.status_idle') return 'idle';
+  if (lastStatus.type === 'session.status_completed') return 'completed';
+  if (lastStatus.type === 'session.status_terminated') return 'terminated';
+  if (lastStatus.type === 'session.status_failed') return 'failed';
+  return session.status;
+}
+
+function hasErrorEvent(events: SessionEvent[]) {
+  return events.some((event) => eventKind(event) === 'error');
 }
 
 function eventTime(event: SessionEvent) {
