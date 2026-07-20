@@ -7,11 +7,12 @@ A minimal managed-agents setup with a single echo assistant.
 ```bash
 # Start from this directory
 cd examples/basic
-npx managed-agents start --agents-dir agents --config managed-agents.config.yaml
+npx managed-agents start --agents-dir agents --config .managed-agents/config.yaml
 ```
 
-Configure model credentials in `managed-agents.config.yaml` before calling a
-real hosted or local model.
+Configure model credentials in `.managed-agents/config.yaml` before calling a
+real hosted or local model. The same file declares the default SQLite metadata
+store and local artifact directory.
 
 ## Usage
 

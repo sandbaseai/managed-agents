@@ -42,30 +42,32 @@ describe('runtime config bootstrap', () => {
       target: 'local',
     });
 
-    expect(bootstrap).toEqual({ apiKeys: [], models: [] });
+    expect(bootstrap).toEqual({ models: [], settingsSeed: {} });
     db.close();
   });
 
-  it('loads config API keys, model overrides, memory, and environments', () => {
+  it('loads model connection overrides, memory, and environments', () => {
     const { db, directory } = makeDb();
-    process.env.TEST_MANAGED_AGENTS_KEY = 'resolved-key';
     const configPath = join(directory, 'managed-agents.config.yaml');
     writeFileSync(configPath, [
-      'api_keys:',
-      '  - ${TEST_MANAGED_AGENTS_KEY}',
       'memory:',
+      '  enabled: true',
       '  provider: sqlite',
-      'models:',
-      '  - name: default',
-      '    provider: openai',
-      '    model: base-model',
-      '    is_default: true',
+      'storage:',
+      '  metadata:',
+      '    provider: sqlite',
+      '    options: {}',
+      '  artifacts:',
+      '    provider: local',
+      '    options:',
+      '      base_path: runtime-files',
+      'model:',
+      '  provider: openai',
+      '  api_key: ${OPENAI_API_KEY}',
       'overrides:',
       '  cloud:',
-      '    models:',
-      '      - name: default',
-      '        model: cloud-model',
-      '        base_url: https://example.test/v1',
+      '    model:',
+      '      base_url: https://example.test/v1',
       'environments:',
       '  ci:',
       '    sandbox_provider: local',
@@ -75,19 +77,23 @@ describe('runtime config bootstrap', () => {
 
     const bootstrap = loadRuntimeConfigBootstrap({ db, configPath, target: 'cloud' });
 
-    expect(bootstrap.apiKeys).toEqual(['resolved-key']);
     expect(bootstrap.models).toEqual([expect.objectContaining({
       name: 'default',
       provider: 'openai',
-      model: 'cloud-model',
       base_url: 'https://example.test/v1',
+      api_key: '${OPENAI_API_KEY}',
       is_default: true,
     })]);
-    expect(bootstrap.memory?.name).toBe('sqlite');
+    expect(bootstrap.settingsSeed).toEqual({
+      memory: { enabled: true, provider: 'sqlite', options: {} },
+      storage: {
+        metadata: { provider: 'sqlite', options: {} },
+        artifacts: { provider: 'local', options: { base_path: 'runtime-files' } },
+      },
+    });
     const row = db.prepare('SELECT name, config FROM environments WHERE name = ?').get('ci') as { name: string; config: string } | undefined;
     expect(row?.name).toBe('ci');
     expect(JSON.parse(row?.config ?? '{}')).toMatchObject({ sandbox_provider: 'local', timeout: 120 });
     db.close();
-    delete process.env.TEST_MANAGED_AGENTS_KEY;
   });
 });

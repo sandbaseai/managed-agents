@@ -173,21 +173,21 @@ graph LR
     Workspace -. cleanup .-> Sessions
 ```
 
-Project configuration and optional seed files are separate from runtime data.
-Runtime metadata belongs in SQLite under the user-level runtime directory,
-`~/.managed-agents/<workspace-name>-<hash>/data.db` by default. Uploaded bytes,
-snapshots, and sandbox workspaces live under the same per-workspace runtime
-directory and should not be committed.
+Workspace configuration and runtime state live under the workspace boundary.
+Runtime metadata belongs in SQLite at `<workspace>/.managed-agents/data.db` by
+default. Uploaded bytes, logs, snapshots, and sandbox workspaces live under the
+same workspace state directory and should not be committed unless intentionally
+snapshotting local state.
 
 ## Workspace Boundary
 
 ```mermaid
 graph TB
     Workspace["Workspace<br/>project boundary"]
-    Config["Config<br/>managed-agents.config.yaml"]
+    Config["Config<br/>.managed-agents/config.yaml"]
     Agents["Agent Seeds<br/>agents/*.yaml"]
     Skills["Skill Seeds<br/>skills/*/SKILL.md"]
-    RuntimeData["Runtime Data<br/>~/.managed-agents/&lt;workspace&gt;/"]
+    RuntimeData["Runtime Data<br/>.managed-agents/"]
     DB["SQLite<br/>data.db"]
     Files["Blob Storage<br/>files/ skills/ snapshots/"]
     Vaults["Credential Vaults"]

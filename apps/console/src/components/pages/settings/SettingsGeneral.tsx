@@ -24,7 +24,7 @@ export function SettingsGeneral({ data }: { data: ConsoleData; setView: (view: V
       <div className="workspaceGrid">
         <div className="panel subtlePanel">
           <h2>Project</h2>
-          <p>Runtime records are stored outside the source tree, while seed directories stay in the project.</p>
+          <p>Workspace config, metadata, logs, and runtime files live under the workspace state directory.</p>
           <KeyValuePanel rows={[
             ['Workspace', workspaceLabel],
             ['Root folder', pathName(data.workspace?.root) || data.workspace?.name],
@@ -50,5 +50,5 @@ export function SettingsGeneral({ data }: { data: ConsoleData; setView: (view: V
 function runtimeDatabasePath(workspace: Workspace | null) {
   return workspace?.databasePath
     ?? workspace?.directories?.database
-    ?? (workspace?.dataDir ? `${workspace.dataDir.replace(/\/$/, '')}/managed-agents.db` : undefined);
+    ?? (workspace?.dataDir ? `${workspace.dataDir.replace(/\/$/, '')}/data.db` : undefined);
 }

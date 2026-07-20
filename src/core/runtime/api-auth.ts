@@ -4,7 +4,6 @@ import { countActiveManagedApiKeys, validateManagedApiKey } from '../auth/api-ke
 
 export interface RuntimeApiAuthOptions {
   db: Database;
-  configKeys?: string[];
 }
 
 export interface RuntimeApiAuth {
@@ -14,7 +13,7 @@ export interface RuntimeApiAuth {
 }
 
 export function resolveRuntimeApiAuth(options: RuntimeApiAuthOptions): RuntimeApiAuth {
-  const apiKeys = resolveApiKeys(options.configKeys);
+  const apiKeys = resolveApiKeys();
 
   return {
     apiKeys,

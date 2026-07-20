@@ -33,8 +33,8 @@ export interface ModelConfig {
   name: string;
   /** Provider type */
   provider: ModelProviderType;
-  /** Model identifier (e.g. 'gpt-4o', 'claude-sonnet-4-20250514') */
-  model: string;
+  /** Resolved model identifier from an Agent (e.g. 'gpt-4o'). Provider-only configs omit this. */
+  model?: string;
   /** API endpoint (supports ${ENV_VAR} syntax) */
   base_url?: string;
   /** Authentication key (supports ${ENV_VAR} syntax) */
@@ -52,7 +52,7 @@ export type RuntimeConfigState = 'configured' | 'missing_env' | 'not_set';
 export interface RuntimeModelInfo {
   name: string;
   provider: string;
-  model: string;
+  model?: string;
   base_url?: string;
   api_key_state: RuntimeConfigState;
   base_url_state: RuntimeConfigState;

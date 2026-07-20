@@ -2,15 +2,12 @@ import { existsSync, readFileSync } from 'node:fs';
 import { nanoid } from 'nanoid';
 import { parse as parseYaml } from 'yaml';
 import type { Database } from '@/core/db/database.js';
-import { resolveEnvVars } from '@/core/config/env-resolver.js';
-import type { MemoryProvider } from '@/core/memory/memory-provider.js';
-import { SqliteMemoryProvider } from '@/core/memory/sqlite-memory-provider.js';
+import type { RuntimeSettings, RuntimeSettingsSeed } from '@/core/settings/store.js';
 import type { ModelConfig } from '@/types/model.js';
 
 export type RuntimeConfigBootstrap = {
-  apiKeys: string[];
   models: ModelConfig[];
-  memory?: MemoryProvider;
+  settingsSeed: RuntimeSettingsSeed;
 };
 
 export function ensureDefaultEnvironment(db: Database): void {
@@ -29,40 +26,32 @@ export function loadRuntimeConfigBootstrap({
   configPath: string;
   target: string;
 }): RuntimeConfigBootstrap {
-  if (!existsSync(configPath)) return { apiKeys: [], models: [] };
+  if (!existsSync(configPath)) return { models: [], settingsSeed: {} };
 
   const configContent = readFileSync(configPath, 'utf-8');
   const config = parseYaml(configContent) as any;
-  const apiKeys = readConfigApiKeys(config);
-  const memory = config.memory?.provider === 'sqlite' ? new SqliteMemoryProvider(db) : undefined;
   const models = readConfigModels(config, target);
+  const settingsSeed = readConfigSettingsSeed(config);
 
   seedConfigEnvironments(db, config);
 
-  return { apiKeys, models, memory };
-}
-
-function readConfigApiKeys(config: any): string[] {
-  if (!Array.isArray(config.api_keys)) return [];
-  return config.api_keys
-    .map((key: string) => (typeof key === 'string' ? resolveEnvVars(key, false) : ''))
-    .filter(Boolean);
+  return { models, settingsSeed };
 }
 
 function readConfigModels(config: any, target: string): ModelConfig[] {
-  const baseModels: any[] = Array.isArray(config.models) ? config.models : [];
-  const overrideModels: any[] = config.overrides?.[target]?.models ?? [];
-  const merged = new Map<string, any>();
-  for (const model of baseModels) merged.set(model.name, model);
-  for (const model of overrideModels) merged.set(model.name, { ...merged.get(model.name), ...model });
-  return [...merged.values()].map((model) => ({
-    name: model.name,
-    provider: model.provider,
-    model: model.model,
+  const baseModel = config.model && typeof config.model === 'object' ? config.model : undefined;
+  const overrideModel = config.overrides?.[target]?.model && typeof config.overrides[target].model === 'object'
+    ? config.overrides[target].model
+    : undefined;
+  const model = { ...baseModel, ...overrideModel };
+  if (!model.provider && !model.vendor && !model.base_url && !model.api_key) return [];
+  return [{
+    name: 'default',
+    provider: model.provider ?? model.vendor ?? 'openai',
     base_url: model.base_url,
     api_key: model.api_key,
-    is_default: Boolean(model.is_default),
-  }) as ModelConfig);
+    is_default: true,
+  } as ModelConfig];
 }
 
 function seedConfigEnvironments(db: Database, config: any): void {
@@ -78,4 +67,52 @@ function seedConfigEnvironments(db: Database, config: any): void {
       );
     }
   }
+}
+
+function readConfigSettingsSeed(config: any): RuntimeSettingsSeed {
+  const seed: RuntimeSettingsSeed = {};
+  const storage = readStorageSeed(config.storage);
+  if (storage) seed.storage = storage;
+  const memory = readMemorySeed(config.memory);
+  if (memory) seed.memory = memory;
+  return seed;
+}
+
+function readStorageSeed(value: unknown): RuntimeSettings['storage'] | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const config = value as Record<string, any>;
+  const metadata = config.metadata && typeof config.metadata === 'object' ? config.metadata : {};
+  const artifacts = config.artifacts && typeof config.artifacts === 'object' ? config.artifacts : {};
+  const metadataProvider = metadata.provider === 'postgres' || metadata.provider === 'mysql' ? metadata.provider : 'sqlite';
+  const artifactProvider = artifacts.provider === 's3' ? 's3' : 'local';
+  return {
+    metadata: {
+      provider: metadataProvider,
+      options: plainOptions(metadata.options),
+    },
+    artifacts: {
+      provider: artifactProvider,
+      options: {
+        ...(artifactProvider === 'local' ? { base_path: 'files' } : {}),
+        ...plainOptions(artifacts.options),
+      },
+    },
+  };
+}
+
+function readMemorySeed(value: unknown): RuntimeSettings['memory'] | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const config = value as Record<string, any>;
+  const provider = config.provider === 'memu' || config.provider === 'mem0' ? config.provider : 'sqlite';
+  return {
+    enabled: config.enabled !== false,
+    provider,
+    options: plainOptions(config.options),
+  };
+}
+
+function plainOptions(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? { ...(value as Record<string, unknown>) }
+    : {};
 }

@@ -365,16 +365,22 @@ export type Workspace = {
   root?: string;
   configDir?: string;
   dataDir?: string;
+  databasePath?: string;
   agentsDir?: string;
   skillsDir?: string;
   configPath?: string;
+  logFile?: string;
+  logsDir?: string;
   target?: string;
   directories?: {
     root?: string;
     agents?: string;
     skills?: string;
     data?: string;
+    database?: string;
     config?: string;
+    logs?: string;
+    logFile?: string;
   };
 };
 

@@ -35,14 +35,14 @@ describe('Managed Agents API', () => {
     agentsDir = join(tmpDir, 'agents');
     skillsDir = join(tmpDir, 'skills');
     dataDir = join(tmpDir, '.managed-agents');
-    const configPath = join(tmpDir, 'managed-agents.config.yaml');
+    const configPath = join(tmpDir, '.managed-agents', 'config.yaml');
     mkdirSync(agentsDir, { recursive: true });
     mkdirSync(skillsDir, { recursive: true });
     mkdirSync(dataDir, { recursive: true });
     writeFileSync(join(agentsDir, 'echo-agent.yaml'), 'name: echo-agent\nmodel: claude-sonnet-4-6\n');
     mkdirSync(join(skillsDir, 'research'), { recursive: true });
     writeFileSync(join(skillsDir, 'research', 'SKILL.md'), '---\nname: research\ndescription: Use cited sources.\n---\n# Research\n\nUse cited sources.\n');
-    writeFileSync(configPath, 'models:\n  - name: local\n    api_key: secret-value\n');
+    writeFileSync(configPath, 'model:\n  provider: openai\n  api_key: secret-value\n');
     db = new Database(join(tmpDir, 'test.db'));
     db.runMigrations();
     db.exec(`INSERT INTO environments (id, name, config) VALUES ('env_default', 'local', '{}')`);
@@ -648,8 +648,8 @@ describe('Managed Agents API', () => {
       const templates = await templatesRes.json();
       const incidentCommander = templates.data.find((item: any) => item.name === 'Incident commander');
       expect(incidentCommander).toBeDefined();
-      expect(incidentCommander.agent.model).toBe('local');
-      expect(templates.data.every((item: any) => item.agent.model === 'local')).toBe(true);
+      expect(incidentCommander.agent.model).toBe('gpt-4o');
+      expect(templates.data.every((item: any) => item.agent.model === 'gpt-4o')).toBe(true);
       expect(incidentCommander.agent.tools.some((tool: any) => tool.type === 'mcp_toolset' && tool.mcp_server_name === 'sentry')).toBe(true);
       expect(templates.data.every((item: any) => item.type === 'template')).toBe(true);
 

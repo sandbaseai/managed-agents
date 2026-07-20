@@ -52,9 +52,8 @@ anthropic-beta: agent-memory-2026-07-22
 ## Authentication
 
 Authentication is disabled by default for local development. It is enabled when
-at least one API key exists. Keys can be configured in
-`managed-agents.config.yaml`, supplied through `MANAGED_AGENTS_API_KEY`, or
-created through `/v1/api-keys`.
+at least one API key exists. Keys can be supplied through
+`MANAGED_AGENTS_API_KEY` or created through `/v1/api-keys`.
 
 Send a bearer token with every request once authentication is enabled:
 

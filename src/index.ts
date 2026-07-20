@@ -6,12 +6,12 @@
  */
 
 import { serve } from '@hono/node-server';
-import { mkdirSync } from 'node:fs';
+import { appendFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { Database } from './core/db/database.js';
 import { createServer } from './api/server.js';
-import { resolveDataDir, resolveUserPath } from './core/config/paths.js';
+import { logDirForFile, resolveConfigPath, resolveDataDir, resolveLogFile, resolveUserPath, resolveWorkspaceRoot } from './core/config/paths.js';
 import { composeRuntimeFromSettings } from './core/runtime/composition.js';
 import { ensureDefaultEnvironment, loadRuntimeConfigBootstrap } from './core/runtime/config-bootstrap.js';
 import { createRuntimeStopper } from './core/runtime/lifecycle.js';
@@ -35,15 +35,17 @@ const VERSION = '0.1.0';
 async function startServer(opts: StartServerOptions) {
   const port = parseInt(opts.port, 10);
   const host = opts.host;
-  const workspaceRoot = process.cwd();
+  const workspaceRoot = resolveWorkspaceRoot(opts.workspace);
   const dataDir = resolveDataDir(opts.dataDir, workspaceRoot);
   const agentsDir = resolveUserPath(opts.agentsDir, workspaceRoot);
   const skillsDir = resolveUserPath(opts.skillsDir, workspaceRoot);
-  const configPath = resolveUserPath(opts.config, workspaceRoot);
+  const configPath = resolveConfigPath(opts.config, workspaceRoot);
+  const logFile = resolveLogFile(opts.logFile, workspaceRoot);
   const target = opts.target ?? 'local';
 
-  // Initialize data directory
+  // Initialize workspace state directories
   mkdirSync(dataDir, { recursive: true });
+  mkdirSync(logDirForFile(logFile), { recursive: true });
 
   // Initialize database (migrations are embedded and bundle-safe)
   const dbPath = join(dataDir, 'data.db');
@@ -66,7 +68,7 @@ async function startServer(opts: StartServerOptions) {
     db,
     dataDir,
     modelRegistry,
-    memorySeedEnabled: Boolean(configBootstrap.memory),
+    settingsSeed: configBootstrap.settingsSeed,
     sandboxProviders: sandboxRegistry.listTypes(),
   });
   const effectiveSettings = runtimeComposition.settings.effective_config;
@@ -95,11 +97,17 @@ async function startServer(opts: StartServerOptions) {
     console.log(`  Recovery:  reconciled ${reconciled} interrupted session(s)`);
   }
 
-  const runtimeApiAuth = resolveRuntimeApiAuth({ db, configKeys: configBootstrap.apiKeys });
+  const runtimeApiAuth = resolveRuntimeApiAuth({ db });
 
   // Observability
   const logStore = new InMemoryLogStore();
-  const logger = createLogger({ logStore });
+  const logger = createLogger({
+    logStore,
+    write: (line) => {
+      process.stderr.write(line + '\n');
+      appendFileSync(logFile, line + '\n', 'utf8');
+    },
+  });
   const metrics = new Metrics();
   let server: ReturnType<typeof serve> | undefined;
   const stopRuntime = createRuntimeStopper({
@@ -126,9 +134,12 @@ async function startServer(opts: StartServerOptions) {
     workspace: {
       root: workspaceRoot,
       dataDir,
+      databasePath: dbPath,
       agentsDir,
       skillsDir,
       configPath,
+      logFile,
+      logsDir: logDirForFile(logFile),
       target,
     },
     artifactStorageDir: () => artifactStore.rootPath(),

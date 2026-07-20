@@ -1,16 +1,18 @@
 import { Command } from 'commander';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { defaultTemplateCacheDir } from '../core/config/paths.js';
+import { defaultConfigPath, defaultTemplateCacheDir, WORKSPACE_STATE_DIR } from '../core/config/paths.js';
 import { createTemplate, installTemplate, listTemplates, resolveTemplateSource } from '../core/templates/templates.js';
 
 export interface StartServerOptions {
   port: string;
   host: string;
+  workspace?: string;
   dataDir?: string;
+  logFile?: string;
   agentsDir: string;
   skillsDir: string;
-  config: string;
+  config?: string;
   target?: string;
 }
 
@@ -35,10 +37,12 @@ export function createCliProgram({ version, startServer }: CliProgramOptions): C
     .description('Start the managed-agents server')
     .option('-p, --port <port>', 'Server port', '3000')
     .option('--host <host>', 'Server host', '127.0.0.1')
-    .option('-d, --data-dir <dir>', 'Data directory (default: ~/.managed-agents/<workspace>)')
+    .option('-w, --workspace <dir>', 'Workspace root directory', '.')
+    .option('-d, --data-dir <dir>', `Workspace state directory (default: <workspace>/${WORKSPACE_STATE_DIR})`)
+    .option('--log-file <file>', `Runtime log file (default: <workspace>/${WORKSPACE_STATE_DIR}/logs/runtime.log)`)
     .option('--agents-dir <dir>', 'Agents directory', 'agents')
     .option('--skills-dir <dir>', 'Skills directory', 'skills')
-    .option('-c, --config <file>', 'Config file path', 'managed-agents.config.yaml')
+    .option('-c, --config <file>', `Config file path (default: <workspace>/${WORKSPACE_STATE_DIR}/config.yaml)`)
     .option('--target <target>', 'Deployment target for config overrides (local|cloud)', 'local')
     .action(async (opts) => {
       await startServer(opts);
@@ -86,12 +90,12 @@ export function createCliProgram({ version, startServer }: CliProgramOptions): C
       console.log('run locally and in the cloud with no changes (Requirement 13).\n');
       console.log('v1 does not push to a hosted service yet. To deploy today:');
       console.log('  1. Build:   npm run build');
-      console.log('  2. Package: ship dist/ + agents/ + skills/ + managed-agents.config.yaml');
+      console.log(`  2. Package: ship dist/ + agents/ + skills/ + ${WORKSPACE_STATE_DIR}/config.yaml`);
       console.log('  3. Run:     node dist/index.js start --port $PORT');
       console.log('  4. Add model providers in Dashboard Settings > Models, or seed a new');
-      console.log('     workspace from managed-agents.config.yaml.');
+      console.log(`     workspace from ${WORKSPACE_STATE_DIR}/config.yaml.`);
       console.log('  5. Or containerize with any Node 22+ base image.\n');
-      console.log('Runtime provider settings are stored in SQLite under the data directory.');
+      console.log(`Runtime metadata, secrets, and logs are stored under ${WORKSPACE_STATE_DIR}/.`);
     });
 
   const template = program.command('template').description('Manage solution templates');
@@ -168,7 +172,7 @@ function initProject() {
   writeFileSync(
     join(cwd, 'agents', 'assistant.yaml'),
     `name: assistant
-model: default
+model: gpt-4o
 system: |
   You are a helpful assistant. Answer questions clearly and concisely.
 skills:
@@ -209,14 +213,22 @@ system instructions so the model knows the capability up-front.
 `,
   );
 
+  mkdirSync(join(cwd, WORKSPACE_STATE_DIR), { recursive: true });
   writeFileSync(
-    join(cwd, 'managed-agents.config.yaml'),
+    defaultConfigPath(cwd),
     `# managed-agents configuration
-models:
-  - name: default
-    provider: openai
-    model: gpt-4o
-    api_key: \${OPENAI_API_KEY}
+model:
+  provider: openai
+  api_key: \${OPENAI_API_KEY}
+
+storage:
+  metadata:
+    provider: sqlite
+    options: {}
+  artifacts:
+    provider: local
+    options:
+      base_path: files
 
 environments:
   local:
@@ -228,7 +240,7 @@ environments:
   console.log('Initialized managed-agents project:');
   console.log('  agents/assistant.yaml');
   console.log('  skills/');
-  console.log('  managed-agents.config.yaml');
+  console.log(`  ${WORKSPACE_STATE_DIR}/config.yaml`);
   console.log('\nNext: start the runtime, then add a model provider in Dashboard Settings > Models:');
   console.log('  managed-agents start');
   if (process.argv[1]) {

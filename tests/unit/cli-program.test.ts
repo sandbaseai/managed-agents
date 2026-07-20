@@ -39,9 +39,9 @@ describe('CLI program', () => {
     expect(received).toMatchObject({
       port: '3000',
       host: '127.0.0.1',
+      workspace: '.',
       agentsDir: 'agents',
       skillsDir: 'skills',
-      config: 'managed-agents.config.yaml',
       target: 'local',
     });
   });

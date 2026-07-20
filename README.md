@@ -170,12 +170,28 @@ Open the Dashboard:
 http://127.0.0.1:3000/dashboard
 ```
 
-Open `Settings > Models` and configure the single workspace model vendor:
-vendor, optional base URL, and API key. The Dashboard stores Settings V2 in the
-runtime SQLite database under the user data directory. Agents that use
-`model: default` run through that configured vendor; concrete model IDs remain
-adapter-owned implementation details. No source-controlled file changes are
-required for normal local use.
+Configure the workspace model connection in `.managed-agents/config.yaml`:
+provider, optional base URL, and API key. Agents choose concrete model IDs in
+their own YAML definitions; the workspace config only says how to reach the
+model service.
+
+The same config file also declares the default local storage layout. The first
+release uses SQLite for metadata and local files for artifacts:
+
+```yaml
+model:
+  provider: openai
+  api_key: ${OPENAI_API_KEY}
+
+storage:
+  metadata:
+    provider: sqlite
+    options: {}
+  artifacts:
+    provider: local
+    options:
+      base_path: files
+```
 
 The API is available at:
 
@@ -199,21 +215,19 @@ my-agents/
 +-- skills/                  # Optional seed skill packages
 |   +-- example-skill/
 |       +-- SKILL.md
-+-- managed-agents.config.yaml
++-- .managed-agents/
+    +-- config.yaml          # Workspace runtime configuration
+    +-- data.db              # SQLite metadata store
+    +-- logs/
+    |   +-- runtime.log
+    +-- files/               # Uploaded file bytes
+    +-- skills/              # Uploaded custom skill package assets
+    +-- snapshots/           # Session workspace snapshots
+    +-- sandbox/             # Local session workspaces
 ```
 
-Runtime state is stored outside the repository by default:
-
-```text
-~/.managed-agents/<workspace-name>-<hash>/
-+-- data.db                  # SQLite metadata store
-+-- files/                   # Uploaded file bytes
-+-- skills/                  # Uploaded custom skill package assets
-+-- snapshots/               # Session workspace snapshots
-+-- sandbox/                 # Local session workspaces
-```
-
-Set `MANAGED_AGENTS_HOME` or pass `--data-dir` to override this location.
+Pass `--workspace`, `--config`, `--data-dir`, or `--log-file` when you need to
+override the default workspace layout.
 
 ## Agent Definition
 
@@ -224,7 +238,7 @@ or uniqueness key.
 ```yaml
 name: Incident commander
 description: Triages alerts, opens incident tickets, and coordinates status updates.
-model: default
+model: gpt-4o
 system: |-
   You are an on-call incident commander. Be decisive, cite the evidence you used,
   and recommend rollback when confidence is high.
@@ -267,11 +281,11 @@ metadata:
   template: incident-commander
 ```
 
-Use `model: default` for the common path. The workspace Settings page maps that
-name to the configured vendor, and each vendor adapter owns its default concrete
-model ID. Runtime settings are stored in SQLite under the runtime data
-directory. API clients may also send a model configuration object when they need
-additional controls such as `speed`.
+Set `model` on the Agent to the concrete model ID you want to call, such as
+`gpt-4o`, `claude-sonnet-4-20250514`, or a gateway-qualified value like
+`openai/gpt-5.5`. The workspace model config supplies provider credentials and
+base URL only. API clients may also send a model configuration object when they
+need additional controls such as `speed`.
 
 ## Dashboard
 
@@ -517,18 +531,11 @@ for await (const event of client.sessions.chat(session.id, 'Hello')) {
 ## Authentication
 
 Local development is open by default. Authentication turns on when at least one
-API key exists. You can create managed keys from the Console/API, or configure a
-static key:
+API key exists. You can create managed keys from the Console/API, or set a
+static key through the environment:
 
 ```bash
 export MANAGED_AGENTS_API_KEY=sk-local-example
-```
-
-Static keys can also be configured in `managed-agents.config.yaml`:
-
-```yaml
-api_keys:
-  - ${MANAGED_AGENTS_API_KEY}
 ```
 
 Create a managed key through the API:
@@ -620,7 +627,7 @@ Manual example smoke, when you want to inspect the running Dashboard:
 
 ```bash
 cd examples/basic
-npx managed-agents start --config managed-agents.config.yaml --agents-dir agents --skills-dir skills
+npx managed-agents start --config .managed-agents/config.yaml --agents-dir agents --skills-dir skills
 ```
 
 Then open `http://127.0.0.1:3000/dashboard` and configure

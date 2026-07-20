@@ -70,7 +70,10 @@ export class ModelRegistry {
    */
   resolveModelConfig(name: string): ModelConfig {
     const exact = this.models.get(name);
-    if (exact) return exact;
+    if (exact?.model) return exact;
+    if (exact && !exact.model) {
+      throw new ModelNotFoundError(name, Array.from(this.models.keys()), 'Provider configuration does not include a concrete model id. Set model on the Agent instead.');
+    }
 
     const parsed = parseModelReference(name);
     const providerConfig = parsed.provider
@@ -101,6 +104,9 @@ export class ModelRegistry {
    */
   createModel(name: string): LanguageModelV1 {
     const config = this.resolveModelConfig(name);
+    if (!config.model) {
+      throw new ModelNotFoundError(name, Array.from(this.models.keys()), 'Agent model id is required.');
+    }
     const resolvedApiKey = config.api_key ? resolveEnvVars(config.api_key, false) : undefined;
     const resolvedBaseUrl = config.base_url ? resolveEnvVars(config.base_url, false) : undefined;
 
@@ -144,7 +150,7 @@ export class ModelRegistry {
       .map((config) => ({
       name: config.name,
       provider: config.provider ?? 'unknown',
-      model: config.model ?? config.name,
+      ...(config.model ? { model: config.model } : {}),
       base_url: publicBaseUrl(config.base_url),
       api_key_state: configState(config.api_key),
       base_url_state: configState(config.base_url),
@@ -280,11 +286,12 @@ export class ModelNotFoundError extends Error {
   constructor(
     public readonly modelName: string,
     public readonly available: string[],
+    detail?: string,
   ) {
     const suggestion = available.length > 0
       ? `Available models: ${available.join(', ')}`
       : 'No models registered. Add a model provider in Dashboard Settings > Models';
-    super(`Model not found: "${modelName}". ${suggestion}`);
+    super(`Model not found: "${modelName}". ${detail ? `${detail} ` : ''}${suggestion}`);
     this.name = 'ModelNotFoundError';
   }
 }

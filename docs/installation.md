@@ -116,12 +116,14 @@ This creates:
 ```text
 agents/
 skills/
-managed-agents.config.yaml
+.managed-agents/
+  config.yaml
+  data.db
+  logs/runtime.log
 ```
 
-`agents/` and `skills/` are optional seed/import folders. Runtime metadata and
-uploaded resource state are stored outside the repository under
-`~/.managed-agents/<workspace-name>-<hash>/` by default.
+`agents/` and `skills/` are optional seed/import folders. Runtime metadata,
+uploaded resource state, and logs live inside the workspace state directory.
 
 ## Configure The Model Vendor
 
@@ -138,12 +140,23 @@ Configure the workspace model vendor, then click `Validate` or
 - `Base URL`: required for OpenAI-compatible local or hosted endpoints
 - `API key`: the provider key for model requests
 
-Runtime settings are stored as one versioned Settings V2 document in SQLite
-under the runtime data directory, not in the source checkout. Agents using
-`model: default` run through the configured vendor. Concrete model IDs remain
-adapter-owned implementation details; the Dashboard does not ask for a model ID.
-Config-file model entries are only used as optional bootstrap data for a new
-workspace.
+Runtime model connection settings live in `.managed-agents/config.yaml`. Agents
+set concrete model IDs in their own definitions, for example `model: gpt-4o` or
+`model: openai/gpt-5.5`. The workspace model config supplies provider
+credentials and base URL only.
+
+The same file should make the local storage defaults explicit:
+
+```yaml
+storage:
+  metadata:
+    provider: sqlite
+    options: {}
+  artifacts:
+    provider: local
+    options:
+      base_path: files
+```
 
 The same Settings page also configures the single active Loop engine, Storage
 backends, Memory backend, and default Sandbox. Docker appears as available only
@@ -189,7 +202,7 @@ containers until Docker is running again.
 managed-agents start \
   --host 127.0.0.1 \
   --port 3000 \
-  --config managed-agents.config.yaml \
+  --config .managed-agents/config.yaml \
   --agents-dir agents \
   --skills-dir skills
 ```
@@ -198,14 +211,16 @@ managed-agents start \
 | --- | --- | --- |
 | `--host` | `127.0.0.1` | Bind address for the API and Console. |
 | `--port` | `3000` | HTTP port. |
-| `--config` | `managed-agents.config.yaml` | Runtime configuration file. |
+| `--workspace` | `.` | Workspace root containing config, data, logs, agents, and skills. |
+| `--config` | `.managed-agents/config.yaml` | Runtime configuration file. |
 | `--agents-dir` | `agents` | Directory containing agent YAML files. |
 | `--skills-dir` | `skills` | Directory containing skill packages. |
-| `--data-dir` | `~/.managed-agents/<workspace-name>-<hash>` | SQLite database, uploaded files, and runtime data. |
+| `--data-dir` | `.managed-agents` | SQLite database, uploaded files, and runtime data. |
+| `--log-file` | `.managed-agents/logs/runtime.log` | Structured runtime log file. |
 | `--target` | unset | Optional runtime target label surfaced in the Console. |
 
-Set `MANAGED_AGENTS_HOME` to move all workspace runtime folders together, or
-pass `--data-dir` for a single workspace override.
+Pass `--workspace` for a different workspace root, or override `--config`,
+`--data-dir`, and `--log-file` individually.
 
 The API and Dashboard are served from the same origin. CORS is restricted by
 default to same-origin and local loopback browser origins. For a deployed
@@ -225,13 +240,6 @@ static key before starting the runtime:
 ```bash
 export MANAGED_AGENTS_API_KEY=sk-local-example
 managed-agents start
-```
-
-Static keys can also be configured in `managed-agents.config.yaml`:
-
-```yaml
-api_keys:
-  - ${MANAGED_AGENTS_API_KEY}
 ```
 
 Clients must then send:

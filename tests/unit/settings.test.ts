@@ -636,7 +636,8 @@ describe('Settings V2 activation', () => {
     const initial = getOrSeedRuntimeSettings(db);
     const config = { ...initial.effective_config, model: { vendor: 'anthropic' as const, options: {} } };
     const model = modelConfigFromRuntimeSettings(db, config, directory);
-    expect(model).toMatchObject({ name: 'default', provider: 'anthropic', model: 'claude-sonnet-4-20250514' });
+    expect(model).toMatchObject({ name: 'default', provider: 'anthropic' });
+    expect(model.model).toBeUndefined();
     db.close();
   });
 

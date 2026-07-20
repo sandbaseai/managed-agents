@@ -51,9 +51,12 @@ export interface ServerDeps {
   workspace?: {
     root: string;
     dataDir: string;
+    databasePath?: string;
     agentsDir: string;
     skillsDir: string;
     configPath: string;
+    logFile?: string;
+    logsDir?: string;
     target: string;
   };
   /** Active local artifact directory resolved from effective runtime settings. */

@@ -24,15 +24,14 @@ describe('runtime API auth', () => {
     return db;
   }
 
-  it('merges config and environment API keys', () => {
+  it('loads static API keys from the environment', () => {
     const db = makeDb();
     process.env.MANAGED_AGENTS_API_KEY = 'env-one, env-two';
 
-    const auth = resolveRuntimeApiAuth({ db, configKeys: ['config-one', 'env-one'] });
+    const auth = resolveRuntimeApiAuth({ db });
 
-    expect(auth.apiKeys).toEqual(['config-one', 'env-one', 'env-two']);
+    expect(auth.apiKeys).toEqual(['env-one', 'env-two']);
     expect(auth.hasApiKeys()).toBe(true);
-    expect(auth.validateApiKey('config-one')).toBe(true);
     expect(auth.validateApiKey('env-two')).toBe(true);
     expect(auth.validateApiKey('missing')).toBe(false);
     db.close();
@@ -42,7 +41,7 @@ describe('runtime API auth', () => {
     const db = makeDb();
     delete process.env.MANAGED_AGENTS_API_KEY;
 
-    const auth = resolveRuntimeApiAuth({ db, configKeys: [] });
+    const auth = resolveRuntimeApiAuth({ db });
     expect(auth.hasApiKeys()).toBe(false);
 
     const created = createManagedApiKey(db, 'Dashboard key');

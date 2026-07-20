@@ -26,7 +26,7 @@ export function listModelProviders(db: Database): ModelProviderRecord[] {
   `).all() as Array<{
     name: string;
     provider: string;
-    model: string;
+    model: string | null;
     base_url: string | null;
     api_key: string | null;
     is_default: number;
@@ -37,7 +37,7 @@ export function listModelProviders(db: Database): ModelProviderRecord[] {
   return rows.map((row) => ({
     name: row.name,
     provider: row.provider,
-    model: row.model,
+    model: row.model ?? undefined,
     base_url: row.base_url ?? undefined,
     api_key: row.api_key ?? undefined,
     is_default: row.is_default === 1,
@@ -62,7 +62,7 @@ export function createModelProvider(db: Database, input: ModelProviderInput): Mo
     `).run(
       record.name,
       record.provider,
-      record.model,
+      record.model ?? null,
       record.base_url ?? null,
       record.api_key ?? null,
       '{}',
@@ -104,7 +104,7 @@ export function toRuntimeModelInfo(record: ModelProviderRecord): RuntimeModelInf
   return {
     name: record.name,
     provider: record.provider,
-    model: record.model,
+    ...(record.model ? { model: record.model } : {}),
     base_url: publicBaseUrl(record.base_url),
     api_key_state: configState(record.api_key),
     base_url_state: configState(record.base_url),
@@ -119,9 +119,6 @@ function getModelProvider(db: Database, name: string): ModelProviderRecord | und
 function normalizeInput(input: ModelProviderInput): ModelConfig {
   const provider = cleanString(input.provider) || 'openai';
   const model = cleanString(input.model);
-  if (!model) {
-    throw new Error('model is required');
-  }
 
   const name = cleanString(input.name) || `${provider}-${nanoid(8)}`;
   if (name.length > 80) {

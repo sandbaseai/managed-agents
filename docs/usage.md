@@ -11,9 +11,9 @@ debugging managed agents. The usual workflow is:
 
 ## Workspace Layout
 
-A workspace is a folder that contains runtime configuration plus optional seed
-agent definitions and skill packages. Live metadata is stored in SQLite under
-the user-level runtime directory.
+A workspace is a folder that contains runtime configuration, runtime state, and
+optional seed agent definitions and skill packages. Live metadata is stored in
+SQLite under the workspace state directory.
 
 ```text
 my-agents/
@@ -22,23 +22,21 @@ my-agents/
 +-- skills/                  # Optional seed skill packages
 |   +-- code-review/
 |       +-- SKILL.md
-+-- managed-agents.config.yaml
-```
-
-Runtime state is stored outside the repository by default:
-
-```text
-~/.managed-agents/<workspace-name>-<hash>/
-+-- data.db                  # SQLite metadata store
-+-- files/                   # Uploaded file bytes
-+-- skills/                  # Uploaded custom skill package assets
-+-- snapshots/               # Session workspace snapshots
-+-- sandbox/                 # Local session workspaces
++-- .managed-agents/
+    +-- config.yaml
+    +-- data.db              # SQLite metadata store
+    +-- logs/
+    |   +-- runtime.log
+    +-- files/               # Uploaded file bytes
+    +-- skills/              # Uploaded custom skill package assets
+    +-- snapshots/           # Session workspace snapshots
+    +-- sandbox/             # Local session workspaces
 ```
 
 The workspace is portable. Commit examples, templates, config, and any seed
-definitions you intentionally maintain. Use `MANAGED_AGENTS_HOME` or
-`--data-dir` when you need to move runtime state.
+definitions you intentionally maintain. Keep `.managed-agents/data.db`,
+`.managed-agents/logs/`, `.managed-agents/files/`, and sandbox state out of
+source control unless you intentionally want to snapshot local runtime data.
 
 ## Agent Definitions
 
@@ -48,7 +46,7 @@ Console/API. Once loaded, the runtime source of truth is SQLite.
 ```yaml
 name: assistant
 description: Helps with development tasks.
-model: default
+model: gpt-4o
 system: |
   You are a helpful assistant. Answer clearly and use tools when needed.
 mcp_servers: []

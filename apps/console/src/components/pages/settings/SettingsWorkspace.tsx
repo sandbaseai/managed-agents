@@ -8,8 +8,10 @@ export function WorkspacePathsPanel({ workspace }: { workspace: Workspace | null
   const directoryRows = [
     { label: 'Agent seed directory', path: workspace?.directories?.agents ?? workspace?.agentsDir, defaultLabel: 'agents/', kind: 'directory' as const },
     { label: 'Skill seed directory', path: workspace?.directories?.skills ?? workspace?.skillsDir, defaultLabel: 'skills/', kind: 'directory' as const },
-    { label: 'Runtime data directory', path: workspace?.directories?.data ?? workspace?.dataDir, defaultLabel: '~/.managed-agents/<workspace>/', kind: 'directory' as const },
-    { label: 'Config file', path: workspace?.directories?.config ?? workspace?.configPath, defaultLabel: 'managed-agents.config.yaml', kind: 'file' as const },
+    { label: 'Workspace state directory', path: workspace?.directories?.data ?? workspace?.dataDir, defaultLabel: '.managed-agents/', kind: 'directory' as const },
+    { label: 'Config file', path: workspace?.directories?.config ?? workspace?.configPath, defaultLabel: '.managed-agents/config.yaml', kind: 'file' as const },
+    { label: 'Database', path: workspace?.directories?.database ?? workspace?.databasePath, defaultLabel: '.managed-agents/data.db', kind: 'file' as const },
+    { label: 'Runtime log', path: workspace?.directories?.logFile ?? workspace?.logFile, defaultLabel: '.managed-agents/logs/runtime.log', kind: 'file' as const },
   ];
 
   return (
@@ -51,7 +53,7 @@ export function SettingsWorkspace({ data }: { data: ConsoleData }) {
         <Info size={18} />
         <div>
           <strong>Single local workspace mode</strong>
-          <span>Start the server with another root or config directory to run a different workspace.</span>
+          <span>Start the server with another workspace root to use a different config, database, and log set.</span>
         </div>
       </div>
       <SummaryStrip

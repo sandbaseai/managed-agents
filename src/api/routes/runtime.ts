@@ -122,7 +122,10 @@ export function runtimeRoutes(deps: ServerDeps) {
           agents: workspace.agentsDir,
           skills: workspace.skillsDir,
           data: workspace.dataDir,
+          database: workspace.databasePath,
           config: workspace.configPath,
+          logs: workspace.logsDir,
+          logFile: workspace.logFile,
         }
         : {},
     });

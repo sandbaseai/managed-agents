@@ -2,11 +2,13 @@ import { Hono } from 'hono';
 import { getAgentSkillIds, getEnabledToolNames } from '@/core/agent/standard.js';
 import type { ServerDeps } from '../server.js';
 
+const DEFAULT_TEMPLATE_MODEL = 'gpt-4o';
+
 export function templateRoutes(deps: ServerDeps) {
   const app = new Hono();
 
   app.get('/', (c) => {
-    const templates = builtInTemplates(defaultTemplateModel(deps));
+    const templates = builtInTemplates(DEFAULT_TEMPLATE_MODEL);
     return c.json({
       data: templates,
       has_more: false,
@@ -16,17 +18,6 @@ export function templateRoutes(deps: ServerDeps) {
   });
 
   return app;
-}
-
-function runtimeModels(deps: ServerDeps) {
-  return deps.listRuntimeModels?.() ?? deps.runtime?.models ?? [];
-}
-
-function defaultTemplateModel(deps: ServerDeps) {
-  const models = runtimeModels(deps);
-  return models.find((model) => model.is_default)?.name
-    ?? models.find((model) => model.name.trim().length > 0)?.name
-    ?? 'default';
 }
 
 function builtInTemplates(defaultModelName: string) {

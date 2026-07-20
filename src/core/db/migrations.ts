@@ -102,7 +102,7 @@ CREATE TABLE compaction_boundaries (
 CREATE TABLE models (
   name TEXT PRIMARY KEY,
   provider TEXT NOT NULL,
-  model TEXT NOT NULL,
+  model TEXT,
   base_url TEXT,
   config TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))

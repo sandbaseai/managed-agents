@@ -30,7 +30,7 @@ describe('runtime session services', () => {
     ensureDefaultEnvironment(db);
     const agents = [{
       name: 'assistant',
-      model: 'default',
+      model: 'gpt-4o',
       system: 'You are helpful.',
       ...agentOverrides,
     }];

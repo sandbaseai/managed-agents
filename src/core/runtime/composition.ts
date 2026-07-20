@@ -1,7 +1,7 @@
 import type { Database } from '@/core/db/database.js';
 import type { MemoryProvider } from '@/core/memory/memory-provider.js';
 import { SqliteMemoryProvider } from '@/core/memory/sqlite-memory-provider.js';
-import { activateRuntimeSettings, localArtifactStorageDir, modelConfigFromRuntimeSettings, type RuntimeSettingsRecord } from '@/core/settings/store.js';
+import { activateRuntimeSettings, localArtifactStorageDir, modelConfigFromRuntimeSettings, type RuntimeSettingsRecord, type RuntimeSettingsSeed } from '@/core/settings/store.js';
 import { LocalArtifactStore } from '@/core/storage/artifact-store.js';
 import type { ModelRegistry } from '@/model/registry.js';
 import type { EnvironmentConfig, SandboxProviderType } from '@/types/sandbox.js';
@@ -18,15 +18,17 @@ export function composeRuntimeFromSettings({
   dataDir,
   modelRegistry,
   memorySeedEnabled,
+  settingsSeed,
   sandboxProviders = ['local'],
 }: {
   db: Database;
   dataDir: string;
   modelRegistry: ModelRegistry;
-  memorySeedEnabled: boolean;
+  memorySeedEnabled?: boolean;
+  settingsSeed?: RuntimeSettingsSeed;
   sandboxProviders?: string[];
 }): RuntimeComposition {
-  const settings = activateRuntimeSettings(db, { memoryEnabled: memorySeedEnabled }, dataDir, sandboxProviders);
+  const settings = activateRuntimeSettings(db, { memoryEnabled: memorySeedEnabled, ...settingsSeed }, dataDir, sandboxProviders);
   const effectiveSettings = settings.effective_config;
 
   modelRegistry.clear();

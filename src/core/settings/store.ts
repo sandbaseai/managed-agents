@@ -15,6 +15,7 @@ export {
   runtimeSettingsSecretStates,
   type RuntimeSettingsSecretStates,
 } from './secrets.js';
+export type { RuntimeSettings } from './schema.js';
 
 export type RuntimeSettingsRecord = {
   schema_version: 1;
@@ -33,6 +34,8 @@ export type SaveRuntimeSettingsResult =
 
 export type RuntimeSettingsSeed = {
   memoryEnabled?: boolean;
+  storage?: RuntimeSettings['storage'];
+  memory?: RuntimeSettings['memory'];
 };
 
 type SettingsRow = {
@@ -159,7 +162,6 @@ export function modelConfigFromRuntimeSettings(
   return {
     name: 'default',
     provider: config.model.vendor,
-    model: defaultModelForVendor(config.model.vendor),
     base_url: config.model.base_url,
     api_key: resolveRuntimeSettingsModelApiKey(db, config.model.api_key, dataDir),
     is_default: true,
@@ -298,7 +300,7 @@ function legacySettingsSeed(db: Database, seed: RuntimeSettingsSeed): RuntimeSet
     : envConfig.sandbox_provider === 'self_hosted'
       ? 'remote'
       : 'local';
-  const memoryEnabled = seed.memoryEnabled === true;
+  const memoryEnabled = seed.memory?.enabled ?? seed.memoryEnabled === true;
 
   return {
     schema_version: 1,
@@ -309,11 +311,11 @@ function legacySettingsSeed(db: Database, seed: RuntimeSettingsSeed): RuntimeSet
       options: {},
     },
     loop_engine: { provider: 'builtin', options: { default_max_steps: 25 } },
-    storage: {
+    storage: seed.storage ?? {
       metadata: { provider: 'sqlite', options: {} },
       artifacts: { provider: 'local', options: { base_path: 'files' } },
     },
-    memory: { enabled: memoryEnabled, provider: 'sqlite', options: {} },
+    memory: seed.memory ?? { enabled: memoryEnabled, provider: 'sqlite', options: {} },
     sandbox: {
       provider: sandbox,
       options: { timeout_seconds: numberValue(envConfig.timeout) ?? 300 },
@@ -346,12 +348,4 @@ function parseObject(value?: string): Record<string, unknown> {
 
 function numberValue(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
-}
-
-function defaultModelForVendor(vendor: RuntimeSettings['model']['vendor']): string {
-  switch (vendor) {
-    case 'anthropic': return 'claude-sonnet-4-20250514';
-    case 'openai': return 'gpt-4.1';
-    case 'openai_compatible': return 'gpt-4.1';
-  }
 }

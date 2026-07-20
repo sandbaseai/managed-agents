@@ -1,0 +1,19 @@
+# Example managed-agents configuration
+model:
+  provider: openai
+  base_url: ${OPENAI_BASE_URL}
+  api_key: ${OPENAI_API_KEY}
+
+storage:
+  metadata:
+    provider: sqlite
+    options: {}
+  artifacts:
+    provider: local
+    options:
+      base_path: files
+
+environments:
+  local:
+    sandbox_provider: local
+    timeout: 300

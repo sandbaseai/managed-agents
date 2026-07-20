@@ -3,7 +3,7 @@
  *
  * Optional bearer-token auth. Local-first by default: if no API key is
  * configured, the server runs unauthenticated (suitable for localhost dev).
- * When one or more keys are configured (via config or MANAGED_AGENTS_API_KEY),
+ * When one or more keys are configured (via MANAGED_AGENTS_API_KEY or managed keys),
  * all /v1 routes require `Authorization: Bearer <key>`.
  *
  * Health check (/v1/x/health), metrics, and the dashboard shell (/dashboard and its
@@ -25,9 +25,8 @@ export interface AuthConfig {
 const PUBLIC_PATHS = new Set(['/', '/dashboard', '/ui', '/v1/x/health', '/v1/x/metrics']);
 
 export function createAuthMiddleware(config: AuthConfig): MiddlewareHandler {
-  const keys = new Set((config.apiKeys ?? []).filter((k) => k && k.length > 0));
-
   return async (c, next) => {
+    const keys = new Set((config.apiKeys ?? []).filter((k) => k && k.length > 0));
     const enabled = keys.size > 0 || Boolean(config.hasApiKeys?.());
     if (!enabled) {
       return next();
@@ -60,11 +59,11 @@ export function createAuthMiddleware(config: AuthConfig): MiddlewareHandler {
 }
 
 /**
- * Resolve API keys from config + environment.
- * Env var MANAGED_AGENTS_API_KEY (comma-separated) is merged with config keys.
+ * Resolve static API keys from the process environment.
+ * Env var MANAGED_AGENTS_API_KEY may contain one or more comma-separated keys.
  */
-export function resolveApiKeys(configKeys?: string[]): string[] {
-  const keys = new Set<string>(configKeys ?? []);
+export function resolveApiKeys(): string[] {
+  const keys = new Set<string>();
   const envKeys = process.env['MANAGED_AGENTS_API_KEY'];
   if (envKeys) {
     for (const k of envKeys.split(',').map((s) => s.trim()).filter(Boolean)) {

@@ -164,8 +164,8 @@ describe('Runtime Settings forms', () => {
   it('makes masked API key preservation explicit', () => {
     const html = renderToStaticMarkup(<ModelSettingsForm adapters={[{ id: 'openai', label: 'OpenAI', status: 'available' }]} config={{ ...config, model: { ...config.model, api_key: '********' } }} onChange={() => {}} apiKeyConfigured={true} />);
     expect(html).toContain('placeholder="********"');
-    expect(html).toContain('Keep ******** to preserve the stored key');
-    expect(html).toContain('environment placeholder or a new key');
+    expect(html).toContain('The full key is stored encrypted');
+    expect(html).toContain('Keep ******** to preserve it');
   });
 
   it('renders metadata diagnostics and vertically flattened artifact settings', () => {
