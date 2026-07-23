@@ -10,7 +10,6 @@ import { MemoryStoreDetail, MemoryStores } from '../../apps/console/src/componen
 import { OutcomesPage, ScheduledDeploymentsPage, WebhooksPage } from '../../apps/console/src/components/pages/OperationsPages.js';
 import { SessionDetail, Sessions } from '../../apps/console/src/components/pages/SessionPages.js';
 import { Observability, SettingsLogs } from '../../apps/console/src/components/pages/settings/OperationsSettings.js';
-import { SettingsLoopEngine, SettingsMemory, SettingsModels, SettingsSandbox, SettingsStorage } from '../../apps/console/src/components/pages/settings/RuntimeSettings.js';
 import { SettingsView } from '../../apps/console/src/components/pages/settings/SettingsView.js';
 import type { SettingsSection } from '../../apps/console/src/components/pages/settings/navigation.js';
 import type { ConsoleData, RuntimeSettings, RuntimeSettingsConfig } from '../../apps/console/src/types.js';
@@ -436,36 +435,19 @@ describe('Console page static coverage', () => {
     const modal = readFileSync('apps/console/src/components/Modal.tsx', 'utf8');
     expect(modal).toContain("event.key === 'Escape'");
     expect(modal).toContain("document.body.classList.add('modalOpen')");
-    const runtimeSettings = readFileSync('apps/console/src/components/pages/settings/RuntimeSettings.tsx', 'utf8');
-    expect(runtimeSettings).not.toContain('<select value="sqlite" disabled>');
-    expect(runtimeSettings).not.toContain('<select value="local_filesystem" disabled>');
-    expect(runtimeSettings).not.toContain('<option value="mem0" disabled>');
-    expect(runtimeSettings).not.toContain('<option value="harness" disabled>');
-    expect(runtimeSettings).not.toContain('<option value="codex" disabled>');
-    expect(runtimeSettings).not.toContain('<option value="claude" disabled>');
-    expect(runtimeSettings).not.toContain('<option value="remote" disabled>');
-    expect(runtimeSettings).not.toContain('fake provider catalog');
-    expect(runtimeSettings).toContain('/v1/x/settings/validate');
-    expect(runtimeSettings).toContain('Validate now');
-    expect(runtimeSettings).toContain('SettingsTruthStrip');
-    expect(runtimeSettings).toContain('Deeper dry-run probes are tracked in the P0 spec');
-    expect(runtimeSettings).toContain('Model IDs stay in agent definitions or adapter config');
-    expect(runtimeSettings).toContain('Memory Stores remain under Default');
-    expect(runtimeSettings).toContain('Engine config JSON');
-    expect(runtimeSettings).toContain('Sandbox config JSON');
-    expect(runtimeSettings).toContain('Save engine');
-    expect(runtimeSettings).toContain('Save sandbox');
-    expect(runtimeSettings).toContain('parseConfig');
-    expect(runtimeSettings).toContain('JSON editor');
-    expect(runtimeSettings).toContain('Save JSON');
-    expect(runtimeSettings).toContain("await putJson<RuntimeSettings>('/v1/x/settings', parsed)");
-    expect(runtimeSettings).toContain('function SettingsNotice');
-    expect(runtimeSettings).toContain('noticeBox settingsNotice');
-    expect(runtimeSettings).not.toContain('mutedValue');
-    expect(runtimeSettings).not.toContain('<summary>JSON view</summary>');
-    expect(runtimeSettings).not.toContain('<div className="emptyValue">No environments configured</div>');
-    expect(runtimeSettings).toContain('title="No environments configured"');
-    expect(runtimeSettings).toContain('readonlySettingValue');
+    const settingsNavigation = readFileSync('apps/console/src/components/pages/settings/navigation.ts', 'utf8');
+    expect(settingsNavigation).toContain("label: 'Setup'");
+    expect(settingsNavigation).toContain("label: 'Advanced'");
+    expect(settingsNavigation).not.toContain("label: 'Loop engine'");
+    expect(settingsNavigation).not.toContain("label: 'Storage'");
+    expect(settingsNavigation).not.toContain("label: 'Memory'");
+    expect(settingsNavigation).not.toContain("label: 'Sandbox'");
+    const settingsAdvanced = readFileSync('apps/console/src/components/pages/settings/SettingsAdvanced.tsx', 'utf8');
+    expect(settingsAdvanced).toContain('Runtime defaults');
+    expect(settingsAdvanced).toContain('Loop engine editor');
+    expect(settingsAdvanced).toContain('Storage editor');
+    expect(settingsAdvanced).toContain('Memory editor');
+    expect(settingsAdvanced).toContain('Sandbox editor');
     expect(readFileSync('apps/console/src/components/pages/MemoryPages.tsx', 'utf8')).toContain('mobileResourceList');
     expect(readFileSync('apps/console/src/components/pages/MemoryPages.tsx', 'utf8')).toContain('mobileResourceCard');
     expect(readFileSync('apps/console/src/components/pages/MemoryPages.tsx', 'utf8')).toContain('Memory Stores are attachable session resources');
@@ -909,73 +891,6 @@ describe('Console page static coverage', () => {
     expect(html).toContain('Artifact storage');
     expect(html).toContain('Storage adapter availability');
     expect(html).not.toContain('Add provider');
-  });
-
-  it.skip('renders runtime settings as single active configuration surfaces', () => {
-    const data = emptyConsoleData({
-      settings: {
-        type: 'settings',
-        model_provider: {
-          vendor: 'openai-compatible',
-          base_url: 'https://api.example.com/v1',
-          api_key_env: 'OPENAI_API_KEY',
-          api_key_state: 'configured',
-          configured: true,
-        },
-        loop_engine: {
-          type: 'managed-agents',
-          implemented: true,
-          config: {},
-        },
-        storage: {
-          metadata: {
-            type: 'sqlite',
-            path: '/tmp/managed-agents.db',
-            state: 'configured',
-            implemented: true,
-          },
-          artifacts: {
-            type: 'local_filesystem',
-            path: '/tmp/managed-agents-files',
-            state: 'configured',
-            implemented: true,
-          },
-        },
-        memory: {
-          backend: {
-            type: 'sqlite',
-            api_key_state: 'not_set',
-            implemented: true,
-          },
-        },
-        sandbox: {
-          type: 'local',
-          implemented: true,
-          available: true,
-          providers: ['local'],
-          config: {},
-        },
-        validation: {
-          status: 'ok',
-          checks: [
-            { key: 'model_provider', label: 'Model provider', status: 'ok', message: 'Active provider: openai-compatible' },
-            { key: 'storage.metadata', label: 'Metadata storage', status: 'ok', message: 'sqlite metadata storage is available.' },
-            { key: 'memory.backend', label: 'Memory backend', status: 'ok', message: 'sqlite memory backend is available.' },
-            { key: 'sandbox', label: 'Sandbox', status: 'ok', message: 'local sandbox is available.' },
-          ],
-        },
-      },
-    });
-    expect(renderToString(React.createElement(SettingsModels, { data, onRefresh: () => {} }))).toContain('Active provider');
-    expect(renderToString(React.createElement(SettingsModels, { data, onRefresh: () => {} }))).not.toContain('<span>Model ID');
-    expect(renderToString(React.createElement(SettingsLoopEngine, { data, onRefresh: () => {} }))).toContain('Active engine');
-    expect(renderToString(React.createElement(SettingsLoopEngine, { data, onRefresh: () => {} }))).toContain('Exactly one loop engine is active at a time');
-    expect(renderToString(React.createElement(SettingsStorage, { data, onRefresh: () => {} }))).toContain('Metadata storage');
-    expect(renderToString(React.createElement(SettingsMemory, { data, onRefresh: () => {} }))).toContain('Active backend');
-    expect(renderToString(React.createElement(SettingsMemory, { data, onRefresh: () => {} }))).toContain('Memory Stores remain under Default');
-    expect(renderToString(React.createElement(SettingsSandbox, { data, onRefresh: () => {} }))).toContain('Active sandbox');
-    expect(renderToString(React.createElement(SettingsSandbox, { data, onRefresh: () => {} }))).toContain('Environment templates');
-    expect(renderToString(React.createElement(SettingsStorage, { data, onRefresh: () => {} }))).toContain('Validate now');
   });
 
   it('renders Settings API reference, Logs, and Monitoring surfaces', () => {
