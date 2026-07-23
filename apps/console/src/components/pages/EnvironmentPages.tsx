@@ -1,34 +1,9 @@
-import {
-  Archive,
-  Copy,
-  FileText,
-  Globe,
-  KeyRound,
-  MoreVertical,
-  Pencil,
-  Plus,
-  RefreshCw,
-  Server,
-  Trash2,
-  X,
-} from 'lucide-react';
-import { type ReactNode, useEffect, useState } from 'react';
-import { getJson, postJson, putJson } from '../../api';
-import { EmptyState, FilterSelect, StatusPill, SummaryStrip, Toolbar } from '../Common';
-import { copyText, formatDateShort, relativeDate, shortId, titleCase, truncateMiddle } from '../../lib/format';
-import type {
-  ConsoleData,
-  Environment,
-  EnvironmentDraft,
-  EnvironmentHostingType,
-  EnvironmentNetworkType,
-  EnvironmentPackageDraft,
-  EnvironmentWorkerKeyCreateResponse,
-  MetadataDraft,
-  Page,
-  Session,
-  WorkItem,
-} from '../../types';
+import { Archive, FileText, Globe, MoreVertical, Pencil, Plus, Server, Trash2, X } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { postJson, putJson } from '../../api';
+import { EmptyState, FilterSelect, MetricCard, StatusPill, Toolbar } from '../Common';
+import { formatDateShort, relativeDate, shortId, titleCase } from '../../lib/format';
+import type { ConsoleData, Environment, EnvironmentDraft, EnvironmentHostingType, EnvironmentNetworkType, EnvironmentPackageDraft, MetadataDraft, Session } from '../../types';
 
 export function Environments({ data, onNew, onOpenEnvironment }: { data: ConsoleData; onNew: () => void; onOpenEnvironment: (environment: Environment) => void }) {
   const [query, setQuery] = useState('');
@@ -39,29 +14,24 @@ export function Environments({ data, onNew, onOpenEnvironment }: { data: Console
     const matchesQuery = environment.id.toLowerCase().includes(q) || environment.name.toLowerCase().includes(q) || environment.description.toLowerCase().includes(q);
     return matchesStatus && matchesQuery;
   });
-  const activeEnvironments = data.environments.filter((environment) => environment.status === 'active').length;
-  const selfHostedEnvironments = data.environments.filter((environment) => environmentHostingType(environment) === 'self_hosted').length;
 
   return (
     <section className="stack">
       <div className="pageIntro">
         <div>
           <h1>Environments</h1>
-          <p>Define reusable execution templates for sandbox, package, network, and worker policy.</p>
+          <p>Configuration template for containers, such as sessions or code execution.</p>
         </div>
         <div className="toolbarActions">
-          <button className="primaryButton" type="button" onClick={onNew}>
+          <button className="darkButton" type="button" onClick={onNew}>
             <Plus size={18} />
             Create environment
           </button>
+          <button className="iconButton" type="button" title="Documentation">
+            <FileText size={18} />
+          </button>
         </div>
       </div>
-      <SummaryStrip items={[
-        { label: 'Templates', value: data.environments.length, icon: <Server size={18} /> },
-        { label: 'Active', value: activeEnvironments, icon: <RefreshCw size={18} /> },
-        { label: 'Self-hosted', value: selfHostedEnvironments, icon: <KeyRound size={18} /> },
-        { label: 'Sessions', value: data.sessions.length, icon: <Globe size={18} /> },
-      ]} />
       <Toolbar
         query={query}
         onQuery={setQuery}
@@ -83,37 +53,36 @@ export function Environments({ data, onNew, onOpenEnvironment }: { data: Console
         <table className="resourceTable">
           <thead>
             <tr>
+              <th className="selectCol"><input type="checkbox" aria-label="Select all environments" /></th>
               <th>ID</th>
               <th>Name</th>
               <th>Status</th>
               <th>Type</th>
               <th>Updated at</th>
+              <th className="actionsCol" aria-label="Actions" />
             </tr>
           </thead>
           <tbody>
             {environments.map((environment) => (
               <tr key={environment.id} className="clickableRow" onClick={() => onOpenEnvironment(environment)}>
+                <td className="selectCol" onClick={(event) => event.stopPropagation()}><input type="checkbox" aria-label={`Select ${environment.id}`} /></td>
                 <td><strong className="monoText">{shortId(environment.id)}</strong></td>
                 <td>{environment.name}</td>
                 <td><StatusPill status={environment.status} /></td>
                 <td><span className="softChip inlineChip">{environmentKind(environment)}</span></td>
                 <td>{formatDateShort(environment.updated_at)}</td>
+                <td className="actionsCol" onClick={(event) => event.stopPropagation()}>
+                  <button className="iconButton quiet" type="button" title="Environment actions"><MoreVertical size={18} /></button>
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
-        {environments.length === 0 ? (
-          <EmptyState
-            icon={<Server size={22} />}
-            title="No environments"
-            body="Create an environment template to define sandbox, package, and network policy for sessions."
-            action={<button className="primaryButton" type="button" onClick={onNew}><Plus size={16} />Create environment</button>}
-          />
-        ) : null}
+        {environments.length === 0 ? <EmptyState icon={<Server size={22} />} title="No environments" /> : null}
       </div>
       <div className="mobileResourceList">
         {environments.map((environment) => (
-          <button className="mobileResourceCard" type="button" key={environment.id} onClick={() => onOpenEnvironment(environment)}>
+          <button className="mobileAgentCard" type="button" key={environment.id} onClick={() => onOpenEnvironment(environment)}>
             <span className="mobileAgentMain">
               <strong>{environment.name}</strong>
               <small className="monoText">{environment.id}</small>
@@ -124,14 +93,7 @@ export function Environments({ data, onNew, onOpenEnvironment }: { data: Console
             </span>
           </button>
         ))}
-        {environments.length === 0 ? (
-          <EmptyState
-            icon={<Server size={22} />}
-            title="No environments"
-            body="Create an environment template to define sandbox, package, and network policy for sessions."
-            action={<button className="primaryButton" type="button" onClick={onNew}><Plus size={16} />Create environment</button>}
-          />
-        ) : null}
+        {environments.length === 0 ? <EmptyState icon={<Server size={22} />} title="No environments" /> : null}
       </div>
     </section>
   );
@@ -142,9 +104,6 @@ export function EnvironmentDetail({ environment, data, onBack, onRefresh }: { en
   const [menuOpen, setMenuOpen] = useState(false);
   const environmentSessions = data.sessions.filter((session) => session.environment_id === environment.id);
   const isSelfHosted = environmentHostingType(environment) === 'self_hosted';
-  const network = environmentNetwork(environment);
-  const packages = environmentPackages(environment);
-  const keys = environmentWorkerKeys(environment);
 
   useEffect(() => {
     setEditing(false);
@@ -182,12 +141,11 @@ export function EnvironmentDetail({ environment, data, onBack, onRefresh }: { en
         <div>
           <div className="titleLine">
             <h1>{environment.name}</h1>
-            <StatusPill status={environment.status} />
             <span className="softChip inlineChip">{environmentKind(environment)}</span>
             <Globe size={19} className="mutedIcon" />
           </div>
           <p className="mutedLine"><span className="monoText">{shortId(environment.id)}</span> · Last updated {formatDateShort(environment.updated_at)}</p>
-          <p className="agentDescription">{environment.description || 'No description yet. Add one to explain when this execution template should be used.'}</p>
+          <p className="agentDescription">{environment.description || 'No description.'}</p>
         </div>
         <div className="agentHeroActions">
           <button className="secondaryButton largeAction" type="button" onClick={() => setEditing(true)}>
@@ -207,19 +165,7 @@ export function EnvironmentDetail({ environment, data, onBack, onRefresh }: { en
         </div>
       </div>
 
-      <SummaryStrip items={[
-        { label: 'Backend', value: environmentBackendLabel(environment), icon: <Server size={18} /> },
-        { label: 'Sessions', value: environmentSessions.length, icon: <Globe size={18} /> },
-        { label: 'Packages', value: packages.length, icon: <FileText size={18} /> },
-        { label: isSelfHosted ? 'Worker keys' : 'Network', value: isSelfHosted ? keys.length : titleCase(network.type), icon: isSelfHosted ? <KeyRound size={18} /> : <RefreshCw size={18} /> },
-      ]} />
-      <div className="resourceTruthStrip" aria-label="Environment truth model">
-        <div><span>Template</span><strong>Environments describe reusable session policy, not the global sandbox backend.</strong></div>
-        <div><span>Runtime match</span><strong>Settings → Sandbox chooses the active provider this template must run against.</strong></div>
-        <div><span>Validation target</span><strong>Package, network, and worker policy should be validated before production use.</strong></div>
-      </div>
-
-      {isSelfHosted ? <SelfHostedEnvironment environment={environment} sessions={environmentSessions} onRefresh={onRefresh} /> : <CloudEnvironment environment={environment} />}
+      {isSelfHosted ? <SelfHostedEnvironment environment={environment} sessions={environmentSessions} /> : <CloudEnvironment environment={environment} />}
     </section>
   );
 }
@@ -262,53 +208,12 @@ function CloudEnvironment({ environment }: { environment: Environment }) {
   );
 }
 
-function SelfHostedEnvironment({ environment, sessions, onRefresh }: { environment: Environment; sessions: Session[]; onRefresh?: () => void }) {
-  const keys = environmentWorkerKeys(environment);
-  const [creating, setCreating] = useState(false);
-  const [newKey, setNewKey] = useState<EnvironmentWorkerKeyCreateResponse | null>(null);
-  const [workItems, setWorkItems] = useState<WorkItem[]>([]);
-  const [queueStats, setQueueStats] = useState<Record<string, number>>(environment.work_queue ?? {});
-  const [queueError, setQueueError] = useState<string | null>(null);
-  const [setupVisible, setSetupVisible] = useState(true);
+function SelfHostedEnvironment({ environment, sessions }: { environment: Environment; sessions: Session[] }) {
+  const keys = environmentKeys(environment);
   const idleSessions = sessions.filter((session) => session.status === 'idle');
   const runningSessions = sessions.filter((session) => session.status === 'running');
   const completedSessions = sessions.filter((session) => session.status === 'terminated');
   const oldestActiveSession = [...idleSessions, ...runningSessions].sort((a, b) => a.created_at.localeCompare(b.created_at))[0];
-
-  const refreshQueue = async () => {
-    try {
-      const page = await getJson<Page<WorkItem> & { stats: Record<string, number> }>(`/v1/environments/${environment.id}/work-items?limit=12`);
-      setWorkItems(page.data);
-      setQueueStats(page.stats ?? {});
-      setQueueError(null);
-    } catch (err: any) {
-      setQueueError(err.message ?? 'Failed to load work queue');
-    }
-  };
-
-  useEffect(() => {
-    setQueueStats(environment.work_queue ?? {});
-    void refreshQueue();
-  }, [environment.id]);
-
-  const createKey = async () => {
-    setCreating(true);
-    try {
-      const key = await postJson<EnvironmentWorkerKeyCreateResponse>(`/v1/environments/${environment.id}/worker-keys`, {
-        name: `Worker ${keys.length + 1}`,
-      });
-      setNewKey(key);
-      onRefresh?.();
-    } finally {
-      setCreating(false);
-    }
-  };
-
-  const revokeKey = async (keyId: string) => {
-    await postJson(`/v1/environments/${environment.id}/worker-keys/${keyId}/revoke`, {});
-    onRefresh?.();
-  };
-
   return (
     <div className="environmentBody">
       <section className="environmentSection">
@@ -319,110 +224,29 @@ function SelfHostedEnvironment({ environment, sessions, onRefresh }: { environme
           <MetricCard title="Running sessions" value={runningSessions.length} />
           <MetricCard title="Completed sessions" value={completedSessions.length} />
           <MetricCard title="Oldest active session" value={oldestActiveSession ? relativeDate(oldestActiveSession.created_at) : 'None'} />
-          <MetricCard title="Pending jobs" value={queueStats.pending ?? 0} />
-          <MetricCard title="Claimed jobs" value={queueStats.claimed ?? 0} />
         </div>
       </section>
       <div className="selfHostedGrid">
         <section className="environmentSection">
-          <div className="sectionTitleRow">
-            <div>
-              <h2>Environment keys</h2>
-              <p>An environment key lets a runner on your infrastructure connect to this environment and pull jobs. Generate one per host so you can revoke access individually.</p>
-            </div>
-            <button className="secondaryButton" type="button" onClick={() => void createKey()} disabled={creating}>
-              <KeyRound size={16} />
-              {creating ? 'Generating…' : 'Generate key'}
-            </button>
-          </div>
-          {newKey ? (
-            <div className="secretReveal">
-              <strong>Copy this worker key now. It will not be shown again.</strong>
-              <code>{newKey.secret_key}</code>
-              <button type="button" className="secondaryButton" onClick={() => void copyText(newKey.secret_key)}><Copy size={15} />Copy</button>
-            </div>
-          ) : null}
-          <div className="readonlyTable">
-            {keys.length === 0 ? (
-              <EmptyState
-                icon={<KeyRound size={22} />}
-                title="No environment keys"
-                body="Generate a scoped key when you are ready to connect a self-hosted runner."
-              />
-            ) : (
-              <table>
-                <thead><tr><th>Name</th><th>Prefix</th><th>Status</th><th>Last seen</th><th>Created</th><th /></tr></thead>
-                <tbody>
-                  {keys.map((key) => (
-                    <tr key={key.id}>
-                      <td>{key.name}</td>
-                      <td><code>{key.key_prefix}</code></td>
-                      <td><StatusPill status={key.status} /></td>
-                      <td>{key.last_seen_at ? relativeDate(key.last_seen_at) : <span className="mutedValue">Never</span>}</td>
-                      <td>{formatDateShort(key.created_at)}</td>
-                      <td>
-                        {key.status === 'active' ? (
-                          <button className="textButton dangerText" type="button" onClick={() => void revokeKey(key.id)}>Revoke</button>
-                        ) : null}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
+          <h2>Environment keys</h2>
+          <p>An environment key lets a runner on your infrastructure connect to this environment and pull jobs. Generate one per host so you can revoke access individually.</p>
+          <ReadonlyTable
+            empty="No environment keys"
+            rows={keys.map((key) => [key.name, shortId(key.id), formatDateShort(key.created_at), formatDateShort(key.expires_at)])}
+            columns={['Name', 'ID', 'Created', 'Expires at']}
+          />
         </section>
-        <section className="environmentSection">
-          <div className="sectionTitleRow">
-            <div>
-              <h2>Work queue</h2>
-              <p>Recent self-hosted jobs scoped to this environment.</p>
-            </div>
-            <button className="iconButton quiet" type="button" onClick={() => void refreshQueue()} title="Refresh queue">
-              <RefreshCw size={16} />
-            </button>
+        <section className="setupCard">
+          <div className="setupHeader">
+            <h2>Set up your self-hosted environment</h2>
+            <button className="iconButton quiet" type="button" title="Dismiss setup"><X size={18} /></button>
           </div>
-          {queueError ? <p className="errorText">{queueError}</p> : null}
-          <div className="readonlyTable">
-            {workItems.length === 0 ? (
-              <EmptyState
-                icon={<RefreshCw size={22} />}
-                title="No queued work items"
-                body="New session work will appear here after a self-hosted runner starts polling this environment."
-              />
-            ) : (
-              <table>
-                <thead><tr><th>ID</th><th>Session</th><th>Kind</th><th>Status</th><th>Claimed by</th><th>Created</th></tr></thead>
-                <tbody>
-                  {workItems.map((item) => (
-                    <tr key={item.id}>
-                      <td><code>{truncateMiddle(item.id, 18)}</code></td>
-                      <td><code>{truncateMiddle(item.session_id, 18)}</code></td>
-                      <td>{item.kind}</td>
-                      <td><StatusPill status={item.status} /></td>
-                      <td>{item.claimed_by ?? <span className="mutedValue">—</span>}</td>
-                      <td>{item.created_at ? relativeDate(item.created_at) : <span className="mutedValue">—</span>}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
+          <p>These instructions guide you through a low-code CLI worker setup. Additional options are also available in public documentation.</p>
+          <SetupStep index={1} title="Register an environment key" body="Generate an environment key authenticating your infrastructure with this environment." />
+          <SetupStep index={2} title="Export environment key as env var" body="This authorizes the environment worker to pull for work." code={`export MANAGED_AGENTS_ENVIRONMENT_KEY='env-key-...'`} />
+          <SetupStep index={3} title="Install managed-agents CLI" body="Run this command on the machine where you want the environment worker to run." code={`npm install -g managed-agents`} />
+          <SetupStep index={4} title="Invoke the worker" body="Poll for jobs and execute them locally." code={`managed-agents worker poll \\\n  --environment-id "${environment.id}" \\\n  --workdir "/workspace"`} />
         </section>
-        {setupVisible ? (
-          <section className="setupCard">
-            <div className="setupHeader">
-              <h2>Set up your self-hosted environment</h2>
-              <button className="iconButton quiet" type="button" title="Dismiss setup" onClick={() => setSetupVisible(false)}><X size={18} /></button>
-            </div>
-            <p>An environment key lets a runner on your infrastructure connect to this environment and pull jobs. Generate one per host so you can revoke access individually.</p>
-            <p>These instructions guide you through a low-code CLI worker setup. Additional options are also available in public documentation.</p>
-            <SetupStep index={1} title="Generate an environment key" body="Generate one key per host from this page so you can revoke access independently." />
-            <SetupStep index={2} title="Export environment key as env var" body="This authorizes the environment worker to pull work only for this environment." code={`export MANAGED_AGENTS_ENVIRONMENT_KEY='${newKey?.secret_key ?? 'mawk_...'}'`} />
-            <SetupStep index={3} title="Install managed-agents CLI" body="Run this command on the machine where you want the environment worker to run." code="npm install -g managed-agents" />
-            <SetupStep index={4} title="Invoke the worker" body="Poll for jobs and execute them locally." code={`managed-agents worker poll \\\n  --environment-id "${environment.id}" \\\n  --workdir "/workspace"`} />
-          </section>
-        ) : null}
       </div>
     </div>
   );
@@ -466,7 +290,7 @@ function EnvironmentEditor({ environment, onCancel, onSaved }: { environment: En
         </div>
         <div className="agentHeroActions">
           <button className="secondaryButton largeAction" type="button" onClick={onCancel}>Cancel</button>
-          <button className="primaryButton largeAction" type="button" onClick={() => void save()} disabled={saving || !draft.name.trim()}>Save</button>
+          <button className="darkButton largeAction" type="button" onClick={() => void save()} disabled={saving || !draft.name.trim()}>Save</button>
         </div>
       </div>
 
@@ -476,10 +300,7 @@ function EnvironmentEditor({ environment, onCancel, onSaved }: { environment: En
       </label>
 
       {draft.hostingType === 'self_hosted' ? (
-        <section className="environmentSection editorNoticeCard">
-          <h2>Self-hosted runtime settings</h2>
-          <p>This edit view updates the environment name and description. Worker keys, queue state, and setup instructions stay in the environment detail view so operational controls are not mixed with metadata editing.</p>
-        </section>
+        <SelfHostedEnvironment environment={environment} sessions={[]} />
       ) : (
         <EnvironmentNetworkEditor draft={draft} onDraft={setDraft} />
       )}
@@ -564,16 +385,6 @@ function EnvironmentNetworkEditor({ draft, onDraft }: { draft: EnvironmentDraft;
   );
 }
 
-function MetricCard({ title, value, subtitle }: { title: string; value: ReactNode; subtitle?: string }) {
-  return (
-    <div className="metricCard">
-      <span>{title}</span>
-      <strong>{value}</strong>
-      {subtitle ? <small>{subtitle}</small> : null}
-    </div>
-  );
-}
-
 function ReadonlyField({ label, value, wide }: { label: string; value: string; wide?: boolean }) {
   return (
     <div className={`readonlyField ${wide ? 'wide' : ''}`}>
@@ -586,13 +397,7 @@ function ReadonlyField({ label, value, wide }: { label: string; value: string; w
 function ReadonlyTable({ columns, rows, empty }: { columns: string[]; rows: string[][]; empty: string }) {
   return (
     <div className="readonlyTable">
-      {rows.length === 0 ? (
-        <EmptyState
-          icon={<FileText size={22} />}
-          title={empty}
-          body="This section is intentionally blank until the environment records real configuration."
-        />
-      ) : (
+      {rows.length === 0 ? <div className="emptyValue">{empty}</div> : (
         <table>
           <thead><tr>{columns.map((column) => <th key={column}>{column}</th>)}</tr></thead>
           <tbody>
@@ -630,13 +435,16 @@ function SetupStep({ index, title, body, code }: { index: number; title: string;
   );
 }
 
-export function environmentKind(environment: Environment) {
-  return hostingLabel(environmentHostingType(environment));
+function environmentNetworkLabel(environment: Environment) {
+  const network = environment.network;
+  const type = typeof network?.type === 'string' ? network.type : environment.config?.network;
+  if (typeof type === 'string' && type.length > 0) return titleCase(type.replace('_', ' '));
+  if (environment.hosting_type === 'self_hosted') return 'Self-hosted';
+  return 'Limited';
 }
 
-function environmentBackendLabel(environment: Environment) {
-  const backend = environment.sandbox_provider ?? environment.config.sandbox_provider;
-  return typeof backend === 'string' && backend.trim() ? backend : environmentKind(environment);
+export function environmentKind(environment: Environment) {
+  return hostingLabel(environmentHostingType(environment));
 }
 
 function hostingLabel(type: EnvironmentHostingType) {
@@ -680,8 +488,26 @@ function environmentMetadataEntries(environment: Environment): string[][] {
   return Object.entries(environment.metadata ?? {}).map(([key, value]) => [key, String(value)]);
 }
 
-function environmentWorkerKeys(environment: Environment) {
-  return Array.isArray(environment.worker_keys) ? environment.worker_keys : [];
+function environmentKeys(environment: Environment): Array<{ id: string; name: string; created_at: string; expires_at: string }> {
+  const raw = environment.metadata.environment_keys;
+  if (typeof raw !== 'string') return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.flatMap((item) => {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) return [];
+      const record = item as Record<string, unknown>;
+      if (typeof record.id !== 'string' || typeof record.name !== 'string') return [];
+      return [{
+        id: record.id,
+        name: record.name,
+        created_at: typeof record.created_at === 'string' ? record.created_at : environment.created_at,
+        expires_at: typeof record.expires_at === 'string' ? record.expires_at : environment.updated_at,
+      }];
+    });
+  } catch {
+    return [];
+  }
 }
 
 function environmentDraftFromApi(environment: Environment): EnvironmentDraft {
@@ -745,7 +571,7 @@ function arrayOfStrings(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string' && item.length > 0) : [];
 }
 
-function splitCsv(value: string): string[] {
+export function splitCsv(value: string): string[] {
   return value.split(/[,\n]/).map((item) => item.trim()).filter(Boolean);
 }
 

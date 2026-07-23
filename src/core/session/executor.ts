@@ -52,6 +52,8 @@ export interface ExecutorDeps {
   memory?: MemoryProvider;
   /** Optional workspace snapshot manager (R9.11). */
   snapshots?: SnapshotManager;
+  /** Workspace fallback when an agent does not set max_turns. */
+  defaultMaxSteps?: number;
 }
 
 export class DefaultSessionExecutor implements SessionExecutor {
@@ -140,7 +142,7 @@ export class DefaultSessionExecutor implements SessionExecutor {
       eventLog: eventLogger,
       broadcast, // real SSE broadcast wired from SessionManager
       config: {
-        maxSteps: agent.max_turns ?? 25,
+        maxSteps: agent.max_turns ?? this.deps.defaultMaxSteps ?? 25,
         temperature: agent.temperature ?? 0.7,
         confirmTools,
         onRequiresAction: options?.onRequiresAction,

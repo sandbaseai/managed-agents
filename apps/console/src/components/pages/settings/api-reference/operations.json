@@ -1,0 +1,196 @@
+[
+  {
+    "id": "runtime-health",
+    "group": "Operations",
+    "title": "Health check",
+    "method": "GET",
+    "path": "/v1/x/health",
+    "summary": "Read local runtime health for readiness checks.",
+    "response": [
+      {
+        "name": "status",
+        "type": "ok | degraded",
+        "description": "Runtime health state."
+      },
+      {
+        "name": "version",
+        "type": "string",
+        "description": "Runtime version."
+      }
+    ]
+  },
+  {
+    "id": "runtime-info",
+    "group": "Operations",
+    "title": "Runtime info",
+    "method": "GET",
+    "path": "/v1/x/runtime",
+    "summary": "Read process/runtime details used by the Console header.",
+    "response": [
+      {
+        "name": "auth_enabled",
+        "type": "boolean",
+        "description": "Whether bearer auth is required."
+      },
+      {
+        "name": "sandbox",
+        "type": "array",
+        "description": "Registered sandbox provider types."
+      },
+      {
+        "name": "data_dir",
+        "type": "string",
+        "description": "Runtime data directory."
+      }
+    ]
+  },
+  {
+    "id": "workspace-info",
+    "group": "Operations",
+    "title": "Workspace info",
+    "method": "GET",
+    "path": "/v1/x/workspace",
+    "summary": "Read local workspace information, project paths, and import status.",
+    "response": [
+      {
+        "name": "workspace",
+        "type": "object",
+        "description": "Workspace descriptor."
+      }
+    ]
+  },
+  {
+    "id": "logs-list",
+    "group": "Operations",
+    "title": "List runtime logs",
+    "method": "GET",
+    "path": "/v1/x/logs",
+    "summary": "Read recent structured runtime logs from the current process. Use this for local operations and troubleshooting.",
+    "parameters": [
+      {
+        "name": "limit",
+        "type": "number",
+        "description": "Maximum log lines to return."
+      },
+      {
+        "name": "level",
+        "type": "debug | info | warn | error",
+        "description": "Minimum severity filter."
+      },
+      {
+        "name": "q",
+        "type": "string",
+        "description": "Text search against the rendered log message."
+      }
+    ],
+    "response": [
+      {
+        "name": "data",
+        "type": "RuntimeLogEntry[]",
+        "description": "Recent structured log lines."
+      },
+      {
+        "name": "has_more",
+        "type": "boolean",
+        "description": "Whether older rows exist outside the page."
+      }
+    ]
+  },
+  {
+    "id": "metrics-get",
+    "group": "Operations",
+    "title": "Get metrics",
+    "method": "GET",
+    "path": "/v1/x/metrics",
+    "summary": "Read local runtime metrics used by Monitoring.",
+    "response": [
+      {
+        "name": "metrics",
+        "type": "object",
+        "description": "Counters and gauges for runtime activity."
+      }
+    ]
+  },
+  {
+    "id": "metrics-summary",
+    "group": "Operations",
+    "title": "Get metrics summary",
+    "method": "GET",
+    "path": "/v1/x/metrics/summary",
+    "summary": "Read a JSON runtime summary for dashboard monitoring and SDK helpers.",
+    "response": [
+      {
+        "name": "type",
+        "type": "metrics_summary",
+        "description": "Response discriminator."
+      },
+      {
+        "name": "sessions",
+        "type": "object",
+        "description": "Session counts and token usage."
+      },
+      {
+        "name": "events",
+        "type": "object",
+        "description": "Event counts, token usage, and average duration."
+      },
+      {
+        "name": "storage",
+        "type": "object",
+        "description": "File and artifact storage counts."
+      }
+    ]
+  },
+  {
+    "id": "mcp-status",
+    "group": "Operations",
+    "title": "MCP status",
+    "method": "GET",
+    "path": "/v1/x/mcp/status",
+    "summary": "Inspect MCP manager status globally or for a session.",
+    "parameters": [
+      {
+        "name": "session_id",
+        "type": "string",
+        "description": "Optional session id to scope MCP status."
+      }
+    ],
+    "response": [
+      {
+        "name": "servers",
+        "type": "array",
+        "description": "MCP server status descriptors."
+      }
+    ]
+  },
+  {
+    "id": "templates-list",
+    "group": "Operations",
+    "title": "List templates",
+    "method": "GET",
+    "path": "/v1/x/templates",
+    "summary": "List built-in agent templates exposed by the Console create-agent flow.",
+    "response": [
+      {
+        "name": "data",
+        "type": "Template[]",
+        "description": "Agent template descriptors."
+      }
+    ]
+  },
+  {
+    "id": "runtime-reload",
+    "group": "Operations",
+    "title": "Reload workspace",
+    "method": "POST",
+    "path": "/v1/x/reload",
+    "summary": "Reload workspace seed files such as agents and skills without restarting the process.",
+    "response": [
+      {
+        "name": "ok",
+        "type": "boolean",
+        "description": "True when reload completed."
+      }
+    ]
+  }
+]

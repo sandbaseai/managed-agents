@@ -1,0 +1,162 @@
+[
+  {
+    "id": "environments-list",
+    "group": "Environments",
+    "title": "List environments",
+    "method": "GET",
+    "path": "/v1/environments",
+    "summary": "List reusable environment templates for session runtime setup.",
+    "response": [
+      {
+        "name": "data",
+        "type": "Environment[]",
+        "description": "Environment templates."
+      }
+    ]
+  },
+  {
+    "id": "environments-create",
+    "group": "Environments",
+    "title": "Create environment",
+    "method": "POST",
+    "path": "/v1/environments",
+    "summary": "Create a reusable environment template for session containers, package policy, sandboxing, and network access.",
+    "parameters": [
+      {
+        "name": "name",
+        "type": "string",
+        "required": true,
+        "description": "Human-readable environment name."
+      },
+      {
+        "name": "hosting_type",
+        "type": "cloud | self_hosted",
+        "description": "Where session work is expected to run."
+      },
+      {
+        "name": "network",
+        "type": "object",
+        "description": "Limited or unrestricted network policy."
+      },
+      {
+        "name": "packages",
+        "type": "array",
+        "description": "Package manager and package declarations available in this environment."
+      },
+      {
+        "name": "sandbox",
+        "type": "object",
+        "description": "Optional sandbox override for sessions using this environment."
+      },
+      {
+        "name": "metadata",
+        "type": "object",
+        "description": "Opaque environment tags."
+      }
+    ],
+    "response": [
+      {
+        "name": "id",
+        "type": "string",
+        "description": "Environment identifier."
+      },
+      {
+        "name": "environment",
+        "type": "object",
+        "description": "Created or updated environment resource."
+      }
+    ]
+  },
+  {
+    "id": "environments-get",
+    "group": "Environments",
+    "title": "Get environment",
+    "method": "GET",
+    "path": "/v1/environments/{environment_id}",
+    "summary": "Fetch one environment template.",
+    "response": [
+      {
+        "name": "id",
+        "type": "string",
+        "description": "Environment identifier."
+      },
+      {
+        "name": "environment",
+        "type": "object",
+        "description": "Created or updated environment resource."
+      }
+    ]
+  },
+  {
+    "id": "environments-update",
+    "group": "Environments",
+    "title": "Update environment",
+    "method": "PUT",
+    "path": "/v1/environments/{environment_id}",
+    "summary": "Update an environment template used by future sessions.",
+    "parameters": [
+      {
+        "name": "name",
+        "type": "string",
+        "description": "Human-readable environment name."
+      },
+      {
+        "name": "hosting_type",
+        "type": "cloud | self_hosted",
+        "description": "Hosting mode."
+      },
+      {
+        "name": "network",
+        "type": "object",
+        "description": "Network policy."
+      },
+      {
+        "name": "packages",
+        "type": "array",
+        "description": "Package declarations."
+      },
+      {
+        "name": "sandbox",
+        "type": "object",
+        "description": "Sandbox override."
+      },
+      {
+        "name": "metadata",
+        "type": "object",
+        "description": "Opaque tags."
+      }
+    ],
+    "response": [
+      {
+        "name": "id",
+        "type": "string",
+        "description": "Environment identifier."
+      },
+      {
+        "name": "environment",
+        "type": "object",
+        "description": "Created or updated environment resource."
+      }
+    ]
+  },
+  {
+    "id": "environments-archive",
+    "group": "Environments",
+    "title": "Archive environment",
+    "method": "POST",
+    "path": "/v1/environments/{environment_id}/archive",
+    "summary": "Archive an environment so it cannot be selected for new sessions.",
+    "response": [
+      {
+        "name": "id",
+        "type": "string",
+        "description": "Archived environment identifier."
+      },
+      {
+        "name": "environment",
+        "type": "object",
+        "description": "Created or updated environment resource."
+      }
+    ]
+  }
+]

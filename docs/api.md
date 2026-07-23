@@ -724,12 +724,19 @@ Extension endpoints expose local runtime operations.
 | `GET` | `/v1/x/health` | Health check. |
 | `GET` | `/v1/x/runtime` | Runtime status. |
 | `GET` | `/v1/x/workspace` | Workspace paths and metadata. |
+| `GET` | `/v1/x/settings` | Read the versioned Settings V2 runtime document. |
+| `POST` | `/v1/x/settings/validate` | Validate a complete Settings V2 document without saving. |
+| `POST` | `/v1/x/settings/test` | Test one settings area without saving. |
+| `PUT` | `/v1/x/settings` | Save a validated Settings V2 document. |
 | `GET` | `/v1/x/templates` | Built-in agent templates. |
 | `POST` | `/v1/x/reload` | Reload file-backed agents. |
 | `POST` | `/v1/x/restart` | Restart the local runtime process when the server was started through the CLI. |
 | `GET` | `/v1/x/logs?limit=200&level=info&q=term` | Recent in-process structured runtime logs. |
 | `GET` | `/v1/x/metrics` | Prometheus metrics, when enabled. |
+| `GET` | `/v1/x/metrics/summary` | JSON runtime summary for Dashboard monitoring and SDK helpers. |
 | `GET` | `/v1/x/mcp/status?session_id=...` | MCP connection status for a session. |
+| `POST` | `/v1/x/worker/claim` | Self-hosted sandbox worker claims pending tool-execution work. |
+| `POST` | `/v1/x/worker/complete` | Self-hosted sandbox worker reports completed or failed work. |
 
 `GET /v1/x/runtime` returns runtime-safe introspection data. Model entries expose
 configuration metadata only:
@@ -752,6 +759,168 @@ configuration metadata only:
 ```
 
 The runtime never returns raw API keys or resolved secret values to the Console.
+
+Settings V2 is the source of truth for model vendor, loop engine, storage,
+memory, and sandbox configuration. Responses include both the saved document and
+the effective document currently used by the process. Response excerpt:
+
+```json
+{
+  "schema_version": 1,
+  "revision": 2,
+  "effective_revision": 1,
+  "saved_config": {
+    "schema_version": 1,
+    "model": {
+      "vendor": "openai",
+      "base_url": "https://api.openai.com/v1",
+      "api_key": "********",
+      "options": {}
+    }
+  },
+  "effective_config": {},
+  "restart_required": true,
+  "activation_status": "pending",
+  "activation_errors": [],
+  "diagnostics": {
+    "metadata": {
+      "path": ".managed-agents/data.db",
+      "health": "ok"
+    }
+  },
+  "secret_states": {
+    "model": {
+      "api_key": "configured"
+    }
+  },
+  "adapters": {
+    "loop_engine": [
+      {
+        "id": "builtin",
+        "label": "Default",
+        "status": "available",
+        "restart_policy": "runtime",
+        "options_schema": {
+          "type": "object",
+          "properties": {
+            "default_max_steps": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000,
+              "default": 25
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    ]
+  }
+}
+```
+
+Secret-looking adapter option keys, including `api_key`, `access_key`,
+`secret`, `token`, `password`, and `credential`, are always masked in public
+settings responses.
+Adapter descriptors include backend-owned `options_schema` metadata for
+adapter-specific options.
+
+The Dashboard validates a changed candidate before enabling save, and API
+clients should follow the same sequence: `GET /v1/x/settings`, edit the complete
+document, `POST /v1/x/settings/validate`, optionally `POST /v1/x/settings/test`,
+then `PUT /v1/x/settings` with the current `revision`. A successful save updates
+`saved_config` and sets `restart_required` when the running process still uses
+the older `effective_config`. The next CLI-managed restart promotes the last
+valid saved revision to `effective_config`. If a saved row is corrupted outside
+the API, startup keeps the last valid effective document instead of activating
+the bad candidate and returns `activation_status: "failed"` with
+`activation_errors` on subsequent settings reads until the saved document is
+repaired.
+
+Validate a candidate document:
+
+```bash
+curl -X POST http://127.0.0.1:3000/v1/x/settings/validate \
+  -H "Content-Type: application/json" \
+  -d @settings.json
+```
+
+Test one area without saving:
+
+```bash
+curl -X POST http://127.0.0.1:3000/v1/x/settings/test \
+  -H "Content-Type: application/json" \
+  -d '{
+    "area": "storage.artifacts",
+    "config": {
+      "provider": "local",
+      "options": {
+        "base_path": "files"
+      }
+    }
+}'
+```
+
+Model tests apply the same credential validation used by validate and save.
+Other area tests are scoped to their adapter so local storage, memory, and
+sandbox diagnostics can run before a model API key has been configured.
+Those scoped checks still validate credentials that belong to the tested area.
+Docker sandbox checks currently skip live daemon/image validation. Remote
+sandbox checks require the worker API URL and key, then call
+`/v1/x/health` on that remote worker API.
+
+Save the complete document with optimistic concurrency:
+
+```bash
+curl -X PUT http://127.0.0.1:3000/v1/x/settings \
+  -H "Content-Type: application/json" \
+  -d '{
+    "revision": 2,
+    "config": {
+      "schema_version": 1,
+      "model": {
+        "vendor": "openai",
+        "api_key": "${OPENAI_API_KEY}",
+        "options": {}
+      },
+      "loop_engine": {
+        "provider": "builtin",
+        "options": {
+          "default_max_steps": 25
+        }
+      },
+      "storage": {
+        "metadata": {
+          "provider": "sqlite",
+          "options": {}
+        },
+        "artifacts": {
+          "provider": "local",
+          "options": {
+            "base_path": "files"
+          }
+        }
+      },
+      "memory": {
+        "enabled": true,
+        "provider": "sqlite",
+        "options": {}
+      },
+      "sandbox": {
+        "provider": "local",
+        "options": {
+          "timeout_seconds": 300
+        }
+      }
+    }
+  }'
+```
+
+Literal secrets are encrypted at rest. API responses return masked placeholders
+and `secret_states`; they never return plaintext or ciphertext.
+
+Successful saves emit a `runtime_settings_saved` structured log with only the
+old revision, new revision, changed JSON paths, and restart flag. Secret values
+and internal managed-secret references are not logged.
 
 `GET /v1/x/logs` returns a standard page envelope with the most recent log
 entries captured by the current process. `level` is a minimum severity filter

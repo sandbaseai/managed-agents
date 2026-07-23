@@ -39,6 +39,8 @@ describe('Database migrations', () => {
     expect(names).toContain('models');
     expect(names).toContain('snapshots');
     expect(names).toContain('memories');
+    expect(names).toContain('runtime_settings');
+    expect(names).toContain('runtime_settings_secrets');
     expect(names).toContain('_migrations');
     db.close();
   });

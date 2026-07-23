@@ -49,6 +49,12 @@ export class ModelRegistry {
     this.defaultModelName = name;
   }
 
+  /** Replace compatibility/bootstrap entries with the active runtime model. */
+  clear(): void {
+    this.models.clear();
+    this.defaultModelName = undefined;
+  }
+
   getDefaultName(): string | undefined {
     return this.defaultModelName ?? Array.from(this.models.keys())[0];
   }

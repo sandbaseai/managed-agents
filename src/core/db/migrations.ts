@@ -504,7 +504,44 @@ CREATE INDEX idx_storage_providers_role
   ON storage_providers(role, created_at DESC);
 `;
 
-const M019_OPERATIONS_RESOURCES = `
+const M019_RUNTIME_SETTINGS = `
+CREATE TABLE runtime_settings (
+  id TEXT PRIMARY KEY CHECK (id = 'default'),
+  schema_version INTEGER NOT NULL,
+  config TEXT NOT NULL,
+  effective_config TEXT NOT NULL,
+  revision INTEGER NOT NULL DEFAULT 1,
+  effective_revision INTEGER NOT NULL DEFAULT 1,
+  restart_required INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+`;
+
+const M020_RUNTIME_SETTINGS_SECRETS = `
+CREATE TABLE runtime_settings_secrets (
+  path TEXT PRIMARY KEY,
+  ciphertext TEXT NOT NULL,
+  nonce TEXT NOT NULL,
+  tag TEXT NOT NULL,
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+`;
+
+const M021_RUNTIME_SETTINGS_ACTIVATION_STATE = `
+ALTER TABLE runtime_settings ADD COLUMN activation_status TEXT NOT NULL DEFAULT 'active';
+ALTER TABLE runtime_settings ADD COLUMN activation_errors TEXT NOT NULL DEFAULT '[]';
+`;
+
+const M022_FILE_ARTIFACT_METADATA = `
+ALTER TABLE files ADD COLUMN role TEXT NOT NULL DEFAULT 'file';
+ALTER TABLE files ADD COLUMN session_id TEXT;
+ALTER TABLE files ADD COLUMN artifact_path TEXT;
+
+CREATE INDEX idx_files_role_session ON files(role, session_id, created_at DESC);
+`;
+
+const M023_OPERATIONS_RESOURCES = `
 CREATE TABLE webhooks (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
@@ -571,7 +608,7 @@ CREATE INDEX idx_session_outcomes_session_created ON session_outcomes(session_id
 CREATE INDEX idx_session_outcomes_outcome ON session_outcomes(outcome_id, created_at DESC);
 `;
 
-const M020_OPERATIONS_RUN_HISTORY = `
+const M024_OPERATIONS_RUN_HISTORY = `
 CREATE TABLE webhook_deliveries (
   id TEXT PRIMARY KEY,
   webhook_id TEXT NOT NULL,
@@ -607,7 +644,7 @@ CREATE INDEX idx_scheduled_deployment_runs_schedule_created ON scheduled_deploym
 CREATE INDEX idx_scheduled_deployment_runs_session ON scheduled_deployment_runs(session_id);
 `;
 
-const M021_AGENT_VERSION_SNAPSHOTS = `
+const M025_AGENT_VERSION_SNAPSHOTS = `
 CREATE TABLE agent_versions (
   id TEXT PRIMARY KEY,
   agent_id TEXT NOT NULL,
@@ -632,12 +669,12 @@ FROM agents
 WHERE definition IS NOT NULL;
 `;
 
-const M022_SESSION_AGENT_SNAPSHOTS = `
+const M026_SESSION_AGENT_SNAPSHOTS = `
 ALTER TABLE sessions ADD COLUMN agent_version INTEGER;
 ALTER TABLE sessions ADD COLUMN agent_definition TEXT;
 `;
 
-const M023_ENVIRONMENT_WORKERS = `
+const M027_ENVIRONMENT_WORKERS = `
 CREATE TABLE environment_worker_keys (
   id TEXT PRIMARY KEY,
   environment_id TEXT NOT NULL,
@@ -661,16 +698,7 @@ CREATE INDEX idx_environment_worker_keys_status
   ON environment_worker_keys(status, created_at DESC);
 `;
 
-const M024_FILE_ARTIFACTS = `
-ALTER TABLE files ADD COLUMN role TEXT NOT NULL DEFAULT 'file';
-ALTER TABLE files ADD COLUMN session_id TEXT;
-ALTER TABLE files ADD COLUMN artifact_path TEXT;
-
-CREATE INDEX idx_files_role_created ON files(role, created_at DESC);
-CREATE INDEX idx_files_session_role ON files(session_id, role, created_at DESC);
-`;
-
-const M025_CREDENTIAL_AUDIT = `
+const M028_CREDENTIAL_AUDIT = `
 CREATE TABLE credential_audit_events (
   id TEXT PRIMARY KEY,
   vault_id TEXT NOT NULL,
@@ -690,20 +718,12 @@ CREATE INDEX idx_credential_audit_vault_created
   ON credential_audit_events(vault_id, created_at DESC);
 `;
 
-const M026_WEBHOOK_RETRIES = `
+const M029_WEBHOOK_RETRIES = `
 ALTER TABLE webhook_deliveries ADD COLUMN attempt_count INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE webhook_deliveries ADD COLUMN next_retry_at TEXT;
 
 CREATE INDEX idx_webhook_deliveries_next_retry
   ON webhook_deliveries(status, next_retry_at);
-`;
-
-const M027_RUNTIME_SETTINGS = `
-CREATE TABLE runtime_settings (
-  key TEXT PRIMARY KEY,
-  value TEXT NOT NULL,
-  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-);
 `;
 
 export const MIGRATIONS: Migration[] = [
@@ -725,13 +745,15 @@ export const MIGRATIONS: Migration[] = [
   { version: 16, name: '016_model_provider_settings', sql: M016_MODEL_PROVIDER_SETTINGS },
   { version: 17, name: '017_memory_provider_settings', sql: M017_MEMORY_PROVIDER_SETTINGS },
   { version: 18, name: '018_storage_provider_settings', sql: M018_STORAGE_PROVIDER_SETTINGS },
-  { version: 19, name: '019_operations_resources', sql: M019_OPERATIONS_RESOURCES },
-  { version: 20, name: '020_operations_run_history', sql: M020_OPERATIONS_RUN_HISTORY },
-  { version: 21, name: '021_agent_version_snapshots', sql: M021_AGENT_VERSION_SNAPSHOTS },
-  { version: 22, name: '022_session_agent_snapshots', sql: M022_SESSION_AGENT_SNAPSHOTS },
-  { version: 23, name: '023_environment_workers', sql: M023_ENVIRONMENT_WORKERS },
-  { version: 24, name: '024_file_artifacts', sql: M024_FILE_ARTIFACTS },
-  { version: 25, name: '025_credential_audit', sql: M025_CREDENTIAL_AUDIT },
-  { version: 26, name: '026_webhook_retries', sql: M026_WEBHOOK_RETRIES },
-  { version: 27, name: '027_runtime_settings', sql: M027_RUNTIME_SETTINGS },
+  { version: 19, name: '019_runtime_settings', sql: M019_RUNTIME_SETTINGS },
+  { version: 20, name: '020_runtime_settings_secrets', sql: M020_RUNTIME_SETTINGS_SECRETS },
+  { version: 21, name: '021_runtime_settings_activation_state', sql: M021_RUNTIME_SETTINGS_ACTIVATION_STATE },
+  { version: 22, name: '022_file_artifact_metadata', sql: M022_FILE_ARTIFACT_METADATA },
+  { version: 23, name: '023_operations_resources', sql: M023_OPERATIONS_RESOURCES },
+  { version: 24, name: '024_operations_run_history', sql: M024_OPERATIONS_RUN_HISTORY },
+  { version: 25, name: '025_agent_version_snapshots', sql: M025_AGENT_VERSION_SNAPSHOTS },
+  { version: 26, name: '026_session_agent_snapshots', sql: M026_SESSION_AGENT_SNAPSHOTS },
+  { version: 27, name: '027_environment_workers', sql: M027_ENVIRONMENT_WORKERS },
+  { version: 28, name: '028_credential_audit', sql: M028_CREDENTIAL_AUDIT },
+  { version: 29, name: '029_webhook_retries', sql: M029_WEBHOOK_RETRIES },
 ];

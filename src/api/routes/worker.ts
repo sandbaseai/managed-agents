@@ -6,7 +6,7 @@
  * user's own infrastructure — the server never runs them.
  *
  *   POST /v1/x/worker/claim     { worker_id, session_id? } → work item | 204
- *   POST /v1/x/worker/complete  { id, result, failed? }    → { ok: true }
+ *   POST /v1/x/worker/complete  { id, worker_id, result, failed? } → { ok: true }
  */
 
 import { Hono } from 'hono';
@@ -40,10 +40,16 @@ export function workerRoutes(queue: WorkQueue, db?: Database) {
 
   app.post('/complete', async (c) => {
     const body = await c.req.json().catch(() => ({}));
-    if (!body.id || typeof body.id !== 'string') {
-      return c.json({ error: { type: 'invalid_request', message: 'id is required' } }, 400);
+    if (!body.id || typeof body.id !== 'string' || !body.worker_id || typeof body.worker_id !== 'string') {
+      return c.json({ error: { type: 'invalid_request', message: 'id and worker_id are required' } }, 400);
     }
-    queue.complete(body.id, body.result, body.failed === true);
+    const outcome = queue.complete(body.id, body.worker_id, body.result, body.failed === true);
+    if (outcome === 'not_found') {
+      return c.json({ error: { type: 'not_found', message: 'work item not found' } }, 404);
+    }
+    if (outcome === 'not_claimed_by_worker') {
+      return c.json({ error: { type: 'conflict', message: 'work item is not claimed by this worker' } }, 409);
+    }
     return c.json({ ok: true });
   });
 

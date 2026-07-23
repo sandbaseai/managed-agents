@@ -55,6 +55,31 @@ describe('Local Sandbox Provider', () => {
       expect(result.stderr.trim()).toBe('error');
     });
 
+    it('does not inherit arbitrary service environment variables', async () => {
+      process.env.MANAGED_AGENTS_TEST_SECRET = 'must-not-leak';
+      try {
+        const sandbox = await provider.provision('sess_env', {
+          name: 'local',
+          sandbox_provider: 'local',
+        });
+        const result = await sandbox.execute('printf %s "${MANAGED_AGENTS_TEST_SECRET:-}"');
+        expect(result.stdout).toBe('');
+      } finally {
+        delete process.env.MANAGED_AGENTS_TEST_SECRET;
+      }
+    });
+
+    it('passes explicitly supplied command environment variables', async () => {
+      const sandbox = await provider.provision('sess_env_explicit', {
+        name: 'local',
+        sandbox_provider: 'local',
+      });
+      const result = await sandbox.execute('printf %s "$INJECTED_VALUE"', {
+        env: { INJECTED_VALUE: 'allowed' },
+      });
+      expect(result.stdout).toBe('allowed');
+    });
+
     it('times out long-running commands (Property 20)', async () => {
       const sandbox = await provider.provision('sess_timeout', {
         name: 'local',

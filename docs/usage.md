@@ -40,27 +40,6 @@ The workspace is portable. Commit examples, templates, config, and any seed
 definitions you intentionally maintain. Use `MANAGED_AGENTS_HOME` or
 `--data-dir` when you need to move runtime state.
 
-## Workspace Registry
-
-The CLI can maintain a local registry of known workspaces under
-`MANAGED_AGENTS_HOME/workspaces.json`. This is useful for desktop shells,
-launchers, and scripts that need create/open/switch workflows without scanning
-the filesystem.
-
-```bash
-managed-agents workspace create ~/work/acme-agents --name Acme
-managed-agents workspace open ~/work/existing-agents --name Existing
-managed-agents workspace list
-managed-agents workspace resolve Acme --json
-managed-agents workspace remove Acme
-```
-
-`workspace create` creates `agents/`, `skills/`, and a minimal
-`managed-agents.config.yaml` if they do not exist. The registry does not
-client-side switch a running server; launching a different workspace still means
-starting or reconnecting to a runtime whose `cwd`/`--data-dir` points at that
-workspace.
-
 ## Agent Definitions
 
 Agents can be imported from YAML files in `agents/` or created through the
@@ -110,39 +89,50 @@ The Dashboard includes:
 - Workspace and local runtime status
 - Agent templates and agent versions
 - Session creation and session debug timelines
+- Runtime Settings for the single workspace model vendor, loop engine,
+  storage backends, context-memory backend, and default sandbox
 - Environments
 - Credential vaults and credentials
 - Memory stores and memory entries
 - File upload and file resources
 - Skill upload and skill details
 
-## Advanced: Run A Self-Hosted Worker
+## Runtime Settings
 
-Skip this section for the default local runtime. It is only needed when you
-choose a self-hosted environment and want a separate worker process to execute
-queued jobs.
+Open `Settings > Models`, `Loop engine`, `Storage`, `Memory`, or `Sandbox` to
+edit the workspace runtime configuration. Settings V2 stores one versioned JSON
+document in SQLite under the runtime data directory. Each Console page edits its
+own section of that document: `Models` edits `model`, `Loop engine` edits
+`loop_engine`, `Storage` edits `storage`, `Memory` edits `memory`, and
+`Sandbox` edits `sandbox`. The Form and JSON tabs are two views of that current
+section, and saving merges the section back into the versioned document.
 
-Self-hosted environments can generate scoped worker keys from the Dashboard or
-API. The key is shown once; store it as an environment variable on the runner.
+The usual sequence is:
 
-```bash
-export MANAGED_AGENTS_ENVIRONMENT_KEY='mawk_...'
+1. Change the relevant field.
+2. Click `Save settings`; the Dashboard validates the change before saving.
+3. Optionally run `Check configuration` for a local capability check when you
+   need diagnostics before or after saving.
+4. Restart the runtime when the page shows `Restart required`.
 
-managed-agents worker poll \
-  --environment-id env_self_hosted \
-  --workdir /path/to/worker/root
-```
+All first-release Settings V2 fields require a runtime restart before they
+become effective. Until restart, API responses expose both `saved_config` and
+`effective_config`; sessions continue using the effective revision.
 
-For CI or smoke tests, claim at most one work item:
+The workspace has one active model vendor, one built-in loop engine, SQLite
+metadata storage, local artifact storage, one context-memory backend, and one
+default sandbox provider. Named Environments can still override the default
+sandbox per session. Planned adapters such as S3, mem0, MemU, Harness, Codex,
+and Claude remain unavailable until their runtime implementations exist; Docker
+or remote sandbox providers appear as available only when registered by the
+current runtime. Remote sandbox maps to the self-hosted worker queue: configure
+the worker API URL and key so external workers can claim and complete queued
+work items; the Settings check calls the remote `/v1/x/health` endpoint.
 
-```bash
-managed-agents worker poll \
-  --environment-id env_self_hosted \
-  --workdir /path/to/worker/root \
-  --once
-```
-
-The worker executes `exec`, `read`, `write`, and `list` jobs inside `--workdir`.
+YAML model entries and legacy provider rows are bootstrap/import data for a new
+workspace. After Settings V2 is seeded, normal Dashboard edits do not rewrite
+source-controlled YAML files and legacy provider mutation endpoints are
+read-only compatibility failures.
 
 ## Create An Agent
 
@@ -336,11 +326,6 @@ managed-agents start --host 127.0.0.1 --port 3000
 managed-agents list
 managed-agents reload
 managed-agents chat agent_assistant --message "hello"
-managed-agents session create --agent agent_assistant --title "Smoke test"
-managed-agents session message SESSION_ID --message "hello"
-managed-agents session tail SESSION_ID
-managed-agents session inspect SESSION_ID --json
-managed-agents session logs SESSION_ID
 managed-agents template list
 managed-agents template install <template-name-or-path>
 managed-agents template create <name>

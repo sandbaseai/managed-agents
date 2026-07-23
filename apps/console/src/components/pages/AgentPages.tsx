@@ -1,22 +1,8 @@
-import {
-  Box,
-  Check,
-  ChevronDown,
-  Lock,
-  MessageSquare,
-  Monitor,
-  MoreVertical,
-  Pencil,
-  Play,
-  Plus,
-  Server,
-  Sparkles,
-  Zap,
-} from 'lucide-react';
-import { type ReactNode, useEffect, useState } from 'react';
-import { getPage, postJson, putJson } from '../../api';
-import { EmptyState, FilterSelect, StatusPill, SummaryStrip, Toolbar } from '../Common';
-import { formatDate, formatDateShort, formatUsage, shortId, truncateMiddle } from '../../lib/format';
+import { Box, Check, ChevronDown, Lock, MessageSquare, Monitor, MoreVertical, Pencil, Play, Plus, Server, Sparkles, Zap } from 'lucide-react';
+import { useState } from 'react';
+import { postJson } from '../../api';
+import { EmptyState, FilterSelect, MetricCard, StatusPill, Toolbar } from '../Common';
+import { formatDate, formatDateShort, formatUsage, shortId } from '../../lib/format';
 import type { Agent, AgentTab, ConsoleData, McpToolset, Session } from '../../types';
 
 export function Agents({ data, onNewAgent, onOpenAgent }: { data: ConsoleData; onNewAgent: () => void; onOpenAgent: (agent: Agent) => void }) {
@@ -28,32 +14,25 @@ export function Agents({ data, onNewAgent, onOpenAgent }: { data: ConsoleData; o
     const matchesQuery = agent.id.toLowerCase().includes(q) || agent.name.toLowerCase().includes(q) || agent.description.toLowerCase().includes(q) || agent.model.toLowerCase().includes(q);
     return matchesStatus && matchesQuery;
   });
-  const activeAgents = data.agents.filter((agent) => !agent.archived_at).length;
-  const archivedAgents = data.agents.filter((agent) => Boolean(agent.archived_at)).length;
   return (
     <section className="stack">
       <div className="pageIntro">
         <div>
           <h1>Agents</h1>
-          <p>Define local agents with prompts, tools, skills, and versioned runtime behavior.</p>
+          <p>Create and manage autonomous agents.</p>
         </div>
-        <button className="primaryButton" type="button" onClick={onNewAgent}>
+        <button className="darkButton" type="button" onClick={onNewAgent}>
           <Plus size={18} />
           Create agent
         </button>
       </div>
-      <SummaryStrip items={[
-        { label: 'Agents', value: data.agents.length, icon: <Monitor size={18} /> },
-        { label: 'Active', value: activeAgents, icon: <Check size={18} /> },
-        { label: 'Archived', value: archivedAgents, icon: <Lock size={18} /> },
-        { label: 'Sessions', value: data.sessions.length, icon: <MessageSquare size={18} /> },
-      ]} />
       <Toolbar
         query={query}
         onQuery={setQuery}
         placeholder="Search by name or exact ID"
         actions={(
           <>
+            <FilterSelect label="Created" value="all" onChange={() => undefined} options={[{ value: 'all', label: 'All time' }]} />
             <FilterSelect
               label="Status"
               value={status}
@@ -71,6 +50,7 @@ export function Agents({ data, onNewAgent, onOpenAgent }: { data: ConsoleData; o
         <table className="agentTable">
           <thead>
             <tr>
+              <th className="selectCol"><input type="checkbox" aria-label="Select all agents" /></th>
               <th>ID</th>
               <th>Name</th>
               <th>Model</th>
@@ -82,6 +62,7 @@ export function Agents({ data, onNewAgent, onOpenAgent }: { data: ConsoleData; o
           <tbody>
             {agents.map((agent) => (
               <tr key={agent.id} className="clickableRow" onClick={() => onOpenAgent(agent)}>
+                <td className="selectCol" onClick={(event) => event.stopPropagation()}><input type="checkbox" aria-label={`Select ${agent.name}`} /></td>
                 <td className="monoCell">{shortId(agent.id)}</td>
                 <td>
                   <strong>{agent.name}</strong>
@@ -95,14 +76,7 @@ export function Agents({ data, onNewAgent, onOpenAgent }: { data: ConsoleData; o
             ))}
           </tbody>
         </table>
-        {agents.length === 0 ? (
-          <EmptyState
-            icon={<Monitor size={22} />}
-            title="No agents"
-            body="Create an agent to define its system prompt, tools, skills, and runtime behavior."
-            action={<button className="primaryButton" type="button" onClick={onNewAgent}><Plus size={16} />Create agent</button>}
-          />
-        ) : null}
+        {agents.length === 0 ? <EmptyState icon={<Monitor size={22} />} title="No agents" /> : null}
       </div>
       <div className="mobileAgentList">
         {agents.map((agent) => (
@@ -117,14 +91,7 @@ export function Agents({ data, onNewAgent, onOpenAgent }: { data: ConsoleData; o
             </span>
           </button>
         ))}
-        {agents.length === 0 ? (
-          <EmptyState
-            icon={<Monitor size={22} />}
-            title="No agents"
-            body="Create an agent to define its system prompt, tools, skills, and runtime behavior."
-            action={<button className="primaryButton" type="button" onClick={onNewAgent}><Plus size={16} />Create agent</button>}
-          />
-        ) : null}
+        {agents.length === 0 ? <EmptyState icon={<Monitor size={22} />} title="No agents" /> : null}
       </div>
     </section>
   );
@@ -177,7 +144,7 @@ export function AgentDetail({
             <StatusPill status={agent.status} />
           </div>
           <p className="mutedLine"><span className="monoText">{agent.id}</span> · Last updated {formatDate(agent.updated_at)}</p>
-          <p className="agentDescription">{agent.description || 'No description yet. Add one to make this agent easier to identify in sessions and operations.'}</p>
+          <p className="agentDescription">{agent.description || 'No description.'}</p>
         </div>
         <div className="agentHeroActions">
           <button className="secondaryButton largeAction" type="button" onClick={onEdit}>
@@ -199,13 +166,6 @@ export function AgentDetail({
         </div>
       </div>
 
-      <SummaryStrip items={[
-        { label: 'Version', value: `v${agent.version}`, icon: <Sparkles size={18} /> },
-        { label: 'Sessions', value: agentSessions.length, icon: <MessageSquare size={18} /> },
-        { label: 'Tools', value: toolNames(agent).length, icon: <Box size={18} /> },
-        { label: 'Skills', value: agent.skills.length, icon: <Zap size={18} /> },
-      ]} />
-
       <div className="detailTabs">
         {(['agent', 'sessions', 'deployments', 'observability'] as AgentTab[]).map((item) => (
           <button
@@ -220,15 +180,9 @@ export function AgentDetail({
         ))}
       </div>
 
-      {tab === 'agent' ? <AgentConfigTab agent={agent} onRefresh={onRefresh} /> : null}
+      {tab === 'agent' ? <AgentConfigTab agent={agent} /> : null}
       {tab === 'sessions' ? <AgentSessionsTab sessions={agentSessions} onOpenSession={onOpenSession} /> : null}
-      {tab === 'deployments' ? (
-        <EmptyState
-          icon={<Server size={22} />}
-          title="No deployments for this local runtime"
-          body="Use Sessions for local runs today. Deployment history will appear here once remote or scheduled deployment adapters are enabled."
-        />
-      ) : null}
+      {tab === 'deployments' ? <EmptyState icon={<Server size={22} />} title="Deployments are not configured for this local runtime" /> : null}
       {tab === 'observability' ? (
         <AgentObservability sessions={agentSessions} tokenIn={tokenIn} tokenOut={tokenOut} />
       ) : null}
@@ -236,123 +190,15 @@ export function AgentDetail({
   );
 }
 
-function AgentConfigTab({ agent, onRefresh }: { agent: Agent; onRefresh: () => void }) {
+function AgentConfigTab({ agent }: { agent: Agent }) {
   const builtinToolCount = toolNames(agent).length;
   const mcpToolsets = agent.tools.filter((toolset): toolset is McpToolset => toolset.type === 'mcp_toolset');
-  const [versions, setVersions] = useState<Agent[]>([]);
-  const [versionsOpen, setVersionsOpen] = useState(false);
-  const [baseVersion, setBaseVersion] = useState<number | null>(null);
-  const [compareVersion, setCompareVersion] = useState<number | null>(agent.version);
-  const [versionMessage, setVersionMessage] = useState('');
-
-  useEffect(() => {
-    let mounted = true;
-    getPage<Agent>(`/v1/agents/${agent.id}/versions`)
-      .then((page) => {
-        if (!mounted) return;
-        setVersions(page.data);
-        const latest = page.data[0]?.version ?? agent.version;
-        const previous = page.data[1]?.version ?? null;
-        setCompareVersion(latest);
-        setBaseVersion(previous);
-      })
-      .catch((err: Error) => {
-        if (!mounted) return;
-        setVersionMessage(err.message);
-      });
-    return () => {
-      mounted = false;
-    };
-  }, [agent.id, agent.version]);
-
-  const selectedBase = versions.find((version) => version.version === baseVersion) ?? null;
-  const selectedCompare = versions.find((version) => version.version === compareVersion) ?? versions[0] ?? agent;
-  const diffRows = selectedBase && selectedCompare ? agentVersionDiff(selectedBase, selectedCompare) : [];
-
-  const rollbackToVersion = async (version: Agent) => {
-    if (!window.confirm(`Create a new version from v${version.version}?`)) return;
-    setVersionMessage('');
-    try {
-      await putJson(`/v1/agents/${agent.id}`, {
-        ...agentPayloadFromApi(version),
-        expected_version: agent.version,
-      });
-      setVersionMessage(`Created a new version from v${version.version}.`);
-      onRefresh();
-    } catch (err) {
-      setVersionMessage(err instanceof Error ? err.message : String(err));
-    }
-  };
-
   return (
     <div className="detailStack">
       <div className="versionRow">
-        <button className="filterButton" type="button" onClick={() => setVersionsOpen((open) => !open)}>
-          Version <strong>v{agent.version}</strong> <ChevronDown size={15} />
-        </button>
+        <button className="filterButton" type="button">Version <strong>v{agent.version}</strong> <ChevronDown size={15} /></button>
       </div>
-      {versionsOpen ? (
-        <section className="versionPanel">
-          <div className="sectionHeaderRow compactHeader">
-            <div>
-              <h2>Version history</h2>
-              <p>Immutable snapshots created by agent create/update. Compare versions or create a new version from an older snapshot.</p>
-            </div>
-          </div>
-          <div className="versionCompareControls">
-            <label>
-              <span>Base</span>
-              <select value={baseVersion ?? ''} onChange={(event) => setBaseVersion(event.target.value ? Number(event.target.value) : null)}>
-                <option value="">None</option>
-                {versions.map((version) => <option value={version.version} key={version.version}>v{version.version}</option>)}
-              </select>
-            </label>
-            <label>
-              <span>Compare</span>
-              <select value={compareVersion ?? ''} onChange={(event) => setCompareVersion(event.target.value ? Number(event.target.value) : null)}>
-                {versions.map((version) => <option value={version.version} key={version.version}>v{version.version}</option>)}
-              </select>
-            </label>
-          </div>
-          <div className="versionHistoryList">
-            {versions.map((version) => (
-              <div className="versionHistoryRow" key={version.version}>
-                <div>
-                  <strong>v{version.version}</strong>
-                  <span>{formatDateShort(version.updated_at ?? version.created_at)}</span>
-                </div>
-                <p>{version.description || truncateMiddle(version.system, 120)}</p>
-                <button className="ghostButton compactButton" type="button" onClick={() => void rollbackToVersion(version)} disabled={version.version === agent.version}>
-                  Copy to new version
-                </button>
-              </div>
-            ))}
-          </div>
-          {diffRows.length ? (
-            <div className="versionDiff">
-              {diffRows.map((row) => (
-                <div className={`versionDiffRow ${row.changed ? 'changed' : ''}`} key={row.field}>
-                  <strong>{row.field}</strong>
-                  <pre>{row.before}</pre>
-                  <pre>{row.after}</pre>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <EmptyState
-              icon={<MessageSquare size={22} />}
-              title="Select two versions"
-              body="Choose a base and compare version to inspect field-level changes before copying an older snapshot."
-            />
-          )}
-          {versionMessage ? <div className="noticeBox">{versionMessage}</div> : null}
-        </section>
-      ) : null}
       <div className="systemPreview">
-        <div className="systemPreviewHeader">
-          <span>System prompt</span>
-          <code>{agent.model}</code>
-        </div>
         <pre>{agent.system}</pre>
       </div>
 
@@ -368,7 +214,7 @@ function AgentConfigTab({ agent, onRefresh }: { agent: Agent; onRefresh: () => v
           </div>
           <div className="toolsetRow">
             <span><ChevronDown size={16} />Tool permissions <b>{builtinToolCount}</b></span>
-            <span className="allowText"><Check size={16} />{permissionPolicyLabel(agent)}</span>
+            <span className="allowText"><Check size={16} />Always allow</span>
           </div>
         </div>
         {mcpToolsets.map((toolset) => (
@@ -388,13 +234,7 @@ function AgentConfigTab({ agent, onRefresh }: { agent: Agent; onRefresh: () => v
         <h2>Skills</h2>
         {agent.skills.length ? (
           <div className="chipRow">{agent.skills.map((skill) => <span className="softChip" key={skill.skill_id}>{skill.skill_id}</span>)}</div>
-        ) : (
-          <EmptyState
-            icon={<Sparkles size={22} />}
-            title="No skills attached"
-            body="Attach Skills when this agent needs reusable instructions beyond its system prompt."
-          />
-        )}
+        ) : <p className="emptyInline">No skills attached.</p>}
       </section>
     </div>
   );
@@ -417,6 +257,9 @@ function AgentSessionsTab({ sessions, onOpenSession }: { sessions: Session[]; on
         placeholder="Search by session ID"
         actions={(
           <>
+            <FilterSelect label="Created" value="all" onChange={() => undefined} options={[{ value: 'all', label: 'All time' }]} />
+            <FilterSelect label="Version" value="all" onChange={() => undefined} options={[{ value: 'all', label: 'All' }]} />
+            <FilterSelect label="Deployment" value="all" onChange={() => undefined} options={[{ value: 'all', label: 'All' }]} />
             <FilterSelect
               label="Status"
               value={status}
@@ -434,30 +277,25 @@ function AgentSessionsTab({ sessions, onOpenSession }: { sessions: Session[]; on
       />
       <div className="tablePanel">
         <table>
-          <thead><tr><th>ID</th><th>Name</th><th>Status</th><th>Version</th><th>Tokens in / out</th><th>Created</th></tr></thead>
+          <thead><tr><th className="selectCol"><input type="checkbox" aria-label="Select sessions" /></th><th>ID</th><th>Name</th><th>Status</th><th>Version</th><th>Tokens in / out</th><th>Created</th></tr></thead>
           <tbody>
             {filtered.map((session) => (
               <tr key={session.id} className="clickableRow" onClick={() => onOpenSession(session)}>
+                <td className="selectCol" onClick={(event) => event.stopPropagation()}><input type="checkbox" aria-label={`Select ${session.id}`} /></td>
                 <td className="monoCell">{shortId(session.id)}</td>
                 <td>{session.title || '-'}</td>
                 <td><StatusPill status={session.status} /></td>
-                <td>{sessionAgentVersionLabel(session)}</td>
+                <td>v1</td>
                 <td>{formatUsage(session.usage)}</td>
                 <td>{formatDateShort(session.created_at)}</td>
               </tr>
             ))}
           </tbody>
         </table>
-        {filtered.length === 0 ? <EmptyState icon={<MessageSquare size={22} />} title="No sessions" body="Start a session from this agent to see its run history here." /> : null}
+        {filtered.length === 0 ? <EmptyState icon={<MessageSquare size={22} />} title="No sessions" /> : null}
       </div>
     </div>
   );
-}
-
-function sessionAgentVersionLabel(session: Session): string {
-  return 'version' in session.agent && typeof session.agent.version === 'number'
-    ? `v${session.agent.version}`
-    : 'pinned/default';
 }
 
 function AgentObservability({ sessions, tokenIn, tokenOut }: { sessions: Session[]; tokenIn: number; tokenOut: number }) {
@@ -474,69 +312,19 @@ function AgentObservability({ sessions, tokenIn, tokenOut }: { sessions: Session
       <div className="panel sessionActivity">
         <div className="panelHeader">
           <h2>Session activity</h2>
-          <span className="readonlyFilterBadge">Version <strong>All</strong></span>
+          <button className="filterButton" type="button">Version <strong>All</strong> <ChevronDown size={15} /></button>
         </div>
       </div>
     </div>
   );
 }
 
-function MetricCard({ title, value, subtitle }: { title: string; value: ReactNode; subtitle?: string }) {
-  return (
-    <div className="metricCard">
-      <span>{title}</span>
-      <strong>{value}</strong>
-      {subtitle ? <small>{subtitle}</small> : null}
-    </div>
-  );
-}
-
 function toolNames(agent: Pick<Agent, 'tools'>): string[] {
-  return agent.tools.flatMap((toolset) => {
-    if (toolset.type !== 'agent_toolset_20260401') return [];
-    if (Array.isArray(toolset.configs)) {
-      return (toolset.configs as Array<{ name?: string }>).map((item) => item.name).filter((name): name is string => Boolean(name));
+  const names = new Set<string>();
+  for (const toolset of agent.tools ?? []) {
+    for (const [name, config] of Object.entries(toolset.configs ?? {})) {
+      if (config.enabled !== false && config.permission_policy?.type !== 'never_allow') names.add(name);
     }
-    if (toolset.configs && typeof toolset.configs === 'object') return Object.keys(toolset.configs);
-    return ['read', 'write', 'bash'];
-  });
-}
-
-function permissionPolicyLabel(agent: Pick<Agent, 'tools'>): string {
-  const builtin = agent.tools.find((toolset) => toolset.type === 'agent_toolset_20260401');
-  const policy = builtin?.default_config?.permission_policy?.type;
-  if (policy === 'always_ask') return 'Ask before use';
-  if (policy === 'never_allow') return 'Never allow';
-  return 'Always allow';
-}
-
-function agentPayloadFromApi(agent: Agent) {
-  return {
-    name: agent.name,
-    description: agent.description,
-    model: agent.model,
-    system: agent.system,
-    mcp_servers: agent.mcp_servers,
-    tools: agent.tools,
-    skills: agent.skills,
-    metadata: agent.metadata,
-  };
-}
-
-function agentVersionDiff(base: Agent, compare: Agent) {
-  const fields: Array<[string, string, string]> = [
-    ['Name', base.name, compare.name],
-    ['Description', base.description, compare.description],
-    ['Model', base.model, compare.model],
-    ['System', base.system, compare.system],
-    ['Tools', JSON.stringify(base.tools, null, 2), JSON.stringify(compare.tools, null, 2)],
-    ['MCP servers', JSON.stringify(base.mcp_servers, null, 2), JSON.stringify(compare.mcp_servers, null, 2)],
-    ['Skills', JSON.stringify(base.skills, null, 2), JSON.stringify(compare.skills, null, 2)],
-  ];
-  return fields.map(([field, before, after]) => ({
-    field,
-    before: before || '-',
-    after: after || '-',
-    changed: before !== after,
-  }));
+  }
+  return [...names];
 }

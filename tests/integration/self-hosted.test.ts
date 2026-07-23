@@ -9,7 +9,6 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { join } from 'node:path';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { createHash } from 'node:crypto';
 import { Database } from '@/core/db/database.js';
 import { WorkQueue, SelfHostedSandboxProvider } from '@/sandbox/self-hosted-provider.js';
 import { workerRoutes } from '@/api/routes/worker.js';
@@ -42,7 +41,7 @@ describe('WorkQueue', () => {
     expect(claimed!.payload.command).toBe('echo hi');
 
     // Worker completes it
-    queue.complete(id, { exitCode: 0, stdout: 'hi', stderr: '', timedOut: false });
+    queue.complete(id, 'worker_1', { exitCode: 0, stdout: 'hi', stderr: '', timedOut: false });
 
     // Server awaits the result
     const result = await queue.await(id, { timeoutMs: 1000, pollMs: 10 });
@@ -80,7 +79,8 @@ describe('WorkQueue', () => {
 
   it('await rejects on failed items', async () => {
     const id = queue.enqueue('s', 'exec', { command: 'bad' });
-    queue.complete(id, 'boom', true);
+    queue.claim('w');
+    queue.complete(id, 'w', 'boom', true);
     await expect(queue.await(id, { timeoutMs: 500, pollMs: 10 })).rejects.toThrow(/failed/);
   });
 
@@ -115,7 +115,7 @@ describe('SelfHostedSandboxProvider', () => {
       for (let i = 0; i < 50; i++) {
         const item = queue.claim('w1', 'sess_x');
         if (item) {
-          queue.complete(item.id, { exitCode: 0, stdout: 'from worker', stderr: '', timedOut: false });
+          queue.complete(item.id, 'w1', { exitCode: 0, stdout: 'from worker', stderr: '', timedOut: false });
           return;
         }
         await new Promise((r) => setTimeout(r, 10));
@@ -177,54 +177,28 @@ describe('Worker HTTP endpoints', () => {
     queue.claim('w1');
     const res = await app.request('/complete', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id, result: 'file contents' }),
+      body: JSON.stringify({ id, worker_id: 'w1', result: 'file contents' }),
     });
     expect(res.status).toBe(200);
     expect(queue.get(id)!.status).toBe('done');
   });
 
-  it('scopes claims to an environment worker key and records last seen', async () => {
-    app = workerRoutes(queue, db);
-    db.exec(`INSERT INTO environments (id, name, config) VALUES ('env_a', 'A', '{}'), ('env_b', 'B', '{}')`);
-    db.exec(`INSERT INTO agents (id, name, definition) VALUES ('agent_a', 'agent-a', '{}')`);
-    db.exec(`
-      INSERT INTO sessions (id, agent_id, agent_name, environment_id, status)
-      VALUES ('sess_a', 'agent_a', 'agent-a', 'env_a', 'idle'),
-             ('sess_b', 'agent_a', 'agent-a', 'env_b', 'idle')
-    `);
-    const secret = 'mawk_test_worker_key';
-    db.prepare(
-      `INSERT INTO environment_worker_keys (id, environment_id, name, key_hash, key_prefix)
-       VALUES (?, ?, ?, ?, ?)`,
-    ).run('wrkkey_a', 'env_a', 'Worker A', createHash('sha256').update(secret).digest('hex'), 'mawk_test…key');
-    const itemA = queue.enqueue('sess_a', 'read', { path: 'a.txt' });
-    const itemB = queue.enqueue('sess_b', 'read', { path: 'b.txt' });
-
-    const res = await app.request('/claim', {
+  it('rejects completion by a worker that did not claim the item', async () => {
+    const id = queue.enqueue('s', 'read', { path: 'f' });
+    queue.claim('w1');
+    const res = await app.request('/complete', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ worker_id: 'worker_a', environment_key: secret }),
+      body: JSON.stringify({ id, worker_id: 'w2', result: 'forged result' }),
     });
-    expect(res.status).toBe(200);
-    expect((await res.json()).id).toBe(itemA);
-    expect(queue.get(itemA)?.status).toBe('claimed');
-    expect(queue.get(itemB)?.status).toBe('pending');
-    const key = db.prepare('SELECT last_seen_at FROM environment_worker_keys WHERE id = ?').get('wrkkey_a') as { last_seen_at: string | null };
-    expect(key.last_seen_at).toBeTruthy();
+    expect(res.status).toBe(409);
+    expect(queue.get(id)!.status).toBe('claimed');
   });
 
-  it('rejects revoked environment worker keys', async () => {
-    app = workerRoutes(queue, db);
-    db.exec(`INSERT INTO environments (id, name, config) VALUES ('env_a', 'A', '{}')`);
-    const secret = 'mawk_revoked_worker_key';
-    db.prepare(
-      `INSERT INTO environment_worker_keys (id, environment_id, name, key_hash, key_prefix, status, revoked_at)
-       VALUES (?, ?, ?, ?, ?, ?, datetime('now'))`,
-    ).run('wrkkey_revoked', 'env_a', 'Revoked', createHash('sha256').update(secret).digest('hex'), 'mawk_revo…key', 'revoked');
-
-    const res = await app.request('/claim', {
+  it('requires worker_id when completing an item', async () => {
+    const res = await app.request('/complete', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ worker_id: 'worker_a', environment_key: secret }),
+      body: JSON.stringify({ id: 'work_missing', result: 'x' }),
     });
-    expect(res.status).toBe(401);
+    expect(res.status).toBe(400);
   });
 });

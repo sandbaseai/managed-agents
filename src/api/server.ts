@@ -15,19 +15,20 @@ import { agentsRoutes } from './routes/agents.js';
 import { resourceRoutes } from './routes/resources.js';
 import { skillsRoutes } from './routes/skills.js';
 import { apiKeysRoutes } from './routes/api-keys.js';
-import { operationsRoutes } from './routes/operations.js';
 import { extendedRoutes } from './routes/extended.js';
 import { streamRoutes } from './routes/stream.js';
 import { createAuthMiddleware } from './auth.js';
 import type { SessionManager } from '@/core/session/session-manager.js';
 import type { AgentDefinition } from '@/types/agent.js';
 import { workerRoutes } from './routes/worker.js';
+import { operationsRoutes } from './routes/operations.js';
 import type { WorkQueue } from '@/sandbox/self-hosted-provider.js';
 import type { Logger, LogStore } from '@/core/observability/logger.js';
 import type { Metrics } from '@/core/observability/metrics.js';
 import type { Skill } from '@/core/skills/loader.js';
 import type { Database } from '@/core/db/database.js';
 import type { ModelConfig, RuntimeModelInfo } from '@/types/model.js';
+import type { ArtifactStore } from '@/core/storage/artifact-store.js';
 import type { OutcomeEvaluator } from '@/core/operations/outcome-evaluator.js';
 
 export interface ServerDeps {
@@ -57,6 +58,12 @@ export interface ServerDeps {
     configPath: string;
     target: string;
   };
+  /** Active local artifact directory resolved from effective runtime settings. */
+  artifactStorageDir?: () => string;
+  /** Active artifact store. Local-only for the first Settings V2 release. */
+  artifactStore?: () => ArtifactStore;
+  /** Optional model-assisted outcome evaluator for advanced operations routes. */
+  evaluateOutcome?: OutcomeEvaluator;
   runtime?: {
     models: RuntimeModelInfo[];
     sandboxProviders: string[];
@@ -82,15 +89,20 @@ export interface ServerDeps {
   restart?: () => Promise<void> | void;
   /** Optional work queue for the self_hosted sandbox worker endpoints (R9.14). */
   workQueue?: WorkQueue;
-  /** Optional model-assisted outcome evaluator. Deterministic fallback lives in operations routes. */
-  evaluateOutcome?: OutcomeEvaluator;
+  /**
+   * Additional browser origins allowed to call the API. Same-origin and
+   * localhost loopback origins are always allowed for the local Dashboard.
+   */
+  corsOrigins?: string[];
 }
 
 export function createServer(deps: ServerDeps) {
   const app = new Hono();
 
   // Middleware
-  app.use('*', cors());
+  app.use('*', cors({
+    origin: (origin, c) => allowedCorsOrigin(origin, c.req.url, deps.corsOrigins),
+  }));
 
   // Request logging + metrics (F3)
   if (deps.logger || deps.metrics) {
@@ -126,17 +138,17 @@ export function createServer(deps: ServerDeps) {
   app.route('/v1', resourceRoutes(deps));
   app.route('/v1/skills', skillsRoutes(deps));
   app.route('/v1/api-keys', apiKeysRoutes(deps));
-  app.route('/v1', operationsRoutes(deps));
 
   // SSE streaming
   app.route('/v1/sessions', streamRoutes(deps));
 
   // Runtime extension endpoints
   app.route('/v1/x', extendedRoutes(deps));
+  app.route('/v1/x', operationsRoutes(deps));
 
   // Self-hosted sandbox worker endpoints (R9.14)
   if (deps.workQueue) {
-    app.route('/v1/x/worker', workerRoutes(deps.workQueue, deps.db));
+    app.route('/v1/x/worker', workerRoutes(deps.workQueue));
   }
 
   // Root health check (JSON - used by SDK/clients)
@@ -152,6 +164,36 @@ export function createServer(deps: ServerDeps) {
   });
 
   return app;
+}
+
+export function allowedCorsOrigin(
+  origin: string,
+  requestUrl: string,
+  configuredOrigins: string[] = [],
+): string | null {
+  if (!origin) return null;
+  const normalizedOrigin = normalizeOrigin(origin);
+  if (!normalizedOrigin) return null;
+  const requestOrigin = normalizeOrigin(new URL(requestUrl).origin);
+  if (normalizedOrigin === requestOrigin) return normalizedOrigin;
+  if (isLoopbackOrigin(normalizedOrigin)) return normalizedOrigin;
+  const allowed = new Set(configuredOrigins.map(normalizeOrigin).filter((item): item is string => Boolean(item)));
+  return allowed.has(normalizedOrigin) ? normalizedOrigin : null;
+}
+
+function normalizeOrigin(value: string): string | null {
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
+    return url.origin;
+  } catch {
+    return null;
+  }
+}
+
+function isLoopbackOrigin(origin: string): boolean {
+  const url = new URL(origin);
+  return ['localhost', '127.0.0.1', '[::1]', '::1'].includes(url.hostname);
 }
 
 function serveConsoleAsset(c: any, requestedPath: string, overrideRoot?: string | null) {

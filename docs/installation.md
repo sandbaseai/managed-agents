@@ -8,7 +8,7 @@ and the local Console.
 
 - Node.js 22 or newer
 - npm 10 or newer
-- A model provider API key or an OpenAI-compatible local endpoint
+- A model vendor API key or an OpenAI-compatible local endpoint
 - Docker, only when using Docker-backed sandboxes
 
 ## Install With npx
@@ -114,7 +114,7 @@ managed-agents.config.yaml
 uploaded resource state are stored outside the repository under
 `~/.managed-agents/<workspace-name>-<hash>/` by default.
 
-## Configure The Model Provider Boundary
+## Configure The Model Vendor
 
 Start the runtime, open the Dashboard, and go to `Settings > Models`.
 
@@ -122,28 +122,25 @@ Start the runtime, open the Dashboard, and go to `Settings > Models`.
 http://127.0.0.1:3000/dashboard#models
 ```
 
-Configure the one active provider boundary:
+Configure the workspace model vendor, then click `Validate` or
+`Check configuration` before saving:
 
-- `Vendor`: `anthropic`, `openai`, `openai-compatible`, or a local-compatible endpoint
+- `Vendor`: `anthropic`, `openai`, or `openai_compatible`
 - `Base URL`: required for OpenAI-compatible local or hosted endpoints
-- `API key env`: the environment variable name or secret reference used for model requests
+- `API key`: the provider key for model requests
 
-The CLI uses the same canonical settings API:
+Runtime settings are stored as one versioned Settings V2 document in SQLite
+under the runtime data directory, not in the source checkout. Agents using
+`model: default` run through the configured vendor. Concrete model IDs remain
+adapter-owned implementation details; the Dashboard does not ask for a model ID.
+Config-file model entries are only used as optional bootstrap data for a new
+workspace.
 
-```bash
-managed-agents settings set-model \
-  --vendor anthropic \
-  --base-url https://api.anthropic.com \
-  --api-key-env ANTHROPIC_API_KEY
-
-managed-agents settings validate
-```
-
-The raw API key is not returned by the API. Runtime settings are stored under
-the user-level runtime data directory, not in the source checkout. Agents using
-`model: default` run through this active provider boundary, while concrete
-model/runtime intent remains part of the agent definition or a future validated
-engine adapter.
+The same Settings page also configures the single active Loop engine, Storage
+backends, Memory backend, and default Sandbox. Docker appears as available only
+when the runtime detects Docker support. Planned adapters such as S3, mem0,
+MemU, Codex, Harness, and Claude are shown as unavailable until a real runtime
+adapter exists.
 
 ## Configure Environments
 
@@ -157,9 +154,8 @@ environments:
     timeout: 300
 ```
 
-Advanced optional: Docker-backed environments can be added later when command
-execution needs stronger process isolation. They are not required for the first
-local run:
+Docker-backed environments can be added when command execution needs stronger
+process isolation:
 
 ```yaml
 environments:
@@ -191,6 +187,15 @@ managed-agents start \
 
 Set `MANAGED_AGENTS_HOME` to move all workspace runtime folders together, or
 pass `--data-dir` for a single workspace override.
+
+The API and Dashboard are served from the same origin. CORS is restricted by
+default to same-origin and local loopback browser origins. For a deployed
+Console or a trusted separate frontend, set a comma-separated allowlist:
+
+```bash
+export MANAGED_AGENTS_CORS_ORIGINS=https://console.example.com,https://admin.example.com
+managed-agents start --host 0.0.0.0
+```
 
 ## Enable API Authentication
 

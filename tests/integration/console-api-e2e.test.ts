@@ -15,7 +15,7 @@ import { Files, Skills } from '../../apps/console/src/components/pages/BuildPage
 import { CredentialVaults } from '../../apps/console/src/components/pages/CredentialPages.js';
 import { MemoryStores } from '../../apps/console/src/components/pages/MemoryPages.js';
 import { OutcomesPage, ScheduledDeploymentsPage, WebhooksPage } from '../../apps/console/src/components/pages/OperationsPages.js';
-import { SettingsView } from '../../apps/console/src/components/pages/settings/SettingsPage.js';
+import { SettingsView } from '../../apps/console/src/components/pages/settings/SettingsView.js';
 import type { ConsoleData } from '../../apps/console/src/types.js';
 
 describe('Console/API no-port E2E flow', () => {
@@ -86,14 +86,29 @@ describe('Console/API no-port E2E flow', () => {
   });
 
   it('creates resources through API and renders the corresponding Console pages', async () => {
-    const settingsUpdate = await patchJson('/v1/x/settings', {
-      model_provider: {
-        vendor: 'openai',
-        api_key_env: 'OPENAI_API_KEY',
+    const currentSettings = await json('/v1/x/settings');
+    const settingsUpdate = await putJson('/v1/x/settings', {
+      revision: currentSettings.revision,
+      config: {
+        ...currentSettings.saved_config,
+        model: {
+          ...currentSettings.saved_config.model,
+          vendor: 'openai',
+          api_key: 'sk-test',
+        },
       },
     });
     expect(settingsUpdate.status).toBe(200);
-    expect(settingsUpdate.body.model_provider.vendor).toBe('openai');
+    expect(settingsUpdate.body.saved_config.model.vendor).toBe('openai');
+
+    const legacySettingsUpdate = await postJson('/v1/x/settings/test', {
+      area: 'model',
+      config: {
+        vendor: 'openai',
+        api_key: '********',
+      },
+    });
+    expect(legacySettingsUpdate.status).toBe(200);
 
     const environment = await postJson('/v1/environments', {
       name: 'E2E local',
@@ -154,14 +169,14 @@ describe('Console/API no-port E2E flow', () => {
     });
     expect(message.status).toBe(200);
 
-    const webhook = await postJson('/v1/webhooks', {
+    const webhook = await postJson('/v1/x/webhooks', {
       name: 'E2E webhook',
       url: 'https://example.invalid/webhook',
       events: ['session.completed'],
     });
     expect(webhook.status).toBe(201);
 
-    const schedule = await postJson('/v1/scheduled-deployments', {
+    const schedule = await postJson('/v1/x/scheduled-deployments', {
       name: 'E2E schedule',
       agent_id: agent.body.id,
       environment_id: environment.body.id,
@@ -170,7 +185,7 @@ describe('Console/API no-port E2E flow', () => {
     });
     expect(schedule.status).toBe(201);
 
-    const outcome = await postJson('/v1/outcomes', {
+    const outcome = await postJson('/v1/x/outcomes', {
       name: 'E2E outcome',
       objective: 'The session should answer.',
       criteria: ['Agent replied'],
@@ -216,9 +231,9 @@ describe('Console/API no-port E2E flow', () => {
       page('/v1/memory_stores'),
       page('/v1/files'),
       page('/v1/skills'),
-      page('/v1/webhooks'),
-      page('/v1/scheduled-deployments'),
-      page('/v1/outcomes'),
+      page('/v1/x/webhooks'),
+      page('/v1/x/scheduled-deployments'),
+      page('/v1/x/outcomes'),
       json('/v1/x/workspace'),
       json('/v1/x/settings'),
       json('/v1/x/runtime'),
@@ -263,9 +278,9 @@ describe('Console/API no-port E2E flow', () => {
     return { status: res.status, body: await parseJsonResponse(path, res) };
   }
 
-  async function patchJson(path: string, body: unknown) {
+  async function putJson(path: string, body: unknown) {
     const res = await app.request(path, {
-      method: 'PATCH',
+      method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });

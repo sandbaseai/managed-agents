@@ -1,0 +1,70 @@
+[
+  {
+    "id": "api-keys-list",
+    "group": "API keys",
+    "title": "List API keys",
+    "method": "GET",
+    "path": "/v1/api-keys",
+    "summary": "List local bearer tokens by safe metadata and prefix. Secret values are not returned.",
+    "response": [
+      {
+        "name": "data",
+        "type": "ApiKey[]",
+        "description": "API key descriptors."
+      }
+    ]
+  },
+  {
+    "id": "api-keys-create",
+    "group": "API keys",
+    "title": "Create API key",
+    "method": "POST",
+    "path": "/v1/api-keys",
+    "summary": "Create a local bearer token for shared dashboard or API access. The full secret is returned once.",
+    "parameters": [
+      {
+        "name": "name",
+        "type": "string",
+        "required": true,
+        "description": "Human-readable key label."
+      },
+      {
+        "name": "metadata",
+        "type": "object",
+        "description": "Optional key tags."
+      }
+    ],
+    "response": [
+      {
+        "name": "id",
+        "type": "string",
+        "description": "Server-generated key_... identifier."
+      },
+      {
+        "name": "key_prefix",
+        "type": "string",
+        "description": "Safe display prefix."
+      },
+      {
+        "name": "secret_key",
+        "type": "string",
+        "description": "Full bearer token, returned only on create."
+      }
+    ]
+  },
+  {
+    "id": "api-keys-delete",
+    "group": "API keys",
+    "title": "Revoke API key",
+    "method": "DELETE",
+    "path": "/v1/api-keys/{key_id}",
+    "summary": "Revoke a local bearer token.",
+    "response": [
+      {
+        "name": "deleted",
+        "type": "boolean",
+        "description": "True when the key was revoked."
+      }
+    ]
+  }
+]
