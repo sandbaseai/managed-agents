@@ -3,17 +3,17 @@ import type { Page } from './types';
 const API_KEY_STORAGE_KEY = 'managed-agents.api-key';
 
 export function getStoredApiKey(): string {
-  return window.localStorage.getItem(API_KEY_STORAGE_KEY) ?? '';
+  return browserStorage()?.getItem(API_KEY_STORAGE_KEY) ?? '';
 }
 
 export function setStoredApiKey(key: string): void {
   if (key.trim()) {
-    window.localStorage.setItem(API_KEY_STORAGE_KEY, key.trim());
+    browserStorage()?.setItem(API_KEY_STORAGE_KEY, key.trim());
   }
 }
 
 export function clearStoredApiKey(): void {
-  window.localStorage.removeItem(API_KEY_STORAGE_KEY);
+  browserStorage()?.removeItem(API_KEY_STORAGE_KEY);
 }
 
 export async function getJson<T>(path: string): Promise<T> {
@@ -74,4 +74,9 @@ async function requestJson<T>(path: string, method: 'POST' | 'PUT', body: unknow
 function authHeaders(): HeadersInit {
   const key = getStoredApiKey();
   return key ? { Authorization: `Bearer ${key}` } : {};
+}
+
+function browserStorage(): Storage | null {
+  if (typeof window === 'undefined') return null;
+  return window.localStorage;
 }

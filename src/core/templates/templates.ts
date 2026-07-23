@@ -26,6 +26,7 @@ import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { defaultTemplateCacheDir } from '@/core/config/paths.js';
+import { validateAgentDefinition } from '@/core/agent/schema.js';
 
 export interface TemplateManifest {
   name: string;
@@ -40,6 +41,12 @@ export interface InstallResult {
   skipped: string[];
 }
 
+export interface TemplateValidationResult {
+  valid: boolean;
+  errors: Array<{ path: string; message: string }>;
+  files: string[];
+}
+
 const SUBDIRS = ['agents', 'skills', 'mcp'] as const;
 
 /** Read a template's manifest. Throws if missing/invalid. */
@@ -52,7 +59,41 @@ export function readManifest(templateDir: string): TemplateManifest {
   if (!parsed?.name) {
     throw new Error('Template manifest missing required "name" field');
   }
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9 _.-]*$/.test(parsed.name)) {
+    throw new Error('Template manifest "name" must be alphanumeric with spaces, dots, hyphens, or underscores');
+  }
+  if (parsed.description !== undefined && typeof parsed.description !== 'string') {
+    throw new Error('Template manifest "description" must be a string');
+  }
+  if (parsed.tags !== undefined && (!Array.isArray(parsed.tags) || parsed.tags.some((tag) => typeof tag !== 'string'))) {
+    throw new Error('Template manifest "tags" must be an array of strings');
+  }
   return parsed;
+}
+
+/** Validate template manifest and bundled agent/skill files without installing it. */
+export function validateTemplate(templateDir: string): TemplateValidationResult {
+  const errors: TemplateValidationResult['errors'] = [];
+  const files: string[] = [];
+
+  try {
+    readManifest(templateDir);
+    files.push('manifest.yaml');
+  } catch (err) {
+    errors.push({ path: 'manifest.yaml', message: err instanceof Error ? err.message : String(err) });
+  }
+
+  for (const sub of SUBDIRS) {
+    const dir = join(templateDir, sub);
+    if (!existsSync(dir)) continue;
+    collectTemplateFiles(dir, sub, files, errors);
+  }
+
+  if (!files.some((file) => file.startsWith('agents/') || file.startsWith('skills/') || file.startsWith('mcp/'))) {
+    errors.push({ path: '.', message: 'Template must include at least one agents/, skills/, or mcp/ file' });
+  }
+
+  return { valid: errors.length === 0, errors, files };
 }
 
 /**
@@ -64,7 +105,11 @@ export function installTemplate(
   projectDir: string,
   opts: { force?: boolean } = {},
 ): InstallResult {
-  readManifest(templateDir); // validate first
+  const validation = validateTemplate(templateDir);
+  if (!validation.valid) {
+    const first = validation.errors[0];
+    throw new Error(`Invalid template ${first.path}: ${first.message}`);
+  }
   const installed: string[] = [];
   const skipped: string[] = [];
 
@@ -101,6 +146,51 @@ export function createTemplate(
   }
 
   return { files };
+}
+
+function collectTemplateFiles(
+  dir: string,
+  relativeRoot: string,
+  files: string[],
+  errors: TemplateValidationResult['errors'],
+): void {
+  const entries = readdirSync(dir, { withFileTypes: true });
+  if (relativeRoot === 'skills') {
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      const skillPath = join(dir, entry.name, 'SKILL.md');
+      if (!existsSync(skillPath)) {
+        errors.push({ path: join(relativeRoot, entry.name), message: 'Skill directory must contain SKILL.md' });
+      }
+    }
+  }
+
+  for (const entry of entries) {
+    const child = join(dir, entry.name);
+    const relativePath = join(relativeRoot, entry.name);
+    if (entry.isDirectory()) {
+      collectTemplateFiles(child, relativePath, files, errors);
+      continue;
+    }
+    if (!entry.isFile()) continue;
+    files.push(relativePath);
+
+    if (relativeRoot === 'agents' && /\.(ya?ml|json)$/i.test(entry.name)) {
+      try {
+        const raw = readFileSync(child, 'utf-8');
+        const parsed = entry.name.endsWith('.json') ? JSON.parse(raw) : parseYaml(raw);
+        const result = validateAgentDefinition(parsed);
+        if (!result.valid) {
+          errors.push({
+            path: relativePath,
+            message: result.errors?.map((item) => `${item.path}: ${item.message}`).join('; ') ?? 'Invalid agent definition',
+          });
+        }
+      } catch (err) {
+        errors.push({ path: relativePath, message: err instanceof Error ? err.message : String(err) });
+      }
+    }
+  }
 }
 
 function copyTree(

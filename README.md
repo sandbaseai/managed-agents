@@ -1,6 +1,6 @@
 # managed-agents
 
-**SandBase managed-agents is the safe, local-first runtime layer for enterprise
+**SandBase managed-agents is a safe, local-first Dashboard and runtime layer for
 AI agents.**
 
 `managed-agents` helps teams move AI agents from demos to production with
@@ -10,9 +10,10 @@ visibility. It exposes a Claude Managed Agents-compatible Console and `/v1`
 resource API while keeping runtime metadata in SQLite outside your project by
 default.
 
-Use it to build and operate self-hosted AI agents, local developer agents,
-desktop agent runtimes, MCP-enabled workflows, and enterprise proofs of concept
-without locking your runtime layer to a single model provider.
+Use it to build local developer agents, desktop agent runtimes, MCP-enabled
+workflows, and field-deployment proofs of concept without locking your runtime
+layer to a single model provider. Self-hosted workers and stronger sandboxing
+can be added later as advanced runtime paths.
 
 ## Why managed-agents?
 
@@ -22,8 +23,7 @@ memory, auditability, and a Console for humans to inspect what happened.
 
 `managed-agents` focuses on that runtime layer. It is not a visual workflow
 builder and it is not another model SDK. It is an open-source control plane for
-running, observing, and governing AI agents locally or in self-hosted
-environments.
+running, observing, and governing AI agents locally first.
 
 ## Features
 
@@ -35,15 +35,17 @@ environments.
 - File resources, memory stores, credential vaults, and environment templates
 - Local API keys and bearer-token authentication for shared local runtimes
 - Optional seed/import folders for `agents/*.yaml` and `skills/*/SKILL.md`
-- Local, Docker, and self-hosted sandbox provider support
+- Local sandbox by default, with Docker/self-hosted paths treated as advanced
+  extension modes
 - MCP toolsets, built-in tools, permission policies, and skill packages
-- OpenAI-compatible, Ollama-compatible, and Anthropic model adapters
+- One active model provider boundary for Anthropic, OpenAI, or
+  OpenAI-compatible endpoints
 - Optional TypeScript convenience SDK at `managed-agents/sdk`
 
 ## Common Use Cases
 
 - Run a local Claude Managed Agents-style Console for agent development
-- Build self-hosted enterprise AI agents with auditable sessions and tool calls
+- Build internal agent prototypes with auditable sessions and tool calls
 - Prototype customer support, incident response, research, data analysis, and
   software engineering agents
 - Package reusable agent templates, MCP connectors, permission policies, and
@@ -56,7 +58,8 @@ environments.
 - npm 10 or newer
 - A configured model provider key or local OpenAI-compatible endpoint
 
-Docker is optional and is only needed when you want Docker-backed sandboxes.
+Docker is optional. The first-run path uses SQLite metadata, local file/skill
+storage, local artifacts, and the local sandbox.
 
 ## Install
 
@@ -93,7 +96,7 @@ node ../managed-agents/dist/index.js init
 node ../managed-agents/dist/index.js start
 ```
 
-## Quick Start
+## Get Started Locally
 
 Create a workspace:
 
@@ -120,10 +123,22 @@ Open the Dashboard:
 http://127.0.0.1:3000/dashboard
 ```
 
-Open `Settings > Models` and add a model provider. A provider stores the runtime
-name, provider type, model id, base URL, and API key in SQLite. Mark one
-provider as default; agents that use `model: default` will run through that
-provider. No source-controlled file changes are required for normal local use.
+Open `Settings > Models` and configure the active model provider boundary:
+vendor, base URL, and an API-key environment variable or managed secret
+reference. Settings does not manage a fake model catalog or global model-id
+list. Agents can use `model: default` for the common path, and can carry their
+own runtime/model intent in their agent definition.
+
+You can make the same change from the CLI:
+
+```bash
+managed-agents settings set-model \
+  --vendor anthropic \
+  --base-url https://api.anthropic.com \
+  --api-key-env ANTHROPIC_API_KEY
+
+managed-agents settings validate
+```
 
 The API is available at:
 
@@ -213,11 +228,11 @@ metadata:
   template: incident-commander
 ```
 
-Use `model: default` for the common path. The Dashboard default provider maps
-that name to a concrete provider model id such as `claude-opus-4-8`, `gpt-4o`,
-or an OpenAI-compatible model name. Provider settings are stored in SQLite under
-the runtime data directory. API clients may also send a model configuration
-object when they need additional controls such as `speed`.
+Use `model: default` for the common path. The Dashboard's model settings define
+the active provider boundary for local runs: vendor, base URL, and secret
+reference. The global Settings page intentionally does not manage a model-id
+catalog; keep concrete model/runtime intent in the agent definition or in a
+future engine adapter that can validate it honestly.
 
 ## Dashboard
 
@@ -282,21 +297,12 @@ Create an environment:
 curl -X POST http://127.0.0.1:3000/v1/environments \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "Default cloud",
-    "config": {
-      "type": "cloud",
-      "networking": {
-        "type": "limited",
-        "allow_mcp_servers": true,
-        "allow_package_managers": true,
-        "allowed_hosts": ["api.github.com"]
-      },
-      "packages": {
-        "type": "packages",
-        "pip": ["pytest"],
-        "npm": ["typescript"]
-      }
-    }
+    "name": "Local dev",
+    "description": "Default local environment",
+    "hosting_type": "local",
+    "sandbox_provider": "local",
+    "network": { "type": "limited" },
+    "packages": []
   }'
 ```
 
@@ -416,36 +422,7 @@ curl -N http://127.0.0.1:3000/v1/sessions/SESSION_ID/events/stream \
 
 ## SDK Usage
 
-The public API is designed to follow Claude Managed Agents resource shapes. When
-your SDK supports the managed-agent beta resources, point the official Anthropic
-SDK at the local runtime with `baseURL`:
-
-```typescript
-import Anthropic from '@anthropic-ai/sdk';
-
-const client = new Anthropic({
-  apiKey: process.env.MANAGED_AGENTS_API_KEY ?? 'local-dev-key',
-  baseURL: 'http://127.0.0.1:3000',
-});
-
-const session = await client.beta.sessions.create({
-  agent: 'agent_...',
-  environment_id: 'env_...',
-  title: 'SDK smoke test',
-});
-
-await client.beta.sessions.events.send(session.id, {
-  events: [
-    {
-      type: 'user.message',
-      content: [{ type: 'text', text: 'Hello' }],
-    },
-  ],
-});
-```
-
-For local-only helpers such as message streaming convenience methods, the package
-also exports a small TypeScript wrapper over the same HTTP API:
+Use the local TypeScript SDK for the v1 path:
 
 ```typescript
 import { ManagedAgentsClient } from 'managed-agents/sdk';
@@ -465,6 +442,30 @@ for await (const event of client.sessions.chat(session.id, 'Hello')) {
     process.stdout.write(event.delta ?? '');
   }
 }
+```
+
+Advanced compatibility: the HTTP API intentionally follows Claude Managed
+Agents resource shapes. If your Anthropic SDK version supports the
+managed-agent beta resources, you can point it at the local runtime with
+`baseURL`:
+
+```typescript
+import Anthropic from '@anthropic-ai/sdk';
+
+const client = new Anthropic({
+  apiKey: process.env.MANAGED_AGENTS_API_KEY ?? 'local-dev-key',
+  baseURL: 'http://127.0.0.1:3000',
+});
+
+const session = await client.beta.sessions.create({
+  agent: 'agent_...',
+  environment_id: 'env_...',
+  title: 'SDK smoke test',
+});
+
+await client.beta.sessions.events.send(session.id, {
+  events: [{ type: 'user.message', content: [{ type: 'text', text: 'Hello' }] }],
+});
 ```
 
 ## Authentication
@@ -510,10 +511,10 @@ Authorization: Bearer sk-local-example
 
 ## Project Keywords
 
-`enterprise-ai-agents`, `ai-agent-runtime`, `managed-agents`,
-`claude-managed-agents`, `self-hosted-ai`, `local-first`, `mcp`,
-`sandboxed-execution`, `agent-memory`, `credential-vaults`, `audit-log`,
-`session-replay`, `typescript`, `sqlite`
+`ai-agent-runtime`, `managed-agents`, `claude-managed-agents`, `local-first`,
+`local-ai-agents`, `mcp`, `sandboxed-execution`, `agent-memory`,
+`credential-vaults`, `audit-log`, `session-replay`, `agent-console`,
+`typescript`, `sqlite`
 
 ## Development
 
@@ -534,9 +535,9 @@ npm run dev:console
 The Dashboard's `Settings > Logs` page can restart the CLI-managed server and
 display the current process log buffer. Runtime configuration is organized
 under `Settings > Models`, `Settings > Loop engine`, `Settings > Storage`, and
-`Settings > Sandbox`. Model providers created in `Settings > Models` are stored
-in SQLite and applied to new agent runs immediately. The same log controls are
-available through `POST /v1/x/restart` and `GET /v1/x/logs`.
+`Settings > Sandbox`. `Settings > Models` configures one active provider
+boundary rather than a provider list. The same log controls are available
+through `POST /v1/x/restart` and `GET /v1/x/logs`.
 
 ## Release Checks
 

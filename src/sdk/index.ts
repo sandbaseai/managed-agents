@@ -14,6 +14,28 @@ export {
   ManagedAgentsClient,
   ManagedAgentsApiError,
   type ClientOptions,
+  type AgentSummary,
+  type ApiKeyCreateResponse,
+  type ApiKeySummary,
+  type EnvironmentSummary,
+  type EnvironmentWorkerKeyCreateResponse,
+  type EnvironmentWorkerKeySummary,
+  type RuntimeMetricsSummary,
+  type RuntimeSettingsPatch,
+  type RuntimeSettingsState,
+  type RuntimeSettingsSummary,
+  type RuntimeSettingsValidationCheck,
+  type RuntimeSettingsValidationStatus,
+  type SessionArtifactSummary,
   type SessionSummary,
   type StreamedEvent,
+  type WorkspaceFileSummary,
 } from './client.js';
+
+export type {
+  EnvironmentConfig,
+  ExecOptions,
+  ExecResult,
+  SandboxInstance,
+  SandboxProvider,
+} from '../types/sandbox.js';

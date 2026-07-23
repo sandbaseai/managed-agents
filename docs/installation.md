@@ -114,7 +114,7 @@ managed-agents.config.yaml
 uploaded resource state are stored outside the repository under
 `~/.managed-agents/<workspace-name>-<hash>/` by default.
 
-## Configure A Model Provider
+## Configure The Model Provider Boundary
 
 Start the runtime, open the Dashboard, and go to `Settings > Models`.
 
@@ -122,18 +122,28 @@ Start the runtime, open the Dashboard, and go to `Settings > Models`.
 http://127.0.0.1:3000/dashboard#models
 ```
 
-Click `Add provider`, then enter:
+Configure the one active provider boundary:
 
-- `Name`: the runtime name agents reference, usually `default`
-- `Provider`: `anthropic`, `openai`, or another OpenAI-compatible adapter
-- `Model ID`: the provider model id, such as `claude-sonnet-4-5`, `gpt-4o`, or `llama3.1`
+- `Vendor`: `anthropic`, `openai`, `openai-compatible`, or a local-compatible endpoint
 - `Base URL`: required for OpenAI-compatible local or hosted endpoints
-- `API key`: the provider key for model requests
+- `API key env`: the environment variable name or secret reference used for model requests
 
-Model providers are stored in SQLite under the runtime data directory, not in
-the source checkout. Mark one provider as default; agents using
-`model: default` will run through that provider. Config-file model entries are
-only used as optional bootstrap data for a new workspace.
+The CLI uses the same canonical settings API:
+
+```bash
+managed-agents settings set-model \
+  --vendor anthropic \
+  --base-url https://api.anthropic.com \
+  --api-key-env ANTHROPIC_API_KEY
+
+managed-agents settings validate
+```
+
+The raw API key is not returned by the API. Runtime settings are stored under
+the user-level runtime data directory, not in the source checkout. Agents using
+`model: default` run through this active provider boundary, while concrete
+model/runtime intent remains part of the agent definition or a future validated
+engine adapter.
 
 ## Configure Environments
 
@@ -147,8 +157,9 @@ environments:
     timeout: 300
 ```
 
-Docker-backed environments can be added when command execution needs stronger
-process isolation:
+Advanced optional: Docker-backed environments can be added later when command
+execution needs stronger process isolation. They are not required for the first
+local run:
 
 ```yaml
 environments:

@@ -12,6 +12,7 @@
 
 import { Hono } from 'hono';
 import { streamSSE } from 'hono/streaming';
+import { existsSync, readFileSync } from 'node:fs';
 import type { ServerDeps } from '../server.js';
 import type { SessionEvent } from '@/types/session.js';
 import type { ContentBlock } from '@/types/cma-protocol.js';
@@ -19,6 +20,7 @@ import type { AgentDefinition } from '@/types/agent.js';
 import { pageOf, toApiEvent, toApiSession } from '../standard.js';
 import { loadAgentDefinitionById } from '@/core/agent/store.js';
 import { encryptSecret } from '@/core/security/secrets.js';
+import { persistFileResource, toFileResource, type FileRow } from './resources.js';
 
 export function sessionsRoutes(deps: ServerDeps) {
   const app = new Hono();
@@ -36,15 +38,15 @@ export function sessionsRoutes(deps: ServerDeps) {
       return invalid(c, 'Request body must be an object');
     }
     const { agent, environment_id, title, metadata } = body;
-    const agentIdValue = normalizeAgentRef(agent);
+    const agentRef = normalizeAgentRef(agent);
     const environment = normalizeEnvironmentId(deps, environment_id);
     const resources = normalizeResources(deps, body.resources);
     const vaultIds = normalizeVaultIds(deps, body.vault_ids);
 
-    if (!agentIdValue) {
+    if (!agentRef) {
       return invalid(c, 'agent field is required');
     }
-    if (!agentIdValue.startsWith('agent_')) {
+    if (!agentRef.id.startsWith('agent_')) {
       return invalid(c, 'agent must be a standard agent id');
     }
     if (!environment.ok) return invalid(c, environment.message);
@@ -53,7 +55,8 @@ export function sessionsRoutes(deps: ServerDeps) {
 
     try {
       const session = sessionManager.create({
-        agent: agentIdValue,
+        agent: agentRef.id,
+        agentVersion: agentRef.version,
         environmentId: environment.value,
         title,
         resources: resources.value,
@@ -61,7 +64,7 @@ export function sessionsRoutes(deps: ServerDeps) {
         contextId: memoryScopeFromResources(resources.value),
         metadata,
       });
-      return c.json(toApiSession(session, findAgentById(deps, session.agentId)), 201);
+      return c.json(toApiSession(session, session.agentDefinition ?? findAgentById(deps, session.agentId)), 201);
     } catch (err) {
       if (err instanceof Error && err.message.includes('Agent not found')) {
         return c.json({ error: { type: 'not_found', message: err.message } }, 404);
@@ -84,7 +87,7 @@ export function sessionsRoutes(deps: ServerDeps) {
       ...(agentIdFilter ? { agentId: agentIdFilter } : {}),
       ...internalStatusFilter(status),
     });
-    const sessions = result.data.map((session) => toApiSession(session, findAgentById(deps, session.agentId)));
+    const sessions = result.data.map((session) => toApiSession(session, session.agentDefinition ?? findAgentById(deps, session.agentId)));
     return c.json(pageOf(sessions, result.hasMore));
   });
 
@@ -94,7 +97,69 @@ export function sessionsRoutes(deps: ServerDeps) {
     if (!session) {
       return c.json({ error: { type: 'not_found', message: 'Session not found' } }, 404);
     }
-    return c.json(toApiSession(session, findAgentById(deps, session.agentId)));
+    return c.json(toApiSession(session, session.agentDefinition ?? findAgentById(deps, session.agentId)));
+  });
+
+  app.get('/:id/artifacts', (c) => {
+    const sessionId = c.req.param('id');
+    if (!sessionManager.get(sessionId)) return c.json({ error: { type: 'not_found', message: 'Session not found' } }, 404);
+    const rows = deps.db.prepare(
+      `SELECT *
+       FROM files
+       WHERE role = 'artifact' AND session_id = ? AND archived_at IS NULL
+       ORDER BY created_at DESC`,
+    ).all(sessionId) as unknown as FileRow[];
+    return c.json(pageOf(rows.map((row) => toFileResource(row, deps))));
+  });
+
+  app.post('/:id/artifacts', async (c) => {
+    const sessionId = c.req.param('id');
+    if (!sessionManager.get(sessionId)) return c.json({ error: { type: 'not_found', message: 'Session not found' } }, 404);
+    let body: any;
+    try {
+      body = await c.req.json();
+    } catch {
+      return invalid(c, 'Request body must be valid JSON');
+    }
+    if (!body || typeof body !== 'object' || Array.isArray(body)) return invalid(c, 'Request body must be an object');
+    const artifactPath = normalizeArtifactPath(body.path);
+    if (!artifactPath) return invalid(c, 'path is required and must start with /artifacts/');
+    const content = typeof body.content === 'string' ? body.content : '';
+    const encoding = typeof body.encoding === 'string' ? body.encoding : 'utf8';
+    if (encoding !== 'utf8' && encoding !== 'base64') return invalid(c, 'encoding must be utf8 or base64');
+    const bytes = encoding === 'base64' ? Buffer.from(content, 'base64') : Buffer.from(content, 'utf8');
+    const name = sanitizeArtifactName(body.name) ?? artifactPath.split('/').filter(Boolean).at(-1) ?? 'artifact';
+    try {
+      const artifact = persistFileResource(deps, {
+        name,
+        mediaType: typeof body.media_type === 'string' && body.media_type.trim() ? body.media_type.trim() : mediaTypeForArtifactName(name),
+        bytes,
+        metadata: stringRecordField(body.metadata),
+        role: 'artifact',
+        sessionId,
+        artifactPath,
+      });
+      return c.json(artifact, 201);
+    } catch (err: any) {
+      return c.json({ error: { type: 'internal_error', message: err.message } }, 500);
+    }
+  });
+
+  app.get('/:id/artifacts/:artifactId/content', (c) => {
+    const sessionId = c.req.param('id');
+    if (!sessionManager.get(sessionId)) return c.json({ error: { type: 'not_found', message: 'Session not found' } }, 404);
+    const row = deps.db.prepare(
+      `SELECT *
+       FROM files
+       WHERE id = ? AND session_id = ? AND role = 'artifact' AND archived_at IS NULL`,
+    ).get(c.req.param('artifactId'), sessionId) as FileRow | undefined;
+    if (!row || !existsSync(row.storage_path)) return c.json({ error: { type: 'not_found', message: 'Artifact not found' } }, 404);
+    return new Response(readFileSync(row.storage_path), {
+      headers: {
+        'Content-Type': row.media_type || 'application/octet-stream',
+        'Content-Disposition': `attachment; filename="${row.name.replace(/"/g, '')}"`,
+      },
+    });
   });
 
   // POST /:id/events - Send events
@@ -372,12 +437,16 @@ function findAgentById(deps: ServerDeps, id: string): AgentDefinition | undefine
   return loadAgentDefinitionById(deps.db, id);
 }
 
-function normalizeAgentRef(value: unknown): string | null {
-  if (typeof value === 'string' && value.length > 0) return value;
+function normalizeAgentRef(value: unknown): { id: string; version?: number } | null {
+  if (typeof value === 'string' && value.length > 0) return { id: value };
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const record = value as Record<string, unknown>;
   if (record.type !== undefined && record.type !== 'agent') return null;
-  return typeof record.id === 'string' && record.id.length > 0 ? record.id : null;
+  if (typeof record.id !== 'string' || record.id.length === 0) return null;
+  const version = typeof record.version === 'number' && Number.isInteger(record.version) && record.version > 0
+    ? record.version
+    : undefined;
+  return { id: record.id, version };
 }
 
 type ValidationResult<T> = { ok: true; value: T } | { ok: false; message: string };
@@ -439,7 +508,7 @@ function normalizeFileResource(deps: ServerDeps, resource: Record<string, unknow
   const mountPath = readString(resource.mount_path);
   if (!fileId?.startsWith('file_')) return { ok: false, message: `resources[${index}].file_id is required` };
   if (!mountPath?.startsWith('/uploads/')) return { ok: false, message: `resources[${index}].mount_path must start with /uploads/` };
-  const row = deps.db.prepare('SELECT id FROM files WHERE id = ? AND archived_at IS NULL').get(fileId);
+  const row = deps.db.prepare("SELECT id FROM files WHERE id = ? AND role = 'file' AND archived_at IS NULL").get(fileId);
   if (!row) return { ok: false, message: `File not found: ${fileId}` };
   return { ok: true, value: { type: 'file', file_id: fileId, mount_path: mountPath } };
 }
@@ -504,6 +573,34 @@ function readString(value: unknown): string | undefined {
 function memoryScopeFromResources(resources: Array<Record<string, unknown>>): string | undefined {
   const memoryStore = resources.find((resource) => resource.type === 'memory_store');
   return typeof memoryStore?.memory_store_id === 'string' ? memoryStore.memory_store_id : undefined;
+}
+
+function normalizeArtifactPath(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim().replace(/\/+/g, '/');
+  if (!trimmed.startsWith('/artifacts/') || trimmed.endsWith('/') || trimmed.includes('/../') || trimmed.includes('/./')) return undefined;
+  return trimmed.slice(0, 512);
+}
+
+function sanitizeArtifactName(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim().replace(/[\\/]/g, '_');
+  return trimmed ? trimmed.slice(0, 255) : undefined;
+}
+
+function stringRecordField(value: unknown): Record<string, string> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  return Object.fromEntries(Object.entries(value).map(([key, recordValue]) => [key, String(recordValue)]));
+}
+
+function mediaTypeForArtifactName(name: string): string {
+  if (/\.md$/i.test(name)) return 'text/markdown';
+  if (/\.ya?ml$/i.test(name)) return 'application/yaml';
+  if (/\.json$/i.test(name)) return 'application/json';
+  if (/\.(txt|log|csv)$/i.test(name)) return 'text/plain';
+  if (/\.html?$/i.test(name)) return 'text/html';
+  if (/\.svg$/i.test(name)) return 'image/svg+xml';
+  return 'application/octet-stream';
 }
 
 function invalid(c: any, message: string): Response {

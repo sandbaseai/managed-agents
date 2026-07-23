@@ -15,6 +15,7 @@ import { agentsRoutes } from './routes/agents.js';
 import { resourceRoutes } from './routes/resources.js';
 import { skillsRoutes } from './routes/skills.js';
 import { apiKeysRoutes } from './routes/api-keys.js';
+import { operationsRoutes } from './routes/operations.js';
 import { extendedRoutes } from './routes/extended.js';
 import { streamRoutes } from './routes/stream.js';
 import { createAuthMiddleware } from './auth.js';
@@ -27,6 +28,7 @@ import type { Metrics } from '@/core/observability/metrics.js';
 import type { Skill } from '@/core/skills/loader.js';
 import type { Database } from '@/core/db/database.js';
 import type { ModelConfig, RuntimeModelInfo } from '@/types/model.js';
+import type { OutcomeEvaluator } from '@/core/operations/outcome-evaluator.js';
 
 export interface ServerDeps {
   db: Database;
@@ -80,6 +82,8 @@ export interface ServerDeps {
   restart?: () => Promise<void> | void;
   /** Optional work queue for the self_hosted sandbox worker endpoints (R9.14). */
   workQueue?: WorkQueue;
+  /** Optional model-assisted outcome evaluator. Deterministic fallback lives in operations routes. */
+  evaluateOutcome?: OutcomeEvaluator;
 }
 
 export function createServer(deps: ServerDeps) {
@@ -122,6 +126,7 @@ export function createServer(deps: ServerDeps) {
   app.route('/v1', resourceRoutes(deps));
   app.route('/v1/skills', skillsRoutes(deps));
   app.route('/v1/api-keys', apiKeysRoutes(deps));
+  app.route('/v1', operationsRoutes(deps));
 
   // SSE streaming
   app.route('/v1/sessions', streamRoutes(deps));
@@ -131,7 +136,7 @@ export function createServer(deps: ServerDeps) {
 
   // Self-hosted sandbox worker endpoints (R9.14)
   if (deps.workQueue) {
-    app.route('/v1/x/worker', workerRoutes(deps.workQueue));
+    app.route('/v1/x/worker', workerRoutes(deps.workQueue, deps.db));
   }
 
   // Root health check (JSON - used by SDK/clients)

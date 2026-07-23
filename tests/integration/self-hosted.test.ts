@@ -9,6 +9,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { join } from 'node:path';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { createHash } from 'node:crypto';
 import { Database } from '@/core/db/database.js';
 import { WorkQueue, SelfHostedSandboxProvider } from '@/sandbox/self-hosted-provider.js';
 import { workerRoutes } from '@/api/routes/worker.js';
@@ -180,5 +181,50 @@ describe('Worker HTTP endpoints', () => {
     });
     expect(res.status).toBe(200);
     expect(queue.get(id)!.status).toBe('done');
+  });
+
+  it('scopes claims to an environment worker key and records last seen', async () => {
+    app = workerRoutes(queue, db);
+    db.exec(`INSERT INTO environments (id, name, config) VALUES ('env_a', 'A', '{}'), ('env_b', 'B', '{}')`);
+    db.exec(`INSERT INTO agents (id, name, definition) VALUES ('agent_a', 'agent-a', '{}')`);
+    db.exec(`
+      INSERT INTO sessions (id, agent_id, agent_name, environment_id, status)
+      VALUES ('sess_a', 'agent_a', 'agent-a', 'env_a', 'idle'),
+             ('sess_b', 'agent_a', 'agent-a', 'env_b', 'idle')
+    `);
+    const secret = 'mawk_test_worker_key';
+    db.prepare(
+      `INSERT INTO environment_worker_keys (id, environment_id, name, key_hash, key_prefix)
+       VALUES (?, ?, ?, ?, ?)`,
+    ).run('wrkkey_a', 'env_a', 'Worker A', createHash('sha256').update(secret).digest('hex'), 'mawk_test…key');
+    const itemA = queue.enqueue('sess_a', 'read', { path: 'a.txt' });
+    const itemB = queue.enqueue('sess_b', 'read', { path: 'b.txt' });
+
+    const res = await app.request('/claim', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ worker_id: 'worker_a', environment_key: secret }),
+    });
+    expect(res.status).toBe(200);
+    expect((await res.json()).id).toBe(itemA);
+    expect(queue.get(itemA)?.status).toBe('claimed');
+    expect(queue.get(itemB)?.status).toBe('pending');
+    const key = db.prepare('SELECT last_seen_at FROM environment_worker_keys WHERE id = ?').get('wrkkey_a') as { last_seen_at: string | null };
+    expect(key.last_seen_at).toBeTruthy();
+  });
+
+  it('rejects revoked environment worker keys', async () => {
+    app = workerRoutes(queue, db);
+    db.exec(`INSERT INTO environments (id, name, config) VALUES ('env_a', 'A', '{}')`);
+    const secret = 'mawk_revoked_worker_key';
+    db.prepare(
+      `INSERT INTO environment_worker_keys (id, environment_id, name, key_hash, key_prefix, status, revoked_at)
+       VALUES (?, ?, ?, ?, ?, ?, datetime('now'))`,
+    ).run('wrkkey_revoked', 'env_a', 'Revoked', createHash('sha256').update(secret).digest('hex'), 'mawk_revo…key', 'revoked');
+
+    const res = await app.request('/claim', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ worker_id: 'worker_a', environment_key: secret }),
+    });
+    expect(res.status).toBe(401);
   });
 });

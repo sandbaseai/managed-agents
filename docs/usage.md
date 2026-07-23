@@ -40,6 +40,27 @@ The workspace is portable. Commit examples, templates, config, and any seed
 definitions you intentionally maintain. Use `MANAGED_AGENTS_HOME` or
 `--data-dir` when you need to move runtime state.
 
+## Workspace Registry
+
+The CLI can maintain a local registry of known workspaces under
+`MANAGED_AGENTS_HOME/workspaces.json`. This is useful for desktop shells,
+launchers, and scripts that need create/open/switch workflows without scanning
+the filesystem.
+
+```bash
+managed-agents workspace create ~/work/acme-agents --name Acme
+managed-agents workspace open ~/work/existing-agents --name Existing
+managed-agents workspace list
+managed-agents workspace resolve Acme --json
+managed-agents workspace remove Acme
+```
+
+`workspace create` creates `agents/`, `skills/`, and a minimal
+`managed-agents.config.yaml` if they do not exist. The registry does not
+client-side switch a running server; launching a different workspace still means
+starting or reconnecting to a runtime whose `cwd`/`--data-dir` points at that
+workspace.
+
 ## Agent Definitions
 
 Agents can be imported from YAML files in `agents/` or created through the
@@ -94,6 +115,34 @@ The Dashboard includes:
 - Memory stores and memory entries
 - File upload and file resources
 - Skill upload and skill details
+
+## Advanced: Run A Self-Hosted Worker
+
+Skip this section for the default local runtime. It is only needed when you
+choose a self-hosted environment and want a separate worker process to execute
+queued jobs.
+
+Self-hosted environments can generate scoped worker keys from the Dashboard or
+API. The key is shown once; store it as an environment variable on the runner.
+
+```bash
+export MANAGED_AGENTS_ENVIRONMENT_KEY='mawk_...'
+
+managed-agents worker poll \
+  --environment-id env_self_hosted \
+  --workdir /path/to/worker/root
+```
+
+For CI or smoke tests, claim at most one work item:
+
+```bash
+managed-agents worker poll \
+  --environment-id env_self_hosted \
+  --workdir /path/to/worker/root \
+  --once
+```
+
+The worker executes `exec`, `read`, `write`, and `list` jobs inside `--workdir`.
 
 ## Create An Agent
 
@@ -287,6 +336,11 @@ managed-agents start --host 127.0.0.1 --port 3000
 managed-agents list
 managed-agents reload
 managed-agents chat agent_assistant --message "hello"
+managed-agents session create --agent agent_assistant --title "Smoke test"
+managed-agents session message SESSION_ID --message "hello"
+managed-agents session tail SESSION_ID
+managed-agents session inspect SESSION_ID --json
+managed-agents session logs SESSION_ID
 managed-agents template list
 managed-agents template install <template-name-or-path>
 managed-agents template create <name>

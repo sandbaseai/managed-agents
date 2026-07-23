@@ -12,6 +12,7 @@ import { SessionManager } from '@/core/session/session-manager.js';
 import { createServer } from '@/api/server.js';
 import { loadSkills } from '@/core/skills/loader.js';
 import { createLogger, InMemoryLogStore } from '@/core/observability/logger.js';
+import { resolveSessionCredentialInjections } from '@/core/credentials/injection.js';
 import type { Session, SessionEvent } from '@/types/session.js';
 import type { UserEvent } from '@/types/cma-protocol.js';
 import type { RuntimeModelInfo } from '@/types/model.js';
@@ -134,6 +135,17 @@ describe('Managed Agents API', () => {
       setDefaultRuntimeModel: (name) => {
         runtimeModelsData = runtimeModelsData.map((model) => ({ ...model, is_default: model.name === name }));
       },
+      evaluateOutcome: async (input) => ({
+        status: 'passed',
+        score: 0.88,
+        summary: `Mock model evaluator reviewed ${input.criteria.length} criteria.`,
+        details: {
+          evaluator: input.evaluator,
+          pass_threshold: input.passThreshold,
+          model: 'mock-evaluator',
+          checks: input.criteria.map((criterion) => ({ criterion, matched: true })),
+        },
+      }),
       reloadAgents: () => ({ agents: [], errors: [] }),
     });
   });
@@ -162,6 +174,12 @@ describe('Managed Agents API', () => {
     expect(typeof body.has_more).toBe('boolean');
     expect(body.first_id === null || typeof body.first_id === 'string').toBe(true);
     expect(body.last_id === null || typeof body.last_id === 'string').toBe(true);
+  }
+
+  function expectError(body: any) {
+    expect(body).toHaveProperty('error');
+    expect(typeof body.error.type).toBe('string');
+    expect(typeof body.error.message).toBe('string');
   }
 
   describe('GET /', () => {
@@ -579,6 +597,77 @@ describe('Managed Agents API', () => {
       expect(second.body.id).toMatch(/^agent_/);
       expect(second.body.id).not.toBe(first.body.id);
     });
+
+    it('stores immutable agent version snapshots and rejects stale expected versions', async () => {
+      const create = await postJson('/v1/agents', {
+        name: 'versioned-agent',
+        description: 'Version one.',
+        model: 'default',
+        system: 'Version one system.',
+      });
+
+      expect(create.res.status).toBe(201);
+      expect(create.body.version).toBe(1);
+
+      const update = await app.request(`/v1/agents/${create.body.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: 'versioned-agent',
+          description: 'Version two.',
+          model: 'default',
+          system: 'Version two system.',
+          expected_version: 1,
+        }),
+      });
+      const updated = await update.json() as any;
+
+      expect(update.status).toBe(200);
+      expect(updated.version).toBe(2);
+      expect(updated.system).toBe('Version two system.');
+
+      const stale = await app.request(`/v1/agents/${create.body.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: 'versioned-agent',
+          model: 'default',
+          system: 'Stale write.',
+          expected_version: 1,
+        }),
+      });
+      const staleBody = await stale.json() as any;
+
+      expect(stale.status).toBe(409);
+      expect(staleBody.error.type).toBe('conflict');
+
+      const versions = await getJson(`/v1/agents/${create.body.id}/versions`);
+      expect(versions.res.status).toBe(200);
+      expect(versions.body.data.map((item: any) => item.version)).toEqual([2, 1]);
+      expect(versions.body.data[0].system).toBe('Version two system.');
+      expect(versions.body.data[1].system).toBe('Version one system.');
+
+      const pinnedSession = await postJson('/v1/sessions', {
+        agent: { id: create.body.id, type: 'agent', version: 1 },
+        environment_id: 'env_default',
+        title: 'Pinned v1 session',
+      });
+
+      expect(pinnedSession.res.status).toBe(201);
+      expect(pinnedSession.body.agent.id).toBe(create.body.id);
+      expect(pinnedSession.body.agent.version).toBe(1);
+      expect(pinnedSession.body.agent.system).toBe('Version one system.');
+
+      const currentSession = await postJson('/v1/sessions', {
+        agent: create.body.id,
+        environment_id: 'env_default',
+        title: 'Current version session',
+      });
+
+      expect(currentSession.res.status).toBe(201);
+      expect(currentSession.body.agent.version).toBe(2);
+      expect(currentSession.body.agent.system).toBe('Version two system.');
+    });
   });
 
   describe('GET /v1/agents/:id', () => {
@@ -610,6 +699,11 @@ describe('Managed Agents API', () => {
         '/v1/credential-vaults',
         '/v1/memory_stores',
         '/v1/skills',
+        '/v1/api-keys',
+        '/v1/webhooks',
+        '/v1/scheduled-deployments',
+        '/v1/outcomes',
+        '/v1/x/logs',
         '/v1/x/templates',
       ];
 
@@ -617,6 +711,26 @@ describe('Managed Agents API', () => {
         const { res, body } = await getJson(path);
         expect(res.status, path).toBe(200);
         expectPage(body);
+      }
+    });
+
+    it('returns standard error envelopes for invalid write requests', async () => {
+      const cases: Array<{ path: string; body: unknown; status: number }> = [
+        { path: '/v1/sessions', body: { agent: 42 }, status: 400 },
+        { path: '/v1/agents', body: { name: 'bad-agent', model: 'm' }, status: 400 },
+        { path: '/v1/environments', body: { name: '' }, status: 400 },
+        { path: '/v1/credential-vaults', body: { name: '' }, status: 400 },
+        { path: '/v1/memory_stores', body: { name: '' }, status: 400 },
+        { path: '/v1/api-keys', body: { name: '' }, status: 400 },
+        { path: '/v1/webhooks', body: { name: '' }, status: 400 },
+        { path: '/v1/scheduled-deployments', body: { name: '' }, status: 400 },
+        { path: '/v1/outcomes', body: { name: '' }, status: 400 },
+      ];
+
+      for (const testCase of cases) {
+        const { res, body } = await postJson(testCase.path, testCase.body);
+        expect(res.status, testCase.path).toBe(testCase.status);
+        expectError(body);
       }
     });
 
@@ -658,218 +772,386 @@ describe('Managed Agents API', () => {
       expect(skills.data.every((item: any) => item.type === 'skill')).toBe(true);
     });
 
-    it('creates dashboard-managed model providers and changes the default provider', async () => {
-      const created = await postJson('/v1/x/model-providers', {
-        name: 'dashboard-default',
-        provider: 'openai',
-        model: 'gpt-4o-mini',
-        base_url: 'https://api.openai.com/v1',
-        api_key: 'sk-test-value',
-      });
-      expect(created.res.status).toBe(201);
-      expect(created.body).toMatchObject({
-        name: 'dashboard-default',
-        provider: 'openai',
-        model: 'gpt-4o-mini',
-        base_url: 'https://api.openai.com/v1',
-        api_key_state: 'configured',
-        base_url_state: 'configured',
-        is_default: true,
-      });
-      expect(created.body).not.toHaveProperty('api_key');
-
-      const secondary = await postJson('/v1/x/model-providers', {
-        name: 'local-llm',
-        provider: 'openai',
-        model: 'llama3.1',
-        base_url: 'http://127.0.0.1:11434/v1',
-      });
-      expect(secondary.res.status).toBe(201);
-      expect(secondary.body.is_default).toBe(false);
-
-      const madeDefault = await postJson('/v1/x/model-providers/local-llm/default', {});
-      expect(madeDefault.res.status).toBe(200);
-      expect(madeDefault.body).toMatchObject({ name: 'local-llm', is_default: true });
-
-      const providers = await getJson('/v1/x/model-providers');
-      expect(providers.res.status).toBe(200);
-      expectPage(providers.body);
-      expect(providers.body.data[0]).toMatchObject({ name: 'local-llm', is_default: true });
-      expect(JSON.stringify(providers.body)).not.toContain('sk-test-value');
-
-      const runtime = await getJson('/v1/x/runtime');
-      expect(runtime.body.models.find((model: any) => model.name === 'local-llm')?.is_default).toBe(true);
-    });
-
-    it('creates dashboard-managed memory providers and protects adapter-only defaults', async () => {
-      const initial = await getJson('/v1/x/memory-providers');
+    it('exposes canonical runtime settings and validates single active configs', async () => {
+      const initial = await getJson('/v1/x/settings');
       expect(initial.res.status).toBe(200);
-      expectPage(initial.body);
-      expect(initial.body.data[0]).toMatchObject({
-        name: 'local-sqlite',
-        provider: 'sqlite',
-        provider_label: 'SQLite',
-        is_default: true,
-        runtime_capable: true,
+      expect(initial.body).toMatchObject({
+        type: 'settings',
+        model_provider: {
+          vendor: 'openai-compatible',
+          api_key_state: 'not_set',
+          configured: false,
+        },
+        loop_engine: {
+          type: 'managed-agents',
+          implemented: true,
+        },
+        storage: {
+          metadata: {
+            type: 'sqlite',
+            implemented: true,
+          },
+          artifacts: {
+            type: 'local_filesystem',
+            implemented: true,
+          },
+        },
+        memory: {
+          backend: {
+            type: 'sqlite',
+            implemented: true,
+          },
+        },
       });
+      expect(initial.body.validation.status).toBe('warning');
+      expect(JSON.stringify(initial.body)).not.toContain('sk-test');
 
-      const created = await postJson('/v1/x/memory-providers', {
-        name: 'transient-context',
-        provider: 'in_memory',
-        api_key: 'secret-value',
+      const validation = await postJson('/v1/x/settings/validate', {
+        model_provider: { vendor: 'anthropic', api_key_env: 'ANTHROPIC_API_KEY' },
+        memory: { backend: { type: 'mem0', api_key_env: 'MEM0_API_KEY' } },
+        storage: { artifacts: { type: 's3', bucket: 'agent-artifacts' } },
       });
-      expect(created.res.status).toBe(201);
-      expect(created.body).toMatchObject({
-        name: 'transient-context',
-        provider: 'in_memory',
-        provider_label: 'In-memory',
-        api_key_state: 'configured',
-        runtime_capable: true,
-        is_default: false,
-      });
-      expect(created.body).not.toHaveProperty('api_key');
-
-      const madeDefault = await postJson('/v1/x/memory-providers/transient-context/default', {});
-      expect(madeDefault.res.status).toBe(200);
-      expect(madeDefault.body).toMatchObject({ name: 'transient-context', is_default: true });
-
-      const adapterOnly = await postJson('/v1/x/memory-providers', {
-        name: 'mem0-cloud',
-        provider: 'mem0',
-        connection_url: 'https://api.mem0.ai',
-      });
-      expect(adapterOnly.res.status).toBe(201);
-      expect(adapterOnly.body).toMatchObject({
-        name: 'mem0-cloud',
-        provider: 'mem0',
-        status: 'adapter_required',
-        runtime_capable: false,
-        is_default: false,
-      });
-
-      const invalidDefault = await postJson('/v1/x/memory-providers/mem0-cloud/default', {});
-      expect(invalidDefault.res.status).toBe(400);
-
-      const database = await postJson('/v1/x/memory-providers', {
-        name: 'warehouse-memory',
-        provider: 'database',
-        connection_url: 'postgres://memory_user:memory_password@db.example.com:5432/agents',
-      });
-      expect(database.res.status).toBe(201);
-      expect(database.body).toMatchObject({
-        name: 'warehouse-memory',
-        provider: 'database',
-        status: 'adapter_required',
-        runtime_capable: false,
-      });
-      expect(database.body.connection_url).toContain('db.example.com');
-      expect(database.body.connection_url).not.toContain('memory_password');
-
-      const runtime = await getJson('/v1/x/runtime');
-      expect(runtime.body.memory_providers.find((provider: any) => provider.name === 'transient-context')?.is_default).toBe(true);
-      expect(JSON.stringify(runtime.body.memory_providers)).not.toContain('secret-value');
-      expect(JSON.stringify(runtime.body.memory_providers)).not.toContain('memory_password');
-    });
-
-    it('creates dashboard-managed storage providers and protects adapter-only defaults', async () => {
-      const initial = await getJson('/v1/x/storage-providers');
-      expect(initial.res.status).toBe(200);
-      expectPage(initial.body);
-      expect(initial.body.data).toEqual(expect.arrayContaining([
-        expect.objectContaining({
-          name: 'metadata-sqlite',
-          role: 'metadata',
-          provider: 'sqlite',
-          provider_label: 'SQLite',
-          is_default: true,
-          runtime_capable: true,
-        }),
-        expect.objectContaining({
-          name: 'local-artifacts',
-          role: 'artifact',
-          provider: 'local_filesystem',
-          provider_label: 'Local filesystem',
-          is_default: true,
-          runtime_capable: true,
-        }),
+      expect(validation.res.status).toBe(200);
+      expect(validation.body.status).toBe('error');
+      expect(validation.body.checks).toEqual(expect.arrayContaining([
+        expect.objectContaining({ key: 'memory.backend', status: 'error' }),
+        expect.objectContaining({ key: 'storage.artifacts', status: 'error' }),
       ]));
 
-      const postgres = await postJson('/v1/x/storage-providers', {
-        name: 'warehouse-meta',
-        role: 'metadata',
-        provider: 'postgres',
-        connection_url: 'postgres://meta_user:meta_password@db.example.com:5432/agents',
+      const updated = await app.request('/v1/x/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model_provider: {
+            vendor: 'anthropic',
+            base_url: 'https://api.anthropic.com/v1',
+            api_key_env: 'ANTHROPIC_API_KEY',
+          },
+          loop_engine: {
+            type: 'managed-agents',
+            config: { max_concurrent_turns: 1 },
+          },
+          memory: { backend: { type: 'sqlite' } },
+          storage: {
+            metadata: { type: 'sqlite', path: 'data.db' },
+            artifacts: { type: 'local_filesystem', path: 'files' },
+          },
+          sandbox: {
+            type: 'local',
+            config: { workspace_root: dataDir },
+          },
+        }),
       });
-      expect(postgres.res.status).toBe(201);
-      expect(postgres.body).toMatchObject({
-        name: 'warehouse-meta',
-        role: 'metadata',
-        provider: 'postgres',
-        status: 'adapter_required',
-        runtime_capable: false,
-        is_default: false,
+      expect(updated.status).toBe(200);
+      const updatedBody = await updated.json();
+      expect(updatedBody.model_provider).toMatchObject({
+        vendor: 'anthropic',
+        base_url: 'https://api.anthropic.com/v1',
+        api_key_env: 'ANTHROPIC_API_KEY',
+        api_key_state: 'missing_env',
+        configured: true,
       });
-      expect(postgres.body.connection_url).toContain('db.example.com');
-      expect(postgres.body.connection_url).not.toContain('meta_password');
-
-      const invalidDefault = await postJson('/v1/x/storage-providers/warehouse-meta/default', {});
-      expect(invalidDefault.res.status).toBe(400);
-
-      const s3 = await postJson('/v1/x/storage-providers', {
-        name: 'archive-bucket',
-        role: 'artifact',
-        provider: 's3',
-        bucket: 'agent-artifacts',
-        region: 'us-east-1',
-        access_key: 'AKIA_TEST_VALUE',
-        secret_key: 'secret-storage-key',
+      expect(updatedBody.loop_engine).toMatchObject({
+        type: 'managed-agents',
+        implemented: true,
+        config: { max_concurrent_turns: 1 },
       });
-      expect(s3.res.status).toBe(201);
-      expect(s3.body).toMatchObject({
-        name: 'archive-bucket',
-        role: 'artifact',
-        provider: 's3',
-        status: 'adapter_required',
-        runtime_capable: false,
-        secret_key_state: 'configured',
+      expect(updatedBody.sandbox).toMatchObject({
+        type: 'local',
+        implemented: true,
+        available: true,
+        config: { workspace_root: dataDir },
       });
-      expect(s3.body).not.toHaveProperty('secret_key');
-
-      const local = await postJson('/v1/x/storage-providers', {
-        name: 'fast-local-artifacts',
-        role: 'artifact',
-        provider: 'local_filesystem',
-        base_path: 'artifacts-fast',
-      });
-      expect(local.res.status).toBe(201);
-      expect(local.body).toMatchObject({
-        name: 'fast-local-artifacts',
-        role: 'artifact',
-        provider: 'local_filesystem',
-        status: 'init_required',
-        runtime_capable: true,
-        is_default: false,
-      });
-
-      const defaultBeforeInit = await postJson('/v1/x/storage-providers/fast-local-artifacts/default', {});
-      expect(defaultBeforeInit.res.status).toBe(400);
-
-      const initialized = await postJson('/v1/x/storage-providers/fast-local-artifacts/initialize', {});
-      expect(initialized.res.status).toBe(200);
-      expect(initialized.body).toMatchObject({
-        name: 'fast-local-artifacts',
-        status: 'active',
-        is_default: false,
-      });
-
-      const madeDefault = await postJson('/v1/x/storage-providers/fast-local-artifacts/default', {});
-      expect(madeDefault.res.status).toBe(200);
-      expect(madeDefault.body).toMatchObject({ name: 'fast-local-artifacts', is_default: true });
+      expect(JSON.stringify(updatedBody)).not.toContain('${ANTHROPIC_API_KEY}');
 
       const runtime = await getJson('/v1/x/runtime');
-      expect(runtime.body.storage_providers.find((provider: any) => provider.name === 'fast-local-artifacts')?.is_default).toBe(true);
-      expect(JSON.stringify(runtime.body.storage_providers)).not.toContain('meta_password');
-      expect(JSON.stringify(runtime.body.storage_providers)).not.toContain('secret-storage-key');
+      expect(runtime.body.models[0]).toMatchObject({
+        provider: 'anthropic',
+        model: 'anthropic',
+        base_url: 'https://api.anthropic.com/v1',
+        is_default: true,
+      });
+      expect(['configured', 'missing_env']).toContain(runtime.body.models[0].api_key_state);
+      expect(runtime.body.models[0]).not.toHaveProperty('api_key');
+    });
+
+    it('manages webhooks as local control-plane resources', async () => {
+      const created = await postJson('/v1/webhooks', {
+        name: 'Session events',
+        url: 'https://example.com/managed-agents/webhook',
+        events: ['session.status_running', 'session.status_terminated'],
+        metadata: { team: 'fde' },
+      });
+      expect(created.res.status).toBe(201);
+      expect(created.body).toMatchObject({
+        id: expect.stringMatching(/^wh_/),
+        type: 'webhook',
+        name: 'Session events',
+        status: 'active',
+        events: ['session.status_running', 'session.status_terminated'],
+        metadata: { team: 'fde' },
+      });
+
+      const updated = await app.request(`/v1/webhooks/${created.body.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          events: ['turn_complete'],
+          description: 'Terminal turn callback.',
+        }),
+      });
+      expect(updated.status).toBe(200);
+      const updatedBody = await updated.json();
+      expect(updatedBody.events).toEqual(['turn_complete']);
+      expect(updatedBody.description).toBe('Terminal turn callback.');
+
+      const listed = await getJson('/v1/webhooks');
+      expectPage(listed.body);
+      expect(listed.body.data.some((item: any) => item.id === created.body.id)).toBe(true);
+
+      const testDelivery = await postJson(`/v1/webhooks/${created.body.id}/test`, {
+        event: 'turn_complete',
+        payload: { session_id: 'sess_test' },
+      });
+      expect(testDelivery.res.status).toBe(202);
+      expect(testDelivery.body).toMatchObject({
+        id: expect.stringMatching(/^whd_/),
+        type: 'webhook_delivery',
+        webhook_id: created.body.id,
+        event: 'turn_complete',
+        status: 'simulated',
+        status_code: 202,
+        attempt_count: 0,
+        next_retry_at: null,
+        payload: {
+          type: 'webhook_test',
+          event: 'turn_complete',
+          webhook_id: created.body.id,
+          data: { session_id: 'sess_test' },
+        },
+      });
+      expect(testDelivery.body.signature).toMatch(/^sha256=/);
+
+      const deliveries = await getJson(`/v1/webhooks/${created.body.id}/deliveries`);
+      expectPage(deliveries.body);
+      expect(deliveries.body.data[0].id).toBe(testDelivery.body.id);
+
+      const retryDue = await postJson('/v1/webhooks/retry-due', {});
+      expect(retryDue.res.status).toBe(202);
+      expectPage(retryDue.body);
+
+      const archived = await postJson(`/v1/webhooks/${created.body.id}/archive`, {});
+      expect(archived.res.status).toBe(200);
+      expect(archived.body.status).toBe('archived');
+    });
+
+    it('manages scheduled deployments as persisted run plans', async () => {
+      const created = await postJson('/v1/scheduled-deployments', {
+        name: 'Morning smoke',
+        agent_id: 'agent_echo-agent',
+        environment_id: 'env_default',
+        cron: '0 9 * * 1',
+        payload: { title: 'Daily FDE smoke' },
+        next_run_at: '2026-07-23T01:00:00.000Z',
+      });
+      expect(created.res.status).toBe(201);
+      expect(created.body).toMatchObject({
+        id: expect.stringMatching(/^sched_/),
+        type: 'scheduled_deployment',
+        name: 'Morning smoke',
+        agent_id: 'agent_echo-agent',
+        environment_id: 'env_default',
+        cron: '0 9 * * 1',
+        payload: { title: 'Daily FDE smoke' },
+        status: 'active',
+      });
+
+      const badCron = await postJson('/v1/scheduled-deployments', {
+        name: 'Bad cron',
+        agent_id: 'agent_echo-agent',
+        cron: '* * *',
+      });
+      expect(badCron.res.status).toBe(400);
+
+      const run = await postJson(`/v1/scheduled-deployments/${created.body.id}/run`, {
+        trigger_type: 'manual',
+        payload: { title: 'Manual schedule smoke' },
+      });
+      expect(run.res.status).toBe(201);
+      expect(run.body).toMatchObject({
+        id: expect.stringMatching(/^srun_/),
+        type: 'scheduled_deployment_run',
+        schedule_id: created.body.id,
+        status: 'created_session',
+        trigger_type: 'manual',
+        payload: { title: 'Manual schedule smoke' },
+      });
+      expect(run.body.session_id).toMatch(/^sess_/);
+
+      const runs = await getJson(`/v1/scheduled-deployments/${created.body.id}/runs`);
+      expectPage(runs.body);
+      expect(runs.body.data[0].id).toBe(run.body.id);
+
+      const due = await postJson('/v1/scheduled-deployments', {
+        name: 'Due smoke',
+        agent_id: 'agent_echo-agent',
+        environment_id: 'env_default',
+        cron: '*/5 * * * *',
+        payload: { title: 'Automatic due smoke' },
+        next_run_at: '2000-01-01T00:00:00.000Z',
+      });
+      const dueRun = await postJson('/v1/scheduled-deployments/run-due', {});
+      expect(dueRun.res.status).toBe(202);
+      expectPage(dueRun.body);
+      const dueRunRow = dueRun.body.data.find((item: any) => item.schedule_id === due.body.id);
+      expect(dueRunRow).toMatchObject({ status: 'created_session', trigger_type: 'scheduled' });
+      const dueAfterRun = await getJson(`/v1/scheduled-deployments/${due.body.id}`);
+      expect(dueAfterRun.body.last_run_at).toBeTruthy();
+      expect(dueAfterRun.body.next_run_at).toBeTruthy();
+
+      const paused = await app.request(`/v1/scheduled-deployments/${created.body.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'paused', cron: '30 9 * * 1' }),
+      });
+      expect(paused.status).toBe(200);
+      const pausedBody = await paused.json();
+      expect(pausedBody).toMatchObject({ status: 'paused', cron: '30 9 * * 1' });
+
+      const listed = await getJson('/v1/scheduled-deployments');
+      expectPage(listed.body);
+      expect(listed.body.data.some((item: any) => item.id === created.body.id)).toBe(true);
+
+      const archived = await postJson(`/v1/scheduled-deployments/${created.body.id}/archive`, {});
+      expect(archived.res.status).toBe(200);
+      expect(archived.body.status).toBe('archived');
+    });
+
+    it('manages outcomes and records session outcome evaluations', async () => {
+      const outcome = await postJson('/v1/outcomes', {
+        name: 'Release readiness',
+        objective: 'The agent should produce a concise release-readiness summary.',
+        criteria: ['Mentions tests', 'Mentions risks'],
+      });
+      expect(outcome.res.status).toBe(201);
+      expect(outcome.body).toMatchObject({
+        id: expect.stringMatching(/^out_/),
+        type: 'outcome',
+        name: 'Release readiness',
+        criteria: ['Mentions tests', 'Mentions risks'],
+        pass_threshold: 0.75,
+        evaluator: 'deterministic_transcript_matcher',
+        status: 'active',
+      });
+
+      const session = await postJson('/v1/sessions', {
+        agent: 'agent_echo-agent',
+        environment_id: 'env_default',
+        title: 'Outcome run',
+      });
+      expect(session.res.status).toBe(201);
+
+      const evaluation = await postJson(`/v1/sessions/${session.body.id}/outcomes`, {
+        outcome_id: outcome.body.id,
+        status: 'passed',
+        score: 0.92,
+        summary: 'The run met release-readiness criteria.',
+        details: { checked_by: 'integration-test' },
+      });
+      expect(evaluation.res.status).toBe(201);
+      expect(evaluation.body).toMatchObject({
+        id: expect.stringMatching(/^sout_/),
+        type: 'session_outcome',
+        session_id: session.body.id,
+        outcome_id: outcome.body.id,
+        status: 'passed',
+        score: 0.92,
+        details: { checked_by: 'integration-test' },
+      });
+
+      const sessionOutcomes = await getJson(`/v1/sessions/${session.body.id}/outcomes`);
+      expectPage(sessionOutcomes.body);
+      expect(sessionOutcomes.body.data[0].id).toBe(evaluation.body.id);
+
+      const readyOutcome = await postJson('/v1/outcomes', {
+        name: 'Transcript readiness',
+        objective: 'The session should mention tests and risks.',
+        criteria: ['tests', 'risks'],
+        pass_threshold: 1,
+      });
+      const readySession = await postJson('/v1/sessions', {
+        agent: 'agent_echo-agent',
+        environment_id: 'env_default',
+        title: 'Automated outcome run',
+      });
+      await postJson(`/v1/sessions/${readySession.body.id}/messages`, {
+        content: 'Please summarize tests and risks.',
+        stream: false,
+      });
+      const autoEvaluation = await postJson(`/v1/sessions/${readySession.body.id}/outcomes/evaluate`, {
+        outcome_id: readyOutcome.body.id,
+      });
+      expect(autoEvaluation.res.status).toBe(201);
+      expect(autoEvaluation.body).toMatchObject({
+        type: 'session_outcome',
+        session_id: readySession.body.id,
+        outcome_id: readyOutcome.body.id,
+        status: 'passed',
+        score: 1,
+        details: {
+          evaluator: 'deterministic_transcript_matcher',
+          pass_threshold: 1,
+        },
+      });
+
+      const partialOutcome = await postJson('/v1/outcomes', {
+        name: 'Partial threshold',
+        objective: 'The session should mention tests, risks, and deploys.',
+        criteria: ['tests', 'risks', 'deploys'],
+        pass_threshold: 0.7,
+      });
+      const partialEvaluation = await postJson(`/v1/sessions/${readySession.body.id}/outcomes/evaluate`, {
+        outcome_id: partialOutcome.body.id,
+      });
+      expect(partialEvaluation.body.status).toBe('inconclusive');
+      expect(partialEvaluation.body.score).toBeCloseTo(2 / 3, 5);
+
+      const lowered = await app.request(`/v1/outcomes/${partialOutcome.body.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pass_threshold: 0.6 }),
+      });
+      expect(lowered.status).toBe(200);
+      expect((await lowered.json() as any).pass_threshold).toBe(0.6);
+      const loweredEvaluation = await postJson(`/v1/sessions/${readySession.body.id}/outcomes/evaluate`, {
+        outcome_id: partialOutcome.body.id,
+      });
+      expect(loweredEvaluation.body.status).toBe('passed');
+
+      const modelOutcome = await postJson('/v1/outcomes', {
+        name: 'Model assisted readiness',
+        objective: 'The session should be judged by a model evaluator.',
+        criteria: ['tests', 'risks'],
+        evaluator: 'model_assisted',
+        pass_threshold: 0.8,
+      });
+      const modelEvaluation = await postJson(`/v1/sessions/${readySession.body.id}/outcomes/evaluate`, {
+        outcome_id: modelOutcome.body.id,
+      });
+      expect(modelEvaluation.body).toMatchObject({
+        status: 'passed',
+        score: 0.88,
+        summary: 'Mock model evaluator reviewed 2 criteria.',
+        details: {
+          evaluator: 'model_assisted',
+          pass_threshold: 0.8,
+          model: 'mock-evaluator',
+        },
+      });
+
+      const archived = await postJson(`/v1/outcomes/${outcome.body.id}/archive`, {});
+      expect(archived.res.status).toBe(200);
+      expect(archived.body.status).toBe('archived');
     });
 
     it('exposes recent runtime logs through the extension API', async () => {
@@ -1092,6 +1374,53 @@ description: Uploaded from a compressed package.
       expect(content.headers.get('content-disposition')).toContain('sandbase-upload-test.txt');
       expect(await content.text()).toBe('uploaded through the console');
     });
+
+    it('creates session artifacts with previews without mixing them into uploaded files', async () => {
+      const session = await postJson('/v1/sessions', {
+        agent: 'agent_echo-agent',
+        environment_id: 'env_default',
+        title: 'Artifact run',
+      });
+      expect(session.res.status).toBe(201);
+
+      const created = await postJson(`/v1/sessions/${session.body.id}/artifacts`, {
+        path: '/artifacts/report.md',
+        name: 'report.md',
+        media_type: 'text/markdown',
+        content: '# Run report\n\nGenerated by the local runtime.',
+        metadata: { source: 'test' },
+      });
+      expect(created.res.status).toBe(201);
+      expect(created.body).toMatchObject({
+        type: 'artifact',
+        role: 'artifact',
+        session_id: session.body.id,
+        artifact_path: '/artifacts/report.md',
+        media_type: 'text/markdown',
+      });
+      expect(created.body.preview).toContain('Generated by the local runtime');
+      expect(created.body.storage_path).toBeUndefined();
+
+      const artifacts = await getJson(`/v1/sessions/${session.body.id}/artifacts`);
+      expect(artifacts.res.status).toBe(200);
+      expect(artifacts.body.data).toHaveLength(1);
+      expect(artifacts.body.data[0].id).toBe(created.body.id);
+
+      const content = await app.request(`/v1/sessions/${session.body.id}/artifacts/${created.body.id}/content`);
+      expect(content.status).toBe(200);
+      expect(content.headers.get('content-type')).toContain('text/markdown');
+      expect(await content.text()).toContain('# Run report');
+
+      const files = await getJson('/v1/files');
+      expect(files.body.data.some((file: any) => file.id === created.body.id)).toBe(false);
+
+      const badPath = await postJson(`/v1/sessions/${session.body.id}/artifacts`, {
+        path: '/tmp/report.md',
+        content: 'bad',
+      });
+      expect(badPath.res.status).toBe(400);
+      expect(badPath.body.error.message).toContain('/artifacts/');
+    });
   });
 
   describe('PUT /v1/environments/:id', () => {
@@ -1236,6 +1565,59 @@ description: Uploaded from a compressed package.
       expect(body.packages[0].package).toBe('tsx@latest');
       expect(body.config.hosting_type).toBe('cloud');
       expect(body.config.packages[0].manager).toBe('npm');
+    });
+
+    it('manages self-hosted worker keys and environment queue visibility', async () => {
+      const { body: environment } = await postJson('/v1/environments', {
+        name: 'Self-hosted worker pool',
+        hosting_type: 'self_hosted',
+        sandbox_provider: 'self_hosted',
+      });
+
+      const createdKey = await postJson(`/v1/environments/${environment.id}/worker-keys`, {
+        name: 'Laptop runner',
+        metadata: { host: 'fde-laptop' },
+      });
+      expect(createdKey.res.status).toBe(201);
+      expect(createdKey.body.secret_key).toMatch(/^mawk_/);
+      expect(createdKey.body.key_prefix).toContain('…');
+      expect(createdKey.body.key_hash).toBeUndefined();
+
+      const keys = await getJson(`/v1/environments/${environment.id}/worker-keys`);
+      expect(keys.body.data).toHaveLength(1);
+      expect(keys.body.data[0]).toMatchObject({
+        id: createdKey.body.id,
+        environment_id: environment.id,
+        status: 'active',
+      });
+      expect(keys.body.data[0].secret_key).toBeUndefined();
+
+      const session = await postJson('/v1/sessions', {
+        agent: 'agent_echo-agent',
+        environment_id: environment.id,
+        title: 'Queue visibility',
+      });
+      db.prepare('INSERT INTO work_items (id, session_id, kind, payload, status) VALUES (?, ?, ?, ?, ?)').run(
+        'work_api_env_queue',
+        session.body.id,
+        'exec',
+        JSON.stringify({ command: 'echo ok' }),
+        'pending',
+      );
+
+      const workItems = await getJson(`/v1/environments/${environment.id}/work-items`);
+      expect(workItems.res.status).toBe(200);
+      expect(workItems.body.stats.pending).toBe(1);
+      expect(workItems.body.data[0]).toMatchObject({
+        id: 'work_api_env_queue',
+        session_id: session.body.id,
+        kind: 'exec',
+        status: 'pending',
+      });
+
+      const revoked = await postJson(`/v1/environments/${environment.id}/worker-keys/${createdKey.body.id}/revoke`, {});
+      expect(revoked.res.status).toBe(200);
+      expect(revoked.body.status).toBe('revoked');
     });
 
     it('returns 404 for non-existent environments', async () => {
@@ -1436,6 +1818,62 @@ description: Uploaded from a compressed package.
       expect(deleteRes.status).toBe(200);
       expect((await deleteRes.json()).status).toBe('deleted');
     });
+
+    it('rotates credentials, records audit events, and resolves runtime injection bundles', async () => {
+      const vault = await postJson('/v1/credential-vaults', { name: 'Runtime injection vault' });
+      const credential = await postJson(`/v1/credential-vaults/${vault.body.id}/credentials`, {
+        name: 'GitHub token',
+        auth_type: 'environment_variable',
+        variable_name: 'GITHUB_TOKEN',
+        value: 'ghp_old_secret',
+        injection_locations: ['request_headers'],
+      });
+      expect(credential.res.status).toBe(201);
+
+      const rotated = await postJson(`/v1/credential-vaults/${vault.body.id}/credentials/${credential.body.id}/rotate`, {
+        value: 'ghp_new_secret',
+        actor: 'integration-test',
+        metadata: { reason: 'rotation-test' },
+      });
+      expect(rotated.res.status).toBe(200);
+      expect(rotated.body.value_hint).toBe('••••cret');
+      expect(JSON.stringify(rotated.body)).not.toContain('ghp_new_secret');
+
+      const session = await postJson('/v1/sessions', {
+        agent: 'agent_echo-agent',
+        environment_id: 'env_default',
+        vault_ids: [vault.body.id],
+      });
+      expect(session.res.status).toBe(201);
+
+      const bundle = resolveSessionCredentialInjections(db, session.body.id, {
+        dataDir,
+        actor: 'test-runtime',
+        metadata: { session_id: session.body.id },
+      });
+      expect(bundle.environment.GITHUB_TOKEN).toBe('ghp_new_secret');
+      expect(bundle.credentials[0]).toMatchObject({
+        id: credential.body.id,
+        vault_id: vault.body.id,
+        variable_name: 'GITHUB_TOKEN',
+      });
+
+      const detail = await getJson(`/v1/credential-vaults/${vault.body.id}/credentials`);
+      const updated = detail.body.data.find((item: any) => item.id === credential.body.id);
+      expect(updated.last_used_at).toBeTruthy();
+      expect(JSON.stringify(detail.body)).not.toContain('ghp_new_secret');
+
+      const audit = await getJson(`/v1/credential-vaults/${vault.body.id}/credentials/${credential.body.id}/audit`);
+      expect(audit.body.data.map((event: any) => event.action)).toEqual(expect.arrayContaining(['rotate', 'runtime_inject']));
+      expect(audit.body.data.find((event: any) => event.action === 'rotate').metadata.reason).toBe('rotation-test');
+
+      const marked = await postJson(`/v1/credential-vaults/${vault.body.id}/credentials/${credential.body.id}/mark-used`, {
+        actor: 'api-test',
+        metadata: { check: 'manual' },
+      });
+      expect(marked.res.status).toBe(200);
+      expect(marked.body.last_used_at).toBeTruthy();
+    });
   });
 
   describe('Memory stores', () => {
@@ -1456,6 +1894,8 @@ description: Uploaded from a compressed package.
       });
       expect(memoryRes.status).toBe(201);
       expect(memory.path).toBe('/folder/a');
+      expect(memory.content_size_bytes).toBe(5);
+      expect(memory.content_hash).toHaveLength(64);
 
       const duplicate = await postJson(`/v1/memory_stores/${store.id}/memories`, {
         path: '/folder//a',
@@ -1469,6 +1909,8 @@ description: Uploaded from a compressed package.
       const detail = await detailRes.json();
       expect(detail.memory_count).toBe(1);
       expect(detail.memories[0].content).toBe('alpha');
+      expect(detail.memories[0].content_size_bytes).toBe(5);
+      expect(detail.memories[0].content_hash).toBe(memory.content_hash);
 
       const deleteRes = await app.request(`/v1/memory_stores/${store.id}/memories/${memory.id}`, { method: 'DELETE' });
       expect(deleteRes.status).toBe(200);
@@ -1530,7 +1972,10 @@ description: Uploaded from a compressed package.
         body: JSON.stringify({ content: 'updated' }),
       });
       expect(updateRes.status).toBe(200);
-      expect((await updateRes.json()).content).toBe('updated');
+      const updatedMemory = await updateRes.json();
+      expect(updatedMemory.content).toBe('updated');
+      expect(updatedMemory.content_size_bytes).toBe(7);
+      expect(updatedMemory.content_hash).toHaveLength(64);
 
       const listRes = await app.request('/v1/memory_stores');
       const list = await listRes.json();
@@ -1643,6 +2088,39 @@ description: Uploaded from a compressed package.
       expect(res.status).toBe(200);
       const text = await res.text();
       expect(text).toContain('metrics');
+    });
+
+    it('returns a JSON runtime metrics summary', async () => {
+      db.prepare(
+        `INSERT INTO files (id, name, media_type, size_bytes, storage_path, role, session_id, artifact_path)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).run('file_metrics_artifact', 'artifact.txt', 'text/plain', 42, 'artifact.txt', 'artifact', null, '/artifacts/artifact.txt');
+
+      const res = await app.request('/v1/x/metrics/summary');
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body).toMatchObject({
+        type: 'metrics_summary',
+        sessions: expect.objectContaining({
+          total: expect.any(Number),
+          by_status: expect.any(Object),
+        }),
+        events: expect.objectContaining({
+          total: expect.any(Number),
+          by_type: expect.any(Object),
+        }),
+        storage: expect.objectContaining({
+          artifacts: expect.any(Number),
+          artifact_bytes: expect.any(Number),
+        }),
+        work_queue: expect.any(Object),
+        http: expect.objectContaining({
+          requests: expect.any(Number),
+          errors: expect.any(Number),
+        }),
+      });
+      expect(body.storage.artifacts).toBeGreaterThanOrEqual(1);
+      expect(body.storage.artifact_bytes).toBeGreaterThanOrEqual(42);
     });
   });
 

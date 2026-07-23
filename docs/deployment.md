@@ -1,0 +1,167 @@
+# Deployment Examples
+
+`managed-agents` is local-first, but the runtime is intentionally easy to run
+as a long-lived service. A production deployment is still a self-owned Node.js
+process backed by a data directory that contains SQLite metadata, uploaded
+files, artifacts, snapshots, and logs.
+
+## Production Boundaries
+
+Before exposing a runtime beyond localhost:
+
+- enable bearer-token authentication with `MANAGED_AGENTS_API_KEY` or managed
+  API keys
+- pin a persistent `--data-dir`
+- run behind TLS at the reverse proxy or platform layer
+- keep model provider API keys in environment variables or a secret manager
+- back up the data directory
+- expose only the networks and sandbox providers you actually use
+
+## Single Host With systemd
+
+Build or install the package, then create a dedicated runtime directory:
+
+```bash
+sudo useradd --system --create-home --home-dir /var/lib/managed-agents managed-agents
+sudo mkdir -p /etc/managed-agents /var/lib/managed-agents/runtime
+sudo chown -R managed-agents:managed-agents /var/lib/managed-agents
+```
+
+Example environment file:
+
+```text
+# /etc/managed-agents/runtime.env
+MANAGED_AGENTS_API_KEY=ma_change_me
+OPENAI_API_KEY=sk_change_me
+```
+
+Example service:
+
+```ini
+[Unit]
+Description=managed-agents runtime
+After=network-online.target
+
+[Service]
+User=managed-agents
+Group=managed-agents
+WorkingDirectory=/var/lib/managed-agents/workspace
+EnvironmentFile=/etc/managed-agents/runtime.env
+ExecStart=/usr/bin/managed-agents start \
+  --host 127.0.0.1 \
+  --port 3000 \
+  --data-dir /var/lib/managed-agents/runtime \
+  --config /etc/managed-agents/managed-agents.config.yaml
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Put nginx, Caddy, or an ingress in front of the localhost service for TLS and
+external access.
+
+## Docker Compose
+
+This example stores runtime state in a named volume and keeps the HTTP service
+bound to localhost on the host machine.
+
+```yaml
+services:
+  managed-agents:
+    image: node:22-bookworm-slim
+    working_dir: /app
+    command: >
+      sh -lc "npm install -g managed-agents &&
+      managed-agents start --host 0.0.0.0 --port 3000 --data-dir /data"
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      MANAGED_AGENTS_API_KEY: ${MANAGED_AGENTS_API_KEY}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+    volumes:
+      - managed_agents_data:/data
+      - ./agents:/app/agents:ro
+      - ./skills:/app/skills:ro
+      - ./managed-agents.config.yaml:/app/managed-agents.config.yaml:ro
+
+volumes:
+  managed_agents_data:
+```
+
+For stronger isolation, run Docker-backed sandboxes only on hosts where the
+container runtime and permissions are explicitly managed.
+
+## Kubernetes
+
+Use a `Deployment` for the runtime and a persistent volume for `/data`:
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: managed-agents
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: managed-agents
+  template:
+    metadata:
+      labels:
+        app: managed-agents
+    spec:
+      containers:
+        - name: runtime
+          image: node:22-bookworm-slim
+          workingDir: /app
+          command:
+            - sh
+            - -lc
+            - npm install -g managed-agents && managed-agents start --host 0.0.0.0 --port 3000 --data-dir /data
+          envFrom:
+            - secretRef:
+                name: managed-agents-secrets
+          ports:
+            - containerPort: 3000
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: managed-agents-data
+```
+
+For multi-replica deployments, wait until metadata storage supports an external
+database. The current SQLite-backed runtime should run as a single writer.
+
+## Self-hosted Environment Workers
+
+Self-hosted environments let the control runtime keep metadata while another
+machine executes work items:
+
+```bash
+export MANAGED_AGENTS_ENVIRONMENT_KEY='mawk_...'
+managed-agents worker poll \
+  --port 3000 \
+  --environment-id env_self_hosted \
+  --workdir /workspace
+```
+
+Generate and revoke environment worker keys from the Console or the
+`/v1/environments/{id}/worker-keys` API.
+
+## Operational Checks
+
+Use these checks in release scripts and health monitors:
+
+```bash
+curl -fsS http://127.0.0.1:3000/v1/x/health
+curl -fsS http://127.0.0.1:3000/v1/x/metrics/summary \
+  -H "Authorization: Bearer ${MANAGED_AGENTS_API_KEY}"
+```
+
+The production deployment URL should terminate TLS before reaching the runtime.
+The runtime itself currently serves HTTP only.

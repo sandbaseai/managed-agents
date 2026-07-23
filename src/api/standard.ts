@@ -124,7 +124,7 @@ export function toApiSession(session: Session, agent?: AgentDefinition): ApiSess
     type: 'session',
     title: session.title ?? null,
     agent: agent
-      ? toApiAgent(agent, { id: session.agentId })
+      ? toApiAgent(agent, { id: session.agentId, version: session.agentVersion })
       : { id: session.agentId, type: 'agent', name: session.agentName },
     environment_id: session.environmentId,
     status: toApiSessionStatus(session.status),

@@ -5,6 +5,7 @@
  */
 
 import type { CMAEventType, ContentBlock } from './cma-protocol.js';
+import type { AgentDefinition } from './agent.js';
 
 // ============================================================
 // Session Status (state machine)
@@ -43,6 +44,8 @@ export interface Session {
   id: string; // sess_xxx
   agentId: string;
   agentName: string;
+  agentVersion?: number;
+  agentDefinition?: AgentDefinition;
   environmentId: string;
   status: SessionStatus;
   title?: string;
@@ -88,6 +91,7 @@ export interface SessionEvent {
 
 export interface CreateSessionParams {
   agent: string; // agent name or ID
+  agentVersion?: number;
   environmentId?: string;
   /** Internal memory scope used by the current runtime; not exposed as a public API field. */
   contextId?: string;

@@ -1,15 +1,15 @@
-import { ChangeEvent, DragEvent, FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { ChangeEvent, DragEvent, FormEvent, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, Download, FileText, Plus, Search, Trash2, Upload, X, Zap } from 'lucide-react';
 import { postForm } from '../../api';
 import type { ConsoleData, Skill, WorkspaceFile } from '../../types';
-import { EmptyState, FilterSelect } from '../Common';
+import { EmptyState, FilterSelect, ResourceBadge, SummaryStrip } from '../Common';
 import { Modal } from '../Modal';
 import { formatBytes, formatDateShort, formatDateWithYear, shortId } from '../../lib/format';
 
 export function Skills({ data, onRefresh }: { data: ConsoleData; onRefresh: () => void }) {
   const [query, setQuery] = useState('');
   const [source, setSource] = useState<'all' | Skill['source']>('all');
-  const [selectedId, setSelectedId] = useState<string | null>(data.skills[0]?.id ?? null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -23,18 +23,17 @@ export function Skills({ data, onRefresh }: { data: ConsoleData; onRefresh: () =
       return sourceMatches && queryMatches;
     });
   }, [data.skills, query, source]);
-  const selected = filtered.find((skill) => skill.id === selectedId) ?? filtered[0] ?? null;
-
-  useEffect(() => {
-    if (selected && selected.id !== selectedId) setSelectedId(selected.id);
-  }, [selected, selectedId]);
+  const selected = selectedId ? filtered.find((skill) => skill.id === selectedId) ?? null : null;
+  const customSkills = data.skills.filter((skill) => skill.source === 'custom').length;
+  const anthropicSkills = data.skills.filter((skill) => skill.source === 'anthropic').length;
+  const versionCount = data.skills.reduce((sum, skill) => sum + skill.versions.length, 0);
 
   return (
     <section className="stack skillsPage">
       <div className="pageIntro">
         <div>
           <h1>Skills</h1>
-          <p>Skills are repeatable and customizable instructions that the agent runtime can follow.</p>
+          <p>Upload reusable instruction packages and attach them to agents without duplicating prompts.</p>
         </div>
         <div className="toolbarActions">
           <button className="primaryButton" type="button" onClick={() => setCreateOpen(true)}>
@@ -46,6 +45,13 @@ export function Skills({ data, onRefresh }: { data: ConsoleData; onRefresh: () =
           </a>
         </div>
       </div>
+
+      <SummaryStrip items={[
+        { label: 'Skills', value: data.skills.length, icon: <Zap size={18} /> },
+        { label: 'Custom', value: customSkills, icon: <Upload size={18} /> },
+        { label: 'Anthropic', value: anthropicSkills, icon: <FileText size={18} /> },
+        { label: 'Versions', value: versionCount, icon: <Download size={18} /> },
+      ]} />
 
       <div className="toolbar compactToolbar">
         <label className="searchBox">
@@ -64,7 +70,7 @@ export function Skills({ data, onRefresh }: { data: ConsoleData; onRefresh: () =
         />
       </div>
 
-      <div className="skillsLayout">
+      <div className={`skillsLayout ${selected ? 'hasDrawer' : ''}`}>
         <div className="tablePanel skillTablePanel">
           <table>
             <thead>
@@ -94,7 +100,7 @@ export function Skills({ data, onRefresh }: { data: ConsoleData; onRefresh: () =
               ))}
             </tbody>
           </table>
-          {filtered.length === 0 ? <EmptyState icon={<Zap size={22} />} title="No skills" /> : null}
+          {filtered.length === 0 ? <EmptyState icon={<Zap size={22} />} title="No skills" body="Upload a Skill package with SKILL.md to reuse instructions across agents." /> : null}
         </div>
 
         {selected ? <SkillDetailsDrawer skill={selected} onClose={() => setSelectedId(null)} /> : null}
@@ -148,7 +154,13 @@ function SkillDetailsDrawer({ skill, onClose }: { skill: Skill; onClose: () => v
                 {version.latest ? <b>Latest</b> : null}
               </div>
             ))}
-            {skill.versions.length === 0 ? <div className="emptyInline">No versions</div> : null}
+            {skill.versions.length === 0 ? (
+              <EmptyState
+                icon={<FileText size={20} />}
+                title="No versions"
+                body="Upload a new Skill package version to make this Skill attachable with an immutable reference."
+              />
+            ) : null}
           </div>
         </div>
       </div>
@@ -239,6 +251,11 @@ function CreateSkillModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
             </button>
           </div>
         </div>
+        <div className="uploadRequirementGrid">
+          <span><strong>1</strong> One top-level folder</span>
+          <span><strong>2</strong> Root SKILL.md required</span>
+          <span><strong>3</strong> References stay inside package</span>
+        </div>
         {selectedFiles.length > 0 ? (
           <div className="skillUploadFile">
             <FileText size={20} />
@@ -290,8 +307,13 @@ function formatSkillLatestVersion(skill: Skill): string {
 export function Files({ data, onRefresh }: { data: ConsoleData; onRefresh: () => void }) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [fileDragActive, setFileDragActive] = useState(false);
   const [error, setError] = useState('');
   const files = useMemo(() => [...data.files].sort((a, b) => b.created_at.localeCompare(a.created_at)), [data.files]);
+  const artifactCount = files.filter((file) => file.role === 'artifact').length;
+  const uploadedFileCount = files.filter((file) => file.role === 'file').length;
+  const totalBytes = files.reduce((sum, file) => sum + file.size_bytes, 0);
+  const latestFile = files[0];
 
   const uploadFiles = async (fileList: FileList | null) => {
     const uploads = Array.from(fileList ?? []);
@@ -315,6 +337,12 @@ export function Files({ data, onRefresh }: { data: ConsoleData; onRefresh: () =>
   const onUploadChange = (event: ChangeEvent<HTMLInputElement>) => {
     void uploadFiles(event.currentTarget.files);
     event.currentTarget.value = '';
+  };
+
+  const onFilesDrop = (event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    setFileDragActive(false);
+    void uploadFiles(event.dataTransfer.files);
   };
 
   return (
@@ -341,12 +369,42 @@ export function Files({ data, onRefresh }: { data: ConsoleData; onRefresh: () =>
           <span>{error}</span>
         </div>
       ) : null}
+      <div
+        className={`fileUploadDropzone ${fileDragActive ? 'dragActive' : ''}`}
+        onDragOver={(event) => {
+          event.preventDefault();
+          setFileDragActive(true);
+        }}
+        onDragLeave={() => setFileDragActive(false)}
+        onDrop={onFilesDrop}
+      >
+        <div>
+          <Upload size={22} />
+          <strong>{uploading ? 'Uploading files...' : 'Drop files here to upload'}</strong>
+          <span>Files are stored locally and can be mounted into sessions as resources.</span>
+        </div>
+        <button className="secondaryButton" type="button" onClick={() => inputRef.current?.click()} disabled={uploading}>
+          Select files
+        </button>
+      </div>
+      <SummaryStrip items={[
+        { label: 'Files', value: uploadedFileCount, icon: <FileText size={18} /> },
+        { label: 'Artifacts', value: artifactCount, icon: <Download size={18} /> },
+        { label: 'Storage used', value: formatBytes(totalBytes), icon: <Upload size={18} /> },
+        { label: 'Latest', value: latestFile ? formatDateShort(latestFile.created_at) : 'None', icon: <FileText size={18} /> },
+      ]} />
+      <div className="resourceTruthStrip" aria-label="Files truth model">
+        <div><span>Inputs</span><strong>Uploaded files are reusable resources that can be mounted into sessions.</strong></div>
+        <div><span>Artifacts</span><strong>Generated outputs remain visible here but are produced by a specific session.</strong></div>
+        <div><span>Storage</span><strong>All file bytes use the configured local artifact storage boundary.</strong></div>
+      </div>
       <div className="tablePanel filesTablePanel claudeFilesTable">
         <table>
           <thead>
             <tr>
               <th>ID</th>
               <th>Name</th>
+              <th>Role</th>
               <th>Size</th>
               <th>Created</th>
               <th aria-label="Actions" />
@@ -357,6 +415,7 @@ export function Files({ data, onRefresh }: { data: ConsoleData; onRefresh: () =>
               <tr key={file.id}>
                 <td><strong className="monoCell">{shortId(file.id)}</strong></td>
                 <td><strong>{file.name}</strong></td>
+                <td><ResourceBadge>{file.role === 'artifact' ? 'Artifact' : 'File'}</ResourceBadge></td>
                 <td>{formatBytes(file.size_bytes)}</td>
                 <td>{formatDateShort(file.created_at)}</td>
                 <td className="rowActionsCell">
@@ -368,7 +427,38 @@ export function Files({ data, onRefresh }: { data: ConsoleData; onRefresh: () =>
             ))}
           </tbody>
         </table>
-        {files.length === 0 ? <EmptyState icon={<FileText size={22} />} title="No files" /> : null}
+        {files.length === 0 ? (
+          <EmptyState
+            icon={<FileText size={22} />}
+            title="No files"
+            body="Upload files once, then mount them into sessions as resources."
+            action={<button className="primaryButton" type="button" onClick={() => inputRef.current?.click()} disabled={uploading}><Upload size={16} />Upload file</button>}
+          />
+        ) : null}
+      </div>
+      <div className="mobileResourceList">
+        {files.map((file) => (
+          <div className="mobileResourceCard" key={file.id}>
+            <span className="mobileAgentMain">
+              <strong>{file.name}</strong>
+              <small className="monoText">{file.id}</small>
+            </span>
+            <span className="mobileAgentMeta">
+              <span>{file.role === 'artifact' ? 'Artifact' : 'File'} · {formatBytes(file.size_bytes)}</span>
+              <a className="iconButton quiet" href={`/v1/files/${encodeURIComponent(file.id)}/content`} download={file.name} title="Download file">
+                <Download size={16} />
+              </a>
+            </span>
+          </div>
+        ))}
+        {files.length === 0 ? (
+          <EmptyState
+            icon={<FileText size={22} />}
+            title="No files"
+            body="Upload files once, then mount them into sessions as resources."
+            action={<button className="primaryButton" type="button" onClick={() => inputRef.current?.click()} disabled={uploading}><Upload size={16} />Upload file</button>}
+          />
+        ) : null}
       </div>
     </section>
   );

@@ -81,10 +81,13 @@ export type SessionResourceDraft =
 
 export type WorkspaceFile = {
   id: string;
-  type: 'file';
+  type: 'file' | 'artifact';
   name: string;
   media_type: string;
   size_bytes: number;
+  role: 'file' | 'artifact';
+  session_id: string | null;
+  artifact_path: string | null;
   status: string;
   metadata: Record<string, unknown>;
   created_at: string;
@@ -141,9 +144,44 @@ export type Environment = {
   status: string;
   config: Record<string, unknown>;
   metadata: Record<string, unknown>;
+  worker_keys: EnvironmentWorkerKey[];
+  work_queue: Record<string, number>;
   created_at: string;
   updated_at: string;
   archived_at: string | null;
+};
+
+export type EnvironmentWorkerKey = {
+  id: string;
+  type: 'environment_worker_key';
+  environment_id: string;
+  name: string;
+  key_prefix: string;
+  status: string;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+  last_seen_at: string | null;
+  revoked_at: string | null;
+  expires_at: string | null;
+};
+
+export type EnvironmentWorkerKeyCreateResponse = EnvironmentWorkerKey & {
+  secret_key: string;
+};
+
+export type WorkItem = {
+  id: string;
+  type: 'work_item';
+  session_id: string;
+  kind: string;
+  payload: Record<string, unknown>;
+  status: string;
+  result: unknown;
+  claimed_by: string | null;
+  created_at: string | null;
+  claimed_at: string | null;
+  completed_at: string | null;
 };
 
 export type Vault = {
@@ -200,6 +238,8 @@ export type MemoryRecord = {
   store_id: string;
   path: string;
   content: string;
+  content_size_bytes: number;
+  content_hash: string;
   metadata: Record<string, unknown>;
   created_at: string;
   updated_at: string;
@@ -305,6 +345,114 @@ export type Runtime = {
   auth_enabled: boolean;
 };
 
+export type Webhook = {
+  id: string;
+  type: 'webhook';
+  name: string;
+  url: string;
+  events: string[];
+  description: string;
+  status: string;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+  archived_at: string | null;
+};
+
+export type ScheduledDeployment = {
+  id: string;
+  type: 'scheduled_deployment';
+  name: string;
+  agent_id: string;
+  environment_id: string | null;
+  cron: string;
+  payload: Record<string, unknown>;
+  status: string;
+  last_run_at: string | null;
+  next_run_at: string | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+  archived_at: string | null;
+};
+
+export type Outcome = {
+  id: string;
+  type: 'outcome';
+  name: string;
+  description: string;
+  objective: string;
+  criteria: string[];
+  pass_threshold: number;
+  evaluator: string;
+  metadata: Record<string, unknown>;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  archived_at: string | null;
+};
+
+export type RuntimeSettingsValidationStatus = 'ok' | 'warning' | 'error';
+
+export type RuntimeSettingsValidationCheck = {
+  key: string;
+  label: string;
+  status: RuntimeSettingsValidationStatus;
+  message: string;
+};
+
+export type RuntimeSettings = {
+  type: 'settings';
+  model_provider: {
+    vendor: string;
+    base_url?: string;
+    api_key_env?: string;
+    api_key_state: RuntimeConfigState;
+    configured: boolean;
+  };
+  loop_engine: {
+    type: 'managed-agents' | 'harness' | 'codex' | 'claude';
+    implemented: boolean;
+    config: Record<string, unknown>;
+  };
+  storage: {
+    metadata: {
+      type: RuntimeStorageProviderKind | string;
+      path?: string;
+      connection_url?: string;
+      state: RuntimeConfigState;
+      implemented: boolean;
+    };
+    artifacts: {
+      type: RuntimeStorageProviderKind | string;
+      path?: string;
+      bucket?: string;
+      region?: string;
+      state: RuntimeConfigState;
+      implemented: boolean;
+    };
+  };
+  memory: {
+    backend: {
+      type: RuntimeMemoryProviderKind | string;
+      connection_url?: string;
+      api_key_state: RuntimeConfigState;
+      implemented: boolean;
+    };
+  };
+  sandbox: {
+    type: string;
+    implemented: boolean;
+    available: boolean;
+    providers: string[];
+    config: Record<string, unknown>;
+  };
+  validation: {
+    status: RuntimeSettingsValidationStatus;
+    checks: RuntimeSettingsValidationCheck[];
+  };
+};
+
 export type RuntimeLogLevel = 'debug' | 'info' | 'warn' | 'error';
 
 export type RuntimeLogEntry = {
@@ -313,6 +461,36 @@ export type RuntimeLogEntry = {
   msg: string;
   line: string;
   [key: string]: unknown;
+};
+
+export type RuntimeMetricsSummary = {
+  type: 'metrics_summary';
+  generated_at: string;
+  sessions: {
+    total: number;
+    by_status: Record<string, number>;
+    input_tokens: number;
+    output_tokens: number;
+  };
+  events: {
+    total: number;
+    by_type: Record<string, number>;
+    input_tokens: number;
+    output_tokens: number;
+    average_duration_ms: number;
+  };
+  storage: {
+    files: number;
+    file_bytes: number;
+    artifacts: number;
+    artifact_bytes: number;
+  };
+  work_queue: Record<string, number>;
+  http: {
+    requests: number;
+    errors: number;
+    request_duration_ms: { count: number; sum: number };
+  };
 };
 
 export type Workspace = {
@@ -344,9 +522,11 @@ export type ConsoleData = {
   apiKeys: ApiKey[];
   skills: Skill[];
   templates: Template[];
-  memoryProviders: RuntimeMemoryProvider[];
-  storageProviders: RuntimeStorageProvider[];
+  webhooks: Webhook[];
+  scheduledDeployments: ScheduledDeployment[];
+  outcomes: Outcome[];
   runtime: Runtime | null;
+  settings: RuntimeSettings | null;
   workspace: Workspace | null;
 };
 
@@ -361,6 +541,9 @@ export type ViewId =
   | 'memory-store-detail'
   | 'skills'
   | 'files'
+  | 'webhooks'
+  | 'scheduled-deployments'
+  | 'outcomes'
   | 'workspace'
   | 'runtime'
   | 'models'

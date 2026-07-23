@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { createHash, randomBytes } from 'node:crypto';
 import { Hono } from 'hono';
 import { nanoid } from 'nanoid';
 import type { ServerDeps } from '../server.js';
@@ -12,6 +13,9 @@ type FileCreateInput = {
   mediaType: string;
   bytes: Buffer;
   metadata: Record<string, string>;
+  role?: 'file' | 'artifact';
+  sessionId?: string | null;
+  artifactPath?: string | null;
 };
 
 const FILE_PREVIEW_MAX_BYTES = 24 * 1024;
@@ -22,7 +26,7 @@ export function resourceRoutes(deps: ServerDeps) {
 
   app.get('/environments', (c) => {
     const rows = deps.db.prepare('SELECT * FROM environments WHERE archived_at IS NULL ORDER BY created_at DESC').all() as unknown as EnvironmentRow[];
-    return c.json(pageOf(rows.map(toEnvironment)));
+    return c.json(pageOf(rows.map((row) => toEnvironment(row, deps))));
   });
 
   app.post('/environments', async (c) => {
@@ -43,7 +47,7 @@ export function resourceRoutes(deps: ServerDeps) {
         JSON.stringify(stringRecordField(body.value.metadata)),
       );
       const row = deps.db.prepare('SELECT * FROM environments WHERE id = ? AND archived_at IS NULL').get(id) as unknown as EnvironmentRow;
-      return c.json(toEnvironment(row), 201);
+      return c.json(toEnvironment(row, deps), 201);
     } catch (err: any) {
       if (String(err.message).includes('UNIQUE')) return conflict(c, 'Environment id already exists');
       return c.json({ error: { type: 'internal_error', message: err.message } }, 500);
@@ -52,7 +56,73 @@ export function resourceRoutes(deps: ServerDeps) {
 
   app.get('/environments/:id', (c) => {
     const row = deps.db.prepare('SELECT * FROM environments WHERE id = ? AND archived_at IS NULL').get(c.req.param('id')) as EnvironmentRow | undefined;
-    return row ? c.json(toEnvironment(row)) : notFound(c, 'Environment not found');
+    return row ? c.json(toEnvironment(row, deps)) : notFound(c, 'Environment not found');
+  });
+
+  app.get('/environments/:id/worker-keys', (c) => {
+    const environmentId = c.req.param('id');
+    const environment = deps.db.prepare('SELECT id FROM environments WHERE id = ? AND archived_at IS NULL').get(environmentId);
+    if (!environment) return notFound(c, 'Environment not found');
+    return c.json(pageOf(listEnvironmentWorkerKeys(deps, environmentId)));
+  });
+
+  app.post('/environments/:id/worker-keys', async (c) => {
+    const body = await readObjectBody(c);
+    if (!body.ok) return body.response;
+    const environmentId = c.req.param('id');
+    const environment = deps.db.prepare('SELECT id FROM environments WHERE id = ? AND archived_at IS NULL').get(environmentId);
+    if (!environment) return notFound(c, 'Environment not found');
+    const name = stringField(body.value.name) ?? 'Worker key';
+    const secret = `mawk_${randomBytes(24).toString('base64url')}`;
+    const id = `wrkkey_${nanoid(18)}`;
+    const now = new Date().toISOString();
+    deps.db.prepare(
+      `INSERT INTO environment_worker_keys (
+        id, environment_id, name, key_hash, key_prefix, metadata, created_at, updated_at, expires_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      id,
+      environmentId,
+      name,
+      hashSecret(secret),
+      `${secret.slice(0, 10)}…${secret.slice(-4)}`,
+      JSON.stringify(stringRecordField(body.value.metadata)),
+      now,
+      now,
+      stringField(body.value.expires_at) ?? null,
+    );
+    deps.db.prepare('UPDATE environments SET updated_at = datetime(\'now\') WHERE id = ?').run(environmentId);
+    const row = deps.db.prepare('SELECT * FROM environment_worker_keys WHERE id = ?').get(id) as unknown as EnvironmentWorkerKeyRow;
+    return c.json({ ...toEnvironmentWorkerKey(row), secret_key: secret }, 201);
+  });
+
+  app.post('/environments/:id/worker-keys/:keyId/revoke', (c) => {
+    const environmentId = c.req.param('id');
+    const keyId = c.req.param('keyId');
+    const environment = deps.db.prepare('SELECT id FROM environments WHERE id = ? AND archived_at IS NULL').get(environmentId);
+    if (!environment) return notFound(c, 'Environment not found');
+    const existing = deps.db.prepare(
+      'SELECT * FROM environment_worker_keys WHERE id = ? AND environment_id = ? AND status = ?',
+    ).get(keyId, environmentId, 'active') as EnvironmentWorkerKeyRow | undefined;
+    if (!existing) return notFound(c, 'Worker key not found');
+    deps.db.prepare(
+      'UPDATE environment_worker_keys SET status = ?, revoked_at = datetime(\'now\'), updated_at = datetime(\'now\') WHERE id = ? AND environment_id = ?',
+    ).run('revoked', keyId, environmentId);
+    deps.db.prepare('UPDATE environments SET updated_at = datetime(\'now\') WHERE id = ?').run(environmentId);
+    const row = deps.db.prepare('SELECT * FROM environment_worker_keys WHERE id = ?').get(keyId) as unknown as EnvironmentWorkerKeyRow;
+    return c.json(toEnvironmentWorkerKey(row));
+  });
+
+  app.get('/environments/:id/work-items', (c) => {
+    const environmentId = c.req.param('id');
+    const environment = deps.db.prepare('SELECT id FROM environments WHERE id = ? AND archived_at IS NULL').get(environmentId);
+    if (!environment) return notFound(c, 'Environment not found');
+    const limit = Number(c.req.query('limit') ?? 50);
+    const items = deps.workQueue
+      ? deps.workQueue.list({ environmentId, limit }).map(toApiWorkItemFromQueue)
+      : listWorkItemsFromDb(deps, environmentId, limit);
+    const stats = deps.workQueue?.stats({ environmentId }) ?? workItemStatsFromDb(deps, environmentId);
+    return c.json({ ...pageOf(items), stats });
   });
 
   app.put('/environments/:id', async (c) => {
@@ -74,10 +144,10 @@ export function resourceRoutes(deps: ServerDeps) {
       id,
     );
     const row = deps.db.prepare('SELECT * FROM environments WHERE id = ? AND archived_at IS NULL').get(id) as unknown as EnvironmentRow;
-    return c.json(toEnvironment(row));
+    return c.json(toEnvironment(row, deps));
   });
 
-  app.post('/environments/:id/archive', (c) => archiveResource(c, deps, 'environments', toEnvironment));
+  app.post('/environments/:id/archive', (c) => archiveResource(c, deps, 'environments', (row) => toEnvironment(row, deps)));
 
   app.get('/files', (c) => {
     return c.json(pageOf(listFileResources(deps)));
@@ -213,6 +283,66 @@ export function resourceRoutes(deps: ServerDeps) {
 
   app.delete('/credential-vaults/:id/credentials/:credentialId', (c) => updateCredentialState(c, deps, 'deleted'));
 
+  app.post('/credential-vaults/:id/credentials/:credentialId/rotate', async (c) => {
+    const body = await readObjectBody(c);
+    if (!body.ok) return body.response;
+    const vaultId = c.req.param('id');
+    const credentialId = c.req.param('credentialId');
+    const existing = activeCredential(deps, vaultId, credentialId);
+    if (!existing) return notFound(c, 'Credential not found');
+    const secretValue = typeof body.value.value === 'string' ? body.value.value : '';
+    if (!secretValue && existing.auth_type !== 'mcp_oauth') return invalid(c, 'value is required');
+    const encryptedSecret = secretValue ? encryptSecret(secretValue, deps.workspace?.dataDir) : { ciphertext: '', nonce: '', tag: '' };
+    deps.db.prepare(
+      `UPDATE credential_records
+       SET value_hint = ?, secret_ciphertext = ?, secret_nonce = ?, secret_tag = ?, updated_at = datetime('now')
+       WHERE id = ? AND vault_id = ?`,
+    ).run(
+      secretHint(secretValue),
+      encryptedSecret.ciphertext,
+      encryptedSecret.nonce,
+      encryptedSecret.tag,
+      credentialId,
+      vaultId,
+    );
+    deps.db.prepare('UPDATE credential_vaults SET updated_at = datetime(\'now\') WHERE id = ?').run(vaultId);
+    recordCredentialAudit(deps, vaultId, credentialId, 'rotate', {
+      actor: stringField(body.value.actor) ?? 'api',
+      metadata: stringRecordField(body.value.metadata),
+    });
+    const row = deps.db.prepare('SELECT * FROM credential_records WHERE id = ? AND vault_id = ?').get(credentialId, vaultId) as unknown as CredentialRow;
+    return c.json(toCredential(row));
+  });
+
+  app.post('/credential-vaults/:id/credentials/:credentialId/mark-used', async (c) => {
+    const body = await readObjectBody(c);
+    if (!body.ok) return body.response;
+    const vaultId = c.req.param('id');
+    const credentialId = c.req.param('credentialId');
+    const existing = activeCredential(deps, vaultId, credentialId);
+    if (!existing) return notFound(c, 'Credential not found');
+    markCredentialUsed(deps, vaultId, credentialId, {
+      actor: stringField(body.value.actor) ?? 'api',
+      metadata: stringRecordField(body.value.metadata),
+    });
+    const row = deps.db.prepare('SELECT * FROM credential_records WHERE id = ? AND vault_id = ?').get(credentialId, vaultId) as unknown as CredentialRow;
+    return c.json(toCredential(row));
+  });
+
+  app.get('/credential-vaults/:id/credentials/:credentialId/audit', (c) => {
+    const vaultId = c.req.param('id');
+    const credentialId = c.req.param('credentialId');
+    const credential = deps.db.prepare('SELECT id FROM credential_records WHERE id = ? AND vault_id = ?').get(credentialId, vaultId);
+    if (!credential) return notFound(c, 'Credential not found');
+    const rows = deps.db.prepare(
+      `SELECT *
+       FROM credential_audit_events
+       WHERE vault_id = ? AND credential_id = ?
+       ORDER BY created_at DESC`,
+    ).all(vaultId, credentialId) as unknown as CredentialAuditRow[];
+    return c.json(pageOf(rows.map(toCredentialAuditEvent)));
+  });
+
   app.post('/credential-vaults/:id/archive', (c) => archiveResource(c, deps, 'credential_vaults', (row) => toVault(row, deps)));
 
   app.get('/memory_stores', (c) => {
@@ -329,7 +459,7 @@ export function resourceRoutes(deps: ServerDeps) {
   return app;
 }
 
-function toEnvironment(row: EnvironmentRow) {
+function toEnvironment(row: EnvironmentRow, deps?: ServerDeps) {
   const config = parseObject(row.config);
   return {
     id: row.id,
@@ -343,10 +473,124 @@ function toEnvironment(row: EnvironmentRow) {
     status: row.archived_at ? 'archived' : 'active',
     config,
     metadata: parseObject(row.metadata),
+    worker_keys: deps ? listEnvironmentWorkerKeys(deps, row.id) : [],
+    work_queue: deps ? workItemStatsFromDb(deps, row.id) : {},
     created_at: row.created_at,
     updated_at: row.updated_at ?? row.created_at,
     archived_at: row.archived_at ?? null,
   };
+}
+
+function listEnvironmentWorkerKeys(deps: ServerDeps, environmentId: string) {
+  const rows = deps.db.prepare(
+    `SELECT *
+     FROM environment_worker_keys
+     WHERE environment_id = ?
+     ORDER BY created_at DESC`,
+  ).all(environmentId) as unknown as EnvironmentWorkerKeyRow[];
+  return rows.map(toEnvironmentWorkerKey);
+}
+
+function toEnvironmentWorkerKey(row: EnvironmentWorkerKeyRow) {
+  return {
+    id: row.id,
+    type: 'environment_worker_key',
+    environment_id: row.environment_id,
+    name: row.name,
+    key_prefix: row.key_prefix,
+    status: row.revoked_at ? 'revoked' : row.status,
+    metadata: parseObject(row.metadata),
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    last_seen_at: row.last_seen_at ?? null,
+    revoked_at: row.revoked_at ?? null,
+    expires_at: row.expires_at ?? null,
+  };
+}
+
+function listWorkItemsFromDb(deps: ServerDeps, environmentId: string, requestedLimit: number) {
+  const limit = Math.max(1, Math.min(Number.isFinite(requestedLimit) ? requestedLimit : 50, 200));
+  const rows = deps.db.prepare(
+    `SELECT wi.*
+     FROM work_items wi
+     JOIN sessions s ON s.id = wi.session_id
+     WHERE s.environment_id = ?
+     ORDER BY wi.created_at DESC, wi.rowid DESC
+     LIMIT ?`,
+  ).all(environmentId, limit) as unknown as WorkItemRow[];
+  return rows.map(toApiWorkItem);
+}
+
+function workItemStatsFromDb(deps: ServerDeps, environmentId: string) {
+  const rows = deps.db.prepare(
+    `SELECT wi.status, COUNT(*) AS count
+     FROM work_items wi
+     JOIN sessions s ON s.id = wi.session_id
+     WHERE s.environment_id = ?
+     GROUP BY wi.status`,
+  ).all(environmentId) as unknown as Array<{ status: string; count: number }>;
+  return Object.fromEntries(rows.map((row) => [row.status, Number(row.count)]));
+}
+
+type ApiWorkItem = {
+  id: string;
+  type: 'work_item';
+  session_id: string;
+  kind: string;
+  payload: Record<string, unknown>;
+  status: string;
+  result: unknown;
+  claimed_by: string | null;
+  created_at: string | null;
+  claimed_at: string | null;
+  completed_at: string | null;
+};
+
+function toApiWorkItem(row: WorkItemRow): ApiWorkItem {
+  return {
+    id: row.id,
+    type: 'work_item',
+    session_id: row.session_id,
+    kind: row.kind,
+    payload: parseObject(row.payload),
+    status: row.status,
+    result: row.result ? parseUnknownJson(row.result) : null,
+    claimed_by: row.claimed_by ?? null,
+    created_at: row.created_at,
+    claimed_at: row.claimed_at ?? null,
+    completed_at: row.completed_at ?? null,
+  };
+}
+
+function toApiWorkItemFromQueue(item: {
+  id: string;
+  sessionId: string;
+  kind: string;
+  payload: Record<string, unknown>;
+  status: string;
+  result?: unknown;
+  claimedBy?: string | null;
+  createdAt?: string;
+  claimedAt?: string | null;
+  completedAt?: string | null;
+}): ApiWorkItem {
+  return {
+    id: item.id,
+    type: 'work_item',
+    session_id: item.sessionId,
+    kind: item.kind,
+    payload: item.payload,
+    status: item.status,
+    result: item.result ?? null,
+    claimed_by: item.claimedBy ?? null,
+    created_at: item.createdAt ?? null,
+    claimed_at: item.claimedAt ?? null,
+    completed_at: item.completedAt ?? null,
+  };
+}
+
+function hashSecret(value: string): string {
+  return createHash('sha256').update(value, 'utf8').digest('hex');
 }
 
 function normalizeEnvironmentConfig(
@@ -376,20 +620,23 @@ export function listFileResources(deps: ServerDeps) {
   const rows = deps.db.prepare(
     `SELECT *
      FROM files
-     WHERE archived_at IS NULL
+     WHERE archived_at IS NULL AND role = 'file'
      ORDER BY created_at DESC`,
   ).all() as unknown as FileRow[];
   return rows.map((row) => toFileResource(row, deps));
 }
 
-function toFileResource(row: FileRow, deps: ServerDeps) {
+export function toFileResource(row: FileRow, deps: ServerDeps) {
   const preview = previewFileResource(row, deps);
   return {
     id: row.id,
-    type: 'file',
+    type: row.role === 'artifact' ? 'artifact' : 'file',
     name: row.name,
     media_type: row.media_type,
     size_bytes: row.size_bytes,
+    role: row.role ?? 'file',
+    session_id: row.session_id ?? null,
+    artifact_path: row.artifact_path ?? null,
     status: row.archived_at ? 'archived' : row.status,
     metadata: parseObject(row.metadata),
     created_at: row.created_at,
@@ -481,10 +728,11 @@ async function readMultipartFileRequest(c: any): Promise<{ ok: true; value: File
   };
 }
 
-function persistFileResource(deps: ServerDeps, input: FileCreateInput) {
+export function persistFileResource(deps: ServerDeps, input: FileCreateInput) {
   if (!deps.workspace?.dataDir) throw new Error('workspace data directory is not configured');
   const id = `file_${nanoid(18)}`;
-  const storageDir = resolve(deps.workspace.dataDir, 'files');
+  const role = input.role ?? 'file';
+  const storageDir = resolve(deps.workspace.dataDir, role === 'artifact' ? 'artifacts' : 'files');
   mkdirSync(storageDir, { recursive: true });
   const storagePath = managedFileStoragePath(storageDir, id);
   const now = new Date().toISOString();
@@ -492,8 +740,9 @@ function persistFileResource(deps: ServerDeps, input: FileCreateInput) {
   try {
     writeFileSync(storagePath, input.bytes, { mode: 0o600 });
     deps.db.prepare(
-      `INSERT INTO files (id, name, media_type, size_bytes, storage_path, metadata, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO files (
+        id, name, media_type, size_bytes, storage_path, metadata, role, session_id, artifact_path, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       id,
       input.name,
@@ -501,6 +750,9 @@ function persistFileResource(deps: ServerDeps, input: FileCreateInput) {
       input.bytes.length,
       storagePath,
       JSON.stringify(input.metadata),
+      role,
+      input.sessionId ?? null,
+      input.artifactPath ?? null,
       now,
       now,
     );
@@ -545,10 +797,13 @@ function previewFileResource(row: FileRow, deps: ServerDeps): { content: string;
 
 function isManagedFileStoragePath(path: string, deps: ServerDeps): boolean {
   if (!deps.workspace?.dataDir) return false;
-  const storageDir = resolve(deps.workspace.dataDir, 'files');
+  const filesDir = resolve(deps.workspace.dataDir, 'files');
+  const artifactsDir = resolve(deps.workspace.dataDir, 'artifacts');
   const resolvedPath = resolve(path);
-  const relativePath = relative(storageDir, resolvedPath);
-  return Boolean(relativePath) && !relativePath.startsWith('..') && !isAbsolute(relativePath);
+  const fileRelativePath = relative(filesDir, resolvedPath);
+  const artifactRelativePath = relative(artifactsDir, resolvedPath);
+  return (Boolean(fileRelativePath) && !fileRelativePath.startsWith('..') && !isAbsolute(fileRelativePath))
+    || (Boolean(artifactRelativePath) && !artifactRelativePath.startsWith('..') && !isAbsolute(artifactRelativePath));
 }
 
 function managedFileStoragePath(storageDir: string, id: string): string {
@@ -641,6 +896,63 @@ function toCredential(row: CredentialRow) {
   };
 }
 
+function activeCredential(deps: ServerDeps, vaultId: string, credentialId: string): CredentialRow | undefined {
+  const vault = deps.db.prepare('SELECT id FROM credential_vaults WHERE id = ? AND archived_at IS NULL').get(vaultId);
+  if (!vault) return undefined;
+  return deps.db.prepare(
+    `SELECT *
+     FROM credential_records
+     WHERE id = ? AND vault_id = ? AND archived_at IS NULL AND status != 'deleted'`,
+  ).get(credentialId, vaultId) as CredentialRow | undefined;
+}
+
+export function markCredentialUsed(
+  deps: ServerDeps,
+  vaultId: string,
+  credentialId: string,
+  opts: { actor?: string; metadata?: Record<string, string> } = {},
+) {
+  deps.db.prepare(
+    `UPDATE credential_records
+     SET last_used_at = datetime('now'), updated_at = datetime('now')
+     WHERE id = ? AND vault_id = ? AND archived_at IS NULL AND status != 'deleted'`,
+  ).run(credentialId, vaultId);
+  recordCredentialAudit(deps, vaultId, credentialId, 'use', opts);
+}
+
+function recordCredentialAudit(
+  deps: ServerDeps,
+  vaultId: string,
+  credentialId: string,
+  action: string,
+  opts: { actor?: string; metadata?: Record<string, string> } = {},
+) {
+  deps.db.prepare(
+    `INSERT INTO credential_audit_events (id, vault_id, credential_id, action, actor, metadata)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+  ).run(
+    `caud_${nanoid(18)}`,
+    vaultId,
+    credentialId,
+    action,
+    opts.actor ?? 'system',
+    JSON.stringify(opts.metadata ?? {}),
+  );
+}
+
+function toCredentialAuditEvent(row: CredentialAuditRow) {
+  return {
+    id: row.id,
+    type: 'credential_audit_event',
+    vault_id: row.vault_id,
+    credential_id: row.credential_id,
+    action: row.action,
+    actor: row.actor,
+    metadata: parseObject(row.metadata),
+    created_at: row.created_at,
+  };
+}
+
 function memoryStoreSelect(where = '') {
   return `
     SELECT m.*,
@@ -683,12 +995,15 @@ function listMemories(deps: ServerDeps, storeId: string) {
 }
 
 function toMemory(row: MemoryRecordRow) {
+  const contentBytes = Buffer.byteLength(row.content, 'utf8');
   return {
     id: row.id,
     type: 'memory',
     store_id: row.store_id,
     path: row.path,
     content: row.content,
+    content_size_bytes: contentBytes,
+    content_hash: createHash('sha256').update(row.content, 'utf8').digest('hex'),
     metadata: parseObject(row.metadata),
     created_at: row.created_at,
     updated_at: row.updated_at,
@@ -738,6 +1053,14 @@ function parseObject(value: string | null | undefined): Record<string, unknown> 
     return objectField(parsed);
   } catch {
     return {};
+  }
+}
+
+function parseUnknownJson(value: string): unknown {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return value;
   }
 }
 
@@ -831,12 +1154,43 @@ interface EnvironmentRow {
   archived_at: string | null;
 }
 
-interface FileRow {
+interface EnvironmentWorkerKeyRow {
+  id: string;
+  environment_id: string;
+  name: string;
+  key_hash: string;
+  key_prefix: string;
+  status: string;
+  metadata: string;
+  created_at: string;
+  updated_at: string;
+  last_seen_at: string | null;
+  revoked_at: string | null;
+  expires_at: string | null;
+}
+
+interface WorkItemRow {
+  id: string;
+  session_id: string;
+  kind: string;
+  payload: string;
+  status: string;
+  result: string | null;
+  claimed_by: string | null;
+  created_at: string;
+  claimed_at: string | null;
+  completed_at: string | null;
+}
+
+export interface FileRow {
   id: string;
   name: string;
   media_type: string;
   size_bytes: number;
   storage_path: string;
+  role: 'file' | 'artifact';
+  session_id: string | null;
+  artifact_path: string | null;
   status: string;
   metadata: string;
   created_at: string;
@@ -875,6 +1229,16 @@ interface CredentialRow {
   updated_at: string;
   last_used_at: string | null;
   archived_at: string | null;
+}
+
+interface CredentialAuditRow {
+  id: string;
+  vault_id: string;
+  credential_id: string;
+  action: string;
+  actor: string;
+  metadata: string;
+  created_at: string;
 }
 
 interface MemoryStoreRow {

@@ -5,13 +5,9 @@
  * CLI commands: start (default), init, list, reload
  */
 
-import { Command } from 'commander';
 import { serve } from '@hono/node-server';
-import { spawn } from 'node:child_process';
-import { existsSync, readFileSync, mkdirSync, writeFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
-import { nanoid } from 'nanoid';
-import { parse as parseYaml } from 'yaml';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 import { Database } from './core/db/database.js';
 import { SessionManager } from './core/session/session-manager.js';
@@ -22,7 +18,6 @@ import { loadSkills } from './core/skills/loader.js';
 import { BUILTIN_SKILLS } from './core/skills/catalog.js';
 import { importSkillSeeds, loadCustomSkillsFromDb } from './core/skills/store.js';
 import { listModelProviders, seedModelProviders } from './core/model/providers.js';
-import { installTemplate, createTemplate, listTemplates, resolveTemplateSource } from './core/templates/templates.js';
 import { ModelRegistry } from './model/registry.js';
 import { LocalSandboxProvider } from './sandbox/local-provider.js';
 import { DockerSandboxProvider, isDockerAvailable } from './sandbox/docker-provider.js';
@@ -30,19 +25,44 @@ import { SandboxProviderRegistry } from './sandbox/registry.js';
 import { SelfHostedSandboxProvider, WorkQueue } from './sandbox/self-hosted-provider.js';
 import { DefaultStrategy } from './strategy/default-strategy.js';
 import { ContextCompactor } from './core/session/context-compactor.js';
-import { SqliteMemoryProvider } from './core/memory/sqlite-memory-provider.js';
-import type { MemoryProvider } from './core/memory/memory-provider.js';
 import { SnapshotManager } from './core/session/snapshot-manager.js';
-import { createServer } from './api/server.js';
-import { resolveEnvVars } from './core/config/env-resolver.js';
-import { defaultTemplateCacheDir, resolveDataDir, resolveUserPath } from './core/config/paths.js';
 import { resolveApiKeys } from './api/auth.js';
 import { countActiveManagedApiKeys, validateManagedApiKey } from './core/auth/api-keys.js';
 import { createLogger, InMemoryLogStore } from './core/observability/logger.js';
 import { Metrics } from './core/observability/metrics.js';
 import type { AgentDefinition } from './types/agent.js';
-import type { ModelConfig } from './types/model.js';
-import type { EnvironmentConfig, SandboxProviderType } from './types/sandbox.js';
+import type { EnvironmentConfig } from './types/sandbox.js';
+import { createCliProgram, type StartCommandOptions } from './cli/program.js';
+import {
+  sessionCreateCommand,
+  sessionInspectCommand,
+  sessionLogsCommand,
+  sessionMessageCommand,
+  sessionTailCommand,
+} from './cli/session-commands.js';
+import {
+  environmentArchiveCommand,
+  environmentCreateCommand,
+  environmentInspectCommand,
+  environmentsListCommand,
+  environmentUpdateCommand,
+  environmentWorkerKeysCommand,
+  settingsGetCommand,
+  settingsSetModelCommand,
+  settingsValidateCommand,
+} from './cli/runtime-management-commands.js';
+import {
+  workspaceCreateCommand,
+  workspaceListCommand,
+  workspaceOpenCommand,
+  workspaceRemoveCommand,
+  workspaceResolveCommand,
+} from './cli/workspace-commands.js';
+import { workerPollCommand } from './cli/worker-commands.js';
+import { loadRuntimeConfig, openRuntimeDatabase, resolveRuntimePaths } from './core/runtime/bootstrap.js';
+import { normalizeRuntimeEnvironment } from './core/runtime/environment.js';
+import { createRuntimeLifecycle } from './core/runtime/lifecycle.js';
+import { createRuntimeServerApp } from './core/runtime/server-assembly.js';
 
 const VERSION = '0.1.0';
 
@@ -50,220 +70,52 @@ const VERSION = '0.1.0';
 // CLI
 // ============================================================
 
-const program = new Command();
-program
-  .name('managed-agents')
-  .description('Managed Agents runtime - run multi-agent systems locally with any model')
-  .version(VERSION);
-
-// Default command: start
-program
-  .command('start', { isDefault: true })
-  .description('Start the managed-agents server')
-  .option('-p, --port <port>', 'Server port', '3000')
-  .option('--host <host>', 'Server host', '127.0.0.1')
-  .option('-d, --data-dir <dir>', 'Data directory (default: ~/.managed-agents/<workspace>)')
-  .option('--agents-dir <dir>', 'Agents directory', 'agents')
-  .option('--skills-dir <dir>', 'Skills directory', 'skills')
-  .option('-c, --config <file>', 'Config file path', 'managed-agents.config.yaml')
-  .option('--target <target>', 'Deployment target for config overrides (local|cloud)', 'local')
-  .action(async (opts) => {
-    await startServer(opts);
-  });
-
-program
-  .command('init')
-  .description('Initialize a new managed-agents project')
-  .action(() => {
-    initProject();
-  });
-
-program
-  .command('list')
-  .description('List loaded agents')
-  .option('-p, --port <port>', 'Server port to connect to', '3000')
-  .action(async (opts) => {
-    await listAgents(opts);
-  });
-
-program
-  .command('reload')
-  .description('Hot-reload agent definitions')
-  .option('-p, --port <port>', 'Server port to connect to', '3000')
-  .action(async (opts) => {
-    await reloadAgents(opts);
-  });
-
-program
-  .command('chat [agent]')
-  .description('Interactively chat with an agent (streams the reply)')
-  .option('-p, --port <port>', 'Server port to connect to', '3000')
-  .option('-m, --message <text>', 'Send a single message and exit (non-interactive)')
-  .option('-k, --api-key <key>', 'API key if the server has auth enabled')
-  .action(async (agent, opts) => {
-    await chatCommand(agent, opts);
-  });
-
-program
-  .command('deploy')
-  .description('Show cloud deployment guidance (v1 placeholder)')
-  .action(() => {
-    console.log('managed-agents deploy\n');
-    console.log('Agent definitions are portable - the same agents/ and skills/');
-    console.log('run locally and in the cloud with no changes (Requirement 13).\n');
-    console.log('v1 does not push to a hosted service yet. To deploy today:');
-    console.log('  1. Build:   npm run build');
-    console.log('  2. Package: ship dist/ + agents/ + skills/ + managed-agents.config.yaml');
-    console.log('  3. Run:     node dist/index.js start --port $PORT');
-    console.log('  4. Add model providers in Dashboard Settings > Models, or seed a new');
-    console.log('     workspace from managed-agents.config.yaml.');
-    console.log('  5. Or containerize with any Node 22+ base image.\n');
-    console.log('Runtime provider settings are stored in SQLite under the data directory.');
-  });
-
-const template = program.command('template').description('Manage solution templates');
-
-template
-  .command('list')
-  .description('List available templates in a local templates directory')
-  .option('--repo <dir>', 'Templates directory', 'templates')
-  .action((opts) => {
-    const items = listTemplates(resolve(opts.repo));
-    if (items.length === 0) {
-      console.log('No templates found.');
-      return;
-    }
-    for (const t of items) {
-      console.log(`  ${t.name}  - ${t.description ?? ''}`);
-    }
-  });
-
-template
-  .command('install <templateNameOrPath>')
-  .description('Install a template into the current project (local path or remote name)')
-  .option('--force', 'Overwrite existing files', false)
-  .option('--repo <repo>', 'GitHub repo for remote templates (owner/name)')
-  .action(async (nameOrPath: string, opts) => {
-    try {
-      // Local path if it exists; otherwise fetch from the (default/official) repo
-      const source = await resolveTemplateSource(nameOrPath, {
-        repo: opts.repo,
-        cacheDir: defaultTemplateCacheDir(),
-      });
-      const result = installTemplate(source, process.cwd(), { force: opts.force });
-      console.log(`Installed ${result.installed.length} file(s).`);
-      for (const f of result.installed) console.log(`  + ${f}`);
-      if (result.skipped.length > 0) {
-        console.log(`Skipped ${result.skipped.length} existing file(s) (use --force to overwrite):`);
-        for (const f of result.skipped) console.log(`  - ${f}`);
-      }
-    } catch (err: any) {
-      console.error(`Error: [TEMPLATE_INSTALL] ${err.message}`);
-      process.exit(1);
-    }
-  });
-
-template
-  .command('create <name>')
-  .description('Export the current project (agents/skills) as a template')
-  .option('-o, --out <dir>', 'Output template directory')
-  .option('-d, --description <text>', 'Template description', '')
-  .action((name: string, opts) => {
-    try {
-      const out = resolve(opts.out ?? join('templates', name));
-      const result = createTemplate(process.cwd(), out, { name, description: opts.description });
-      console.log(`Created template "${name}" at ${out} (${result.files.length} files).`);
-    } catch (err: any) {
-      console.error(`Error: [TEMPLATE_CREATE] ${err.message}`);
-      process.exit(1);
-    }
-  });
-
-program.parse();
+createCliProgram(VERSION, {
+  startServer,
+  initProject,
+  listAgents,
+  reloadAgents,
+  chatCommand,
+  sessionCreate: sessionCreateCommand,
+  sessionMessage: sessionMessageCommand,
+  sessionTail: sessionTailCommand,
+  sessionInspect: sessionInspectCommand,
+  sessionLogs: sessionLogsCommand,
+  settingsGet: settingsGetCommand,
+  settingsSetModel: settingsSetModelCommand,
+  settingsValidate: settingsValidateCommand,
+  environmentsList: environmentsListCommand,
+  environmentInspect: environmentInspectCommand,
+  environmentCreate: environmentCreateCommand,
+  environmentUpdate: environmentUpdateCommand,
+  environmentArchive: environmentArchiveCommand,
+  environmentWorkerKeys: environmentWorkerKeysCommand,
+  workspaceList: workspaceListCommand,
+  workspaceCreate: workspaceCreateCommand,
+  workspaceOpen: workspaceOpenCommand,
+  workspaceResolve: workspaceResolveCommand,
+  workspaceRemove: workspaceRemoveCommand,
+  workerPoll: workerPollCommand,
+}).parse();
 
 // ============================================================
 // Start Server
 // ============================================================
 
-async function startServer(opts: { port: string; host: string; dataDir?: string; agentsDir: string; skillsDir: string; config: string; target?: string }) {
+async function startServer(opts: StartCommandOptions) {
   const port = parseInt(opts.port, 10);
   const host = opts.host;
-  const workspaceRoot = process.cwd();
-  const dataDir = resolveDataDir(opts.dataDir, workspaceRoot);
-  const agentsDir = resolveUserPath(opts.agentsDir, workspaceRoot);
-  const skillsDir = resolveUserPath(opts.skillsDir, workspaceRoot);
-  const configPath = resolveUserPath(opts.config, workspaceRoot);
-  const target = opts.target ?? 'local';
-
-  // Initialize data directory
-  mkdirSync(dataDir, { recursive: true });
-
-  // Initialize database (migrations are embedded and bundle-safe)
-  const dbPath = join(dataDir, 'data.db');
-  const db = new Database(dbPath);
-  db.runMigrations();
-
-  // Ensure default environment exists
-  const envCheck = db.prepare('SELECT id FROM environments WHERE id = ?').get('env_default');
-  if (!envCheck) {
-    db.exec(`INSERT INTO environments (id, name, config) VALUES ('env_default', 'local', '{"sandbox_provider":"local","timeout":300}')`);
-  }
-
-  // Load config file
+  const {
+    workspaceRoot,
+    dataDir,
+    agentsDir,
+    skillsDir,
+    configPath,
+    target,
+  } = resolveRuntimePaths(opts);
+  const db = openRuntimeDatabase(dataDir);
   const modelRegistry = new ModelRegistry();
-  let configApiKeys: string[] = [];
-  let configModels: ModelConfig[] = [];
-  let memory: MemoryProvider | undefined;
-  if (existsSync(configPath)) {
-    const configContent = readFileSync(configPath, 'utf-8');
-    const config = parseYaml(configContent) as any;
-
-    // API keys (auth): resolve ${ENV_VAR} refs in configured keys
-    if (Array.isArray(config.api_keys)) {
-      configApiKeys = config.api_keys
-        .map((k: string) => (typeof k === 'string' ? resolveEnvVars(k, false) : ''))
-        .filter(Boolean);
-    }
-
-    // Memory provider (optional). Built-in `sqlite` provider; adapters (mem0/
-    // memU) can be plugged in later. Disabled unless memory.provider is set.
-    if (config.memory?.provider === 'sqlite') {
-      memory = new SqliteMemoryProvider(db);
-    }
-
-    // Register base models, then apply target overrides (R13.3/13.4). The same
-    // config runs locally or in the cloud; `overrides.<target>.models` layers
-    // target-specific model settings (e.g. different base_url/api_key) on top,
-    // matched by model `name`. Selected via `--target local|cloud`.
-    const baseModels: any[] = Array.isArray(config.models) ? config.models : [];
-    const overrideModels: any[] = config.overrides?.[target]?.models ?? [];
-    const merged = new Map<string, any>();
-    for (const m of baseModels) merged.set(m.name, m);
-    for (const m of overrideModels) merged.set(m.name, { ...merged.get(m.name), ...m });
-    configModels = [...merged.values()].map((m) => ({
-        name: m.name,
-        provider: m.provider,
-        model: m.model,
-        base_url: m.base_url,
-        api_key: m.api_key,
-        is_default: Boolean(m.is_default),
-      }) as ModelConfig);
-
-    // Load environments
-    if (config.environments && typeof config.environments === 'object') {
-      for (const [name, envConfig] of Object.entries(config.environments as Record<string, any>)) {
-        const envId = `env_${nanoid(18)}`;
-        const existing = db.prepare('SELECT id FROM environments WHERE name = ?').get(name);
-        if (!existing) {
-          db.prepare('INSERT INTO environments (id, name, config) VALUES (?, ?, ?)').run(
-            envId,
-            name,
-            JSON.stringify(envConfig),
-          );
-        }
-      }
-    }
-  }
+  const { apiKeys: configApiKeys, models: configModels, memory } = loadRuntimeConfig(configPath, target, db);
 
 // Dashboard-managed model providers are stored in SQLite and are the runtime
 // source of truth. Config models can optionally bootstrap a new local project.
@@ -367,69 +219,24 @@ async function startServer(opts: { port: string; host: string; dataDir?: string;
   const logger = createLogger({ logStore });
   const metrics = new Metrics();
   let server: ReturnType<typeof serve> | undefined;
-  let shuttingDown = false;
+  const lifecycle = createRuntimeLifecycle({
+    db,
+    sessionManager,
+    logger,
+    getServer: () => server,
+  });
 
-  const stopRuntime = async (mode: 'shutdown' | 'restart') => {
-    if (shuttingDown) return;
-    shuttingDown = true;
-    const restarting = mode === 'restart';
-    logger.warn(restarting ? 'runtime_restart_requested' : 'runtime_shutdown_requested', {
-      source: 'runtime',
-    });
-    console.log(restarting ? '\nRestarting runtime...' : '\nShutting down...');
-    if (server) {
-      await new Promise<void>((resolveClose) => {
-        server?.close((err?: Error) => {
-          if (err) {
-            logger.warn('http_server_close_failed', {
-              error: err.message,
-            });
-          }
-          resolveClose();
-        });
-      });
-    }
-    try {
-      await sessionManager.shutdown();
-    } catch (err: any) {
-      logger.error('session_manager_shutdown_failed', {
-        error: err?.message ?? String(err),
-      });
-    }
-    db.close();
-
-    if (restarting) {
-      try {
-        const child = spawn(process.execPath, process.argv.slice(1), {
-          cwd: process.cwd(),
-          env: process.env,
-          stdio: 'ignore',
-          detached: true,
-        });
-        child.unref();
-      } catch (err: any) {
-        logger.error('runtime_restart_spawn_failed', {
-          error: err?.message ?? String(err),
-        });
-        process.exit(1);
-      }
-    }
-
-    process.exit(0);
-  };
-
-  // Create HTTP server
-  const app = createServer({
+  const app = createRuntimeServerApp({
     db,
     sessionManager,
     agents,
     apiKeys,
-    hasApiKeys: hasRuntimeApiKeys,
-    validateApiKey: validateRuntimeApiKey,
+    hasRuntimeApiKeys,
+    validateRuntimeApiKey,
     logger,
     logStore,
     metrics,
-    restart: () => stopRuntime('restart'),
+    restart: () => lifecycle.stop('restart'),
     workQueue,
     workspace: {
       root: workspaceRoot,
@@ -439,23 +246,11 @@ async function startServer(opts: { port: string; host: string; dataDir?: string;
       configPath,
       target,
     },
-    runtime: {
-      models: modelRegistry.listRuntimeInfo(),
-      sandboxProviders: sandboxRegistry.listTypes(),
-      memory: memory ? memory.name : 'disabled',
-      authEnabled: apiKeys.length > 0,
-    },
-    listRuntimeModels: () => modelRegistry.listRuntimeInfo(),
-    registerModelProvider: (config) => modelRegistry.register(config),
-    setDefaultRuntimeModel: (name) => modelRegistry.setDefault(name),
+    modelRegistry,
+    sandboxRegistry,
+    memoryName: memory ? memory.name : 'disabled',
     skills,
-    getMcpStatus: (sessionId) => executor.getMcpStatus(sessionId),
-    reloadAgents: () => {
-      const result = loadAgents(agentsDir);
-      importAgentSeeds(db, result.agents);
-      const activeAgents = refreshAgentsFromDb(db, agents);
-      return { agents: activeAgents, errors: result.errors };
-    },
+    executor,
   });
 
   // Start the server
@@ -495,40 +290,8 @@ async function startServer(opts: { port: string; host: string; dataDir?: string;
   });
 
   // Graceful shutdown: stop accepting requests, drain turns + sandboxes, close DB
-  process.on('SIGINT', () => void stopRuntime('shutdown'));
-  process.on('SIGTERM', () => void stopRuntime('shutdown'));
-}
-
-function normalizeRuntimeEnvironment(row: { id: string; name: string; config: string }): EnvironmentConfig {
-  const parsed = parseJsonObject(row.config);
-  const sandboxProvider = parseSandboxProvider(parsed.sandbox_provider)
-    ?? (parsed.hosting_type === 'self_hosted' ? 'self_hosted' : 'local');
-
-  return {
-    ...parsed,
-    name: typeof parsed.name === 'string' && parsed.name.trim() ? parsed.name.trim() : row.name || row.id,
-    sandbox_provider: sandboxProvider,
-    timeout: typeof parsed.timeout === 'number' ? parsed.timeout : 300,
-  };
-}
-
-function parseSandboxProvider(value: unknown): SandboxProviderType | undefined {
-  return value === 'local'
-    || value === 'docker'
-    || value === 'e2b'
-    || value === 'daytona'
-    || value === 'self_hosted'
-    ? value
-    : undefined;
-}
-
-function parseJsonObject(value: string): Record<string, any> {
-  try {
-    const parsed = JSON.parse(value);
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
-  } catch {
-    return {};
-  }
+  process.on('SIGINT', () => void lifecycle.stop('shutdown'));
+  process.on('SIGTERM', () => void lifecycle.stop('shutdown'));
 }
 
 // ============================================================
@@ -614,7 +377,7 @@ environments:
   console.log('  agents/assistant.yaml');
   console.log('  skills/');
   console.log('  managed-agents.config.yaml');
-  console.log('\nNext: start the runtime, then add a model provider in Dashboard Settings > Models:');
+  console.log('\nNext: start the runtime, then configure the active model provider boundary in Settings > Models:');
   console.log('  managed-agents start');
   if (process.argv[1]) {
     console.log(`  # source checkout: node ${process.argv[1]} start`);
