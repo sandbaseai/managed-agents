@@ -451,8 +451,10 @@ describe('Runtime Settings forms', () => {
 
     const html = renderToStaticMarkup(<SettingsGeneral data={data} setView={() => {}} />);
 
-    expect(html).toContain('Project');
-    expect(html).toContain('Capabilities');
+    expect(html).toContain('Setup');
+    expect(html).toContain('Model provider');
+    expect(html).toContain('Local defaults');
+    expect(html).toContain('Next step');
     expect(html).not.toContain('settingsOverviewGrid');
     expect(html).not.toContain('settingsOverviewCard');
     expect(html).not.toContain('One default model vendor');

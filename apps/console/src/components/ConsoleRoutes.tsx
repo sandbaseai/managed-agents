@@ -70,6 +70,7 @@ export const SETTINGS_VIEW_IDS: ViewId[] = [
   'api-reference',
   'logs',
   'monitoring',
+  'advanced',
   'observability',
 ];
 
@@ -183,6 +184,8 @@ export function ConsoleRouteView(props: {
       return <SettingsPageView data={props.data} section="workspace" onRefresh={props.onRefresh} setView={props.setView} />;
     case 'runtime':
       return <RuntimePageView data={props.data} />;
+    case 'advanced':
+      return <SettingsPageView data={props.data} section="advanced" onRefresh={props.onRefresh} setView={props.setView} />;
     case 'models':
       return <SettingsPageView data={props.data} section="models" onRefresh={props.onRefresh} setView={props.setView} />;
     case 'loop-engine':

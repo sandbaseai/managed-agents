@@ -412,6 +412,7 @@ export type ViewId =
   | 'monitoring'
   | 'api-reference'
   | 'api-keys'
+  | 'advanced'
   | 'observability'
   | 'agent-detail'
   | 'session-detail'

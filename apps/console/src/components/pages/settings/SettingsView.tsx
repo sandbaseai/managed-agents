@@ -1,5 +1,6 @@
 import type { ConsoleData, ViewId } from '../../../types';
 import { RuntimeSettingsEditor } from './RuntimeSettingsEditor';
+import { SettingsAdvanced } from './SettingsAdvanced';
 import { SettingsApiKeys } from './SettingsApiKeys';
 import { SettingsApiReference } from './SettingsApiReference';
 import { API_REFERENCE_DOCS } from './apiReferenceDocs';
@@ -30,6 +31,7 @@ export function SettingsView({
         <>
           {active === 'general' ? <SettingsGeneral data={data} setView={setView} /> : null}
           {active === 'workspace' ? <SettingsWorkspace data={data} /> : null}
+          {active === 'advanced' ? <SettingsAdvanced data={data} setView={setView} /> : null}
           {active === 'models' ? <RuntimeSettingsEditor data={data} section="models" onRefresh={onRefresh} /> : null}
           {active === 'loop-engine' ? <RuntimeSettingsEditor data={data} section="loop-engine" onRefresh={onRefresh} /> : null}
           {active === 'storage' ? <RuntimeSettingsEditor data={data} section="storage" onRefresh={onRefresh} /> : null}

@@ -846,13 +846,17 @@ describe('Console page static coverage', () => {
     expect(html).toContain('mobileResourceList');
   });
 
-  it('renders Settings shell with the second-level runtime menu', () => {
+  it('renders Settings shell as a builder-first setup menu', () => {
     const html = renderToString(React.createElement(SettingsView, { data: emptyConsoleData(), section: 'general', onRefresh: () => {}, setView: () => {} }));
-    expect(html).toContain('Loop engine');
-    expect(html).toContain('Storage');
-    expect(html).toContain('Memory');
-    expect(html).toContain('Sandbox');
+    expect(html).toContain('Setup');
+    expect(html).toContain('Model provider');
+    expect(html).toContain('Local defaults');
+    expect(html).toContain('Advanced');
     expect(html).toContain('API reference');
+    expect(html).not.toContain('Loop engine editor');
+    expect(html).not.toContain('Storage editor');
+    expect(html).not.toContain('Memory editor');
+    expect(html).not.toContain('Sandbox editor');
   });
 
   it('renders every Settings second-level page without route-only blind spots', () => {
@@ -860,6 +864,7 @@ describe('Console page static coverage', () => {
     const sections: SettingsSection[] = [
       'general',
       'workspace',
+      'advanced',
       'models',
       'loop-engine',
       'storage',
@@ -884,9 +889,18 @@ describe('Console page static coverage', () => {
       onRefresh: () => {},
       setView: () => {},
     }));
-    expect(runtimeHtml).toContain('Runtime');
+    expect(runtimeHtml).toContain('Model');
     expect(runtimeHtml).toContain('Vendor');
     expect(runtimeHtml).not.toContain('Model providers');
+    const advancedHtml = renderToString(React.createElement(SettingsView, {
+      data,
+      section: 'advanced',
+      onRefresh: () => {},
+      setView: () => {},
+    }));
+    expect(advancedHtml).toContain('Runtime defaults');
+    expect(advancedHtml).toContain('Loop engine editor');
+    expect(advancedHtml).toContain('Storage editor');
   });
 
   it('renders Settings storage honestly as SQLite/local rather than fake provider creation', () => {

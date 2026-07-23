@@ -97,6 +97,7 @@ function isView(value: string): value is ViewId {
     'monitoring',
     'api-reference',
     'api-keys',
+    'advanced',
     'observability',
     'settings',
   ].includes(value);
