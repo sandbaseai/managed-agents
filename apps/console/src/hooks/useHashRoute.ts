@@ -83,6 +83,9 @@ function isView(value: string): value is ViewId {
     'memory-store-detail',
     'skills',
     'files',
+    'webhooks',
+    'scheduled-deployments',
+    'outcomes',
     'workspace',
     'runtime',
     'models',
@@ -94,6 +97,7 @@ function isView(value: string): value is ViewId {
     'monitoring',
     'api-reference',
     'api-keys',
+    'advanced',
     'observability',
     'settings',
   ].includes(value);

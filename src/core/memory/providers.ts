@@ -1,6 +1,5 @@
 import type { Database } from '@/core/db/database.js';
 import { resolveEnvVars } from '@/core/config/env-resolver.js';
-import { nanoid } from 'nanoid';
 
 export type MemoryProviderKind = 'in_memory' | 'sqlite' | 'database' | 'mem0' | 'memu';
 export type MemoryProviderStatus = 'active' | 'adapter_required';
@@ -16,15 +15,6 @@ export type MemoryProviderRecord = {
   status: MemoryProviderStatus;
   created_at: string;
   updated_at: string;
-};
-
-export type MemoryProviderInput = {
-  name?: unknown;
-  provider?: unknown;
-  connection_url?: unknown;
-  api_key?: unknown;
-  config?: unknown;
-  is_default?: unknown;
 };
 
 export type RuntimeMemoryProviderInfo = {
@@ -83,54 +73,6 @@ export function listMemoryProviders(db: Database): MemoryProviderRecord[] {
   });
 }
 
-export function createMemoryProvider(db: Database, input: MemoryProviderInput): MemoryProviderRecord {
-  const record = normalizeInput(input);
-  const count = db.prepare('SELECT COUNT(*) AS count FROM memory_providers').get() as { count: number };
-  const runtimeCapable = RUNTIME_CAPABLE_PROVIDERS.has(record.provider);
-  if (record.is_default && !runtimeCapable) {
-    throw new Error(`${PROVIDER_LABELS[record.provider]} requires an installed runtime adapter before it can be default`);
-  }
-  const makeDefault = runtimeCapable && (Boolean(record.is_default) || count.count === 0);
-  const now = new Date().toISOString();
-
-  return db.transaction(() => {
-    if (makeDefault) {
-      db.prepare('UPDATE memory_providers SET is_default = 0, updated_at = ?').run(now);
-    }
-    db.prepare(`
-      INSERT INTO memory_providers (
-        name, provider, connection_url, api_key, config, is_default, status, created_at, updated_at
-      )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      record.name,
-      record.provider,
-      record.connection_url ?? null,
-      record.api_key ?? null,
-      JSON.stringify(record.config ?? {}),
-      makeDefault ? 1 : 0,
-      record.status,
-      now,
-      now,
-    );
-    return getMemoryProvider(db, record.name) as MemoryProviderRecord;
-  });
-}
-
-export function setDefaultMemoryProvider(db: Database, name: string): MemoryProviderRecord | undefined {
-  const existing = getMemoryProvider(db, name);
-  if (!existing) return undefined;
-  if (!RUNTIME_CAPABLE_PROVIDERS.has(existing.provider)) {
-    throw new Error(`${PROVIDER_LABELS[existing.provider]} requires an installed runtime adapter before it can be default`);
-  }
-  const now = new Date().toISOString();
-  db.transaction(() => {
-    db.prepare('UPDATE memory_providers SET is_default = 0, updated_at = ?').run(now);
-    db.prepare('UPDATE memory_providers SET is_default = 1, updated_at = ? WHERE name = ?').run(now, name);
-  });
-  return getMemoryProvider(db, name);
-}
-
 export function toRuntimeMemoryProviderInfo(record: MemoryProviderRecord): RuntimeMemoryProviderInfo {
   return {
     name: record.name,
@@ -147,36 +89,6 @@ export function toRuntimeMemoryProviderInfo(record: MemoryProviderRecord): Runti
   };
 }
 
-function getMemoryProvider(db: Database, name: string): (MemoryProviderRecord & { runtime_capable?: boolean }) | undefined {
-  const record = listMemoryProviders(db).find((provider) => provider.name === name);
-  return record ? { ...record, runtime_capable: RUNTIME_CAPABLE_PROVIDERS.has(record.provider) } : undefined;
-}
-
-function normalizeInput(input: MemoryProviderInput): MemoryProviderRecord {
-  const provider = normalizeProvider(cleanString(input.provider) ?? 'sqlite');
-  const name = cleanString(input.name) ?? `${provider}-${nanoid(8)}`;
-  if (name.length > 80) {
-    throw new Error('name must be 80 characters or fewer');
-  }
-
-  const connection_url = cleanString(input.connection_url);
-  if (provider === 'database' && !connection_url) {
-    throw new Error('connection_url is required for external database memory providers');
-  }
-
-  return {
-    name,
-    provider,
-    connection_url,
-    api_key: cleanString(input.api_key),
-    config: isPlainObject(input.config) ? input.config : {},
-    is_default: Boolean(input.is_default),
-    status: RUNTIME_CAPABLE_PROVIDERS.has(provider) ? 'active' : 'adapter_required',
-    created_at: '',
-    updated_at: '',
-  };
-}
-
 function normalizeProvider(value: string): MemoryProviderKind {
   if (value === 'in_memory' || value === 'sqlite' || value === 'database' || value === 'mem0' || value === 'memu') {
     return value;
@@ -187,12 +99,6 @@ function normalizeProvider(value: string): MemoryProviderKind {
 function normalizeStatus(value: string, provider: MemoryProviderKind): MemoryProviderStatus {
   if (value === 'active' || value === 'adapter_required') return value;
   return RUNTIME_CAPABLE_PROVIDERS.has(provider) ? 'active' : 'adapter_required';
-}
-
-function cleanString(value: unknown): string | undefined {
-  if (typeof value !== 'string') return undefined;
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : undefined;
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {

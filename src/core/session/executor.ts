@@ -89,7 +89,9 @@ export class DefaultSessionExecutor implements SessionExecutor {
     const { agents, modelRegistry, strategy, eventLogger } = this.deps;
 
     // 1. Load agent definition
-    const agent = this.deps.resolveAgent?.(session.agentId) ?? agents.find((a) => a.name === session.agentName);
+    const agent = session.agentDefinition
+      ?? this.deps.resolveAgent?.(session.agentId)
+      ?? agents.find((a) => a.name === session.agentName);
     if (!agent) {
       throw new Error(`Agent not found: ${session.agentId}`);
     }

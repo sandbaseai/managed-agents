@@ -54,7 +54,6 @@
   },
   "keywords": [
     "ai-agents",
-    "enterprise-ai-agents",
     "ai-agent-runtime",
     "agent-runtime",
     "managed-agents",
@@ -62,8 +61,8 @@
     "anthropic",
     "mcp",
     "mcp-tools",
-    "self-hosted-ai",
     "local-first",
+    "local-ai-agents",
     "sandboxed-execution",
     "agent-memory",
     "credential-vaults",

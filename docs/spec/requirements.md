@@ -130,12 +130,14 @@ branches, loops, or a canvas-based workflow DSL.
 
 ### R11. CLI
 
-1. The CLI shall support `init`, `start`, `list`, `reload`, `chat`, and
-   template commands.
+1. The CLI shall support `init`, `start`, `list`, `reload`, `chat`, session,
+   worker, model provider, environment, and template commands.
 2. CLI output shall be readable in terminals and useful in scripts.
 3. CLI commands shall return non-zero exit codes on failure.
-4. Future CLI session commands should support create, list, message, tail, and
-   inspect workflows.
+4. CLI session commands should support create, message, tail, logs, and inspect
+   workflows.
+5. CLI runtime-management commands should expose JSON output for scripts and
+   JSON object inputs for advanced environment configuration.
 
 ### R12. Console
 
@@ -159,9 +161,11 @@ branches, loops, or a canvas-based workflow DSL.
 2. The Web Console shall expose the active local workspace through read-only
    introspection.
 3. Workspace switching shall not be represented as client-only UI state.
-4. A future desktop shell may provide workspace create, open, and switch
-   workflows backed by a local workspace registry and runtime process manager.
-5. Credential vaults, memory stores, and session resources shall remain scoped
+4. The CLI shall expose a local workspace registry for create, open, list,
+   resolve, and remove workflows.
+5. Desktop workspace switching shall be backed by the workspace registry and a
+   real runtime process transition, not client-only UI state.
+6. Credential vaults, memory stores, and session resources shall remain scoped
    to the active workspace.
 
 ### R14. Templates

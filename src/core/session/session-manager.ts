@@ -23,6 +23,7 @@ import type {
   PaginatedResult,
 } from '@/types/session.js';
 import type { UserEvent } from '@/types/cma-protocol.js';
+import type { AgentDefinition } from '@/types/agent.js';
 
 // ============================================================
 // Types
@@ -96,28 +97,25 @@ export class SessionManager {
     const id = `sess_${nanoid(16)}`;
     const now = new Date();
 
-    const agentRow = this.db.prepare(`
-      SELECT id, name
-      FROM agents
-      WHERE id = ?
-        AND archived_at IS NULL
-        AND status != 'archived'
-    `).get(
-      params.agent,
-    ) as { id: string; name: string } | undefined;
-    if (!agentRow) {
+    const agentSnapshot = this.resolveAgentSnapshot(params.agent, params.agentVersion);
+    if (!agentSnapshot) {
       throw new Error(`Agent not found: ${params.agent}`);
     }
 
     const stmt = this.db.prepare(`
-      INSERT INTO sessions (id, agent_id, agent_name, environment_id, status, title, context_id, resources, vault_ids, metadata)
-      VALUES (?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?)
+      INSERT INTO sessions (
+        id, agent_id, agent_name, agent_version, agent_definition,
+        environment_id, status, title, context_id, resources, vault_ids, metadata
+      )
+      VALUES (?, ?, ?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?)
     `);
 
     stmt.run(
       id,
-      agentRow.id,
-      agentRow.name,
+      agentSnapshot.id,
+      agentSnapshot.name,
+      agentSnapshot.version,
+      params.agentVersion !== undefined ? JSON.stringify(agentSnapshot.definition) : null,
       params.environmentId ?? 'env_default',
       params.title ?? null,
       params.contextId ?? null,
@@ -128,8 +126,10 @@ export class SessionManager {
 
     return {
       id,
-      agentId: agentRow.id,
-      agentName: agentRow.name,
+      agentId: agentSnapshot.id,
+      agentName: agentSnapshot.name,
+      agentVersion: agentSnapshot.version,
+      agentDefinition: params.agentVersion !== undefined ? agentSnapshot.definition : undefined,
       environmentId: params.environmentId ?? 'env_default',
       status: 'queued',
       title: params.title,
@@ -140,6 +140,52 @@ export class SessionManager {
       createdAt: now,
       updatedAt: now,
     };
+  }
+
+  private resolveAgentSnapshot(agentId: string, version?: number): { id: string; name: string; version: number; definition: AgentDefinition } | undefined {
+    if (version !== undefined) {
+      const row = this.db.prepare(`
+        SELECT agent_id, version, name, definition
+        FROM agent_versions
+        WHERE agent_id = ?
+          AND version = ?
+      `).get(agentId, version) as { agent_id: string; version: number; name: string; definition: string } | undefined;
+      if (!row) {
+        const current = this.loadCurrentAgentRow(agentId);
+        if (!current || (current.version ?? 1) !== version) return undefined;
+        return {
+          id: current.id,
+          name: current.name,
+          version: current.version ?? 1,
+          definition: JSON.parse(current.definition) as AgentDefinition,
+        };
+      }
+      return {
+        id: row.agent_id,
+        name: row.name,
+        version: row.version,
+        definition: JSON.parse(row.definition) as AgentDefinition,
+      };
+    }
+
+    const row = this.loadCurrentAgentRow(agentId);
+    if (!row) return undefined;
+    return {
+      id: row.id,
+      name: row.name,
+      version: row.version ?? 1,
+      definition: JSON.parse(row.definition) as AgentDefinition,
+    };
+  }
+
+  private loadCurrentAgentRow(agentId: string): { id: string; name: string; definition: string; version?: number } | undefined {
+    return this.db.prepare(`
+      SELECT id, name, definition, version
+      FROM agents
+      WHERE id = ?
+        AND archived_at IS NULL
+        AND status != 'archived'
+    `).get(agentId) as { id: string; name: string; definition: string; version?: number } | undefined;
   }
 
   /**
@@ -524,6 +570,8 @@ interface SessionRow {
   id: string;
   agent_id: string;
   agent_name: string;
+  agent_version: number | null;
+  agent_definition: string | null;
   environment_id: string;
   status: string;
   title: string | null;
@@ -545,6 +593,8 @@ function rowToSession(row: SessionRow): Session {
     id: row.id,
     agentId: row.agent_id,
     agentName: row.agent_name,
+    agentVersion: row.agent_version ?? undefined,
+    agentDefinition: row.agent_definition ? JSON.parse(row.agent_definition) as AgentDefinition : undefined,
     environmentId: row.environment_id,
     status: row.status as SessionStatus,
     title: row.title ?? undefined,

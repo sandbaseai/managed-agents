@@ -864,36 +864,19 @@ describe('Managed Agents API', () => {
       }
     });
 
-    it('keeps legacy model provider endpoints read-only after Settings V2 cutover', async () => {
-      const created = await postJson('/v1/x/model-providers', {
-        name: 'dashboard-default',
-        provider: 'openai',
-        model: 'gpt-4o-mini',
-        base_url: 'https://api.openai.com/v1',
-        api_key: 'sk-test-value',
-      });
-      expect(created.res.status).toBe(410);
-      expect(created.body.error.message).toContain('/v1/x/settings');
-
-      const secondary = await postJson('/v1/x/model-providers', {
-        name: 'local-llm',
-        provider: 'openai',
-        model: 'llama3.1',
-        base_url: 'http://127.0.0.1:11434/v1',
-      });
-      expect(secondary.res.status).toBe(410);
-
-      const madeDefault = await postJson('/v1/x/model-providers/local-llm/default', {});
-      expect(madeDefault.res.status).toBe(410);
-
-      const providers = await getJson('/v1/x/model-providers');
-      expect(providers.res.status).toBe(200);
-      expectPage(providers.body);
-      expect(providers.body.data.find((model: any) => model.name === 'local-llm')).toBeUndefined();
-      expect(JSON.stringify(providers.body)).not.toContain('sk-test-value');
-
-      const runtime = await getJson('/v1/x/runtime');
-      expect(runtime.body.models.find((model: any) => model.name === 'local-llm')).toBeUndefined();
+    it('does not expose legacy provider endpoints after Settings V2 cutover', async () => {
+      for (const path of [
+        '/v1/x/model-providers',
+        '/v1/x/model-providers/local-llm/default',
+        '/v1/x/memory-providers',
+        '/v1/x/memory-providers/transient-context/default',
+        '/v1/x/storage-providers',
+        '/v1/x/storage-providers/fast-local-artifacts/initialize',
+        '/v1/x/storage-providers/fast-local-artifacts/default',
+      ]) {
+        const res = await app.request(path);
+        expect(res.status, path).toBe(404);
+      }
     });
 
     it('exposes and validates the versioned Settings V2 document', async () => {
@@ -1239,103 +1222,6 @@ describe('Managed Agents API', () => {
         workspaceDb.close();
         rmSync(workspaceRoot, { recursive: true, force: true });
       }
-    });
-
-    it('keeps legacy memory provider endpoints read-only after Settings V2 cutover', async () => {
-      const initial = await getJson('/v1/x/memory-providers');
-      expect(initial.res.status).toBe(200);
-      expectPage(initial.body);
-      expect(initial.body.data[0]).toMatchObject({
-        name: 'local-sqlite',
-        provider: 'sqlite',
-        provider_label: 'SQLite',
-        is_default: true,
-        runtime_capable: true,
-      });
-
-      const created = await postJson('/v1/x/memory-providers', {
-        name: 'transient-context',
-        provider: 'in_memory',
-        api_key: 'secret-value',
-      });
-      expect(created.res.status).toBe(410);
-      expect(created.body.error.message).toContain('/v1/x/settings');
-
-      const madeDefault = await postJson('/v1/x/memory-providers/transient-context/default', {});
-      expect(madeDefault.res.status).toBe(410);
-
-      const runtime = await getJson('/v1/x/runtime');
-      expect(runtime.body.memory_providers.find((provider: any) => provider.name === 'transient-context')).toBeUndefined();
-      expect(JSON.stringify(runtime.body.memory_providers)).not.toContain('secret-value');
-    });
-
-    it('keeps legacy storage provider endpoints read-only after Settings V2 cutover', async () => {
-      const initial = await getJson('/v1/x/storage-providers');
-      expect(initial.res.status).toBe(200);
-      expectPage(initial.body);
-      expect(initial.body.data).toEqual(expect.arrayContaining([
-        expect.objectContaining({
-          name: 'metadata-sqlite',
-          role: 'metadata',
-          provider: 'sqlite',
-          provider_label: 'SQLite',
-          is_default: true,
-          runtime_capable: true,
-        }),
-        expect.objectContaining({
-          name: 'local-artifacts',
-          role: 'artifact',
-          provider: 'local_filesystem',
-          provider_label: 'Local filesystem',
-          is_default: true,
-          runtime_capable: true,
-        }),
-      ]));
-
-      const postgres = await postJson('/v1/x/storage-providers', {
-        name: 'warehouse-meta',
-        role: 'metadata',
-        provider: 'postgres',
-        connection_url: 'postgres://meta_user:meta_password@db.example.com:5432/agents',
-      });
-      expect(postgres.res.status).toBe(410);
-      expect(postgres.body.error.message).toContain('/v1/x/settings');
-
-      const invalidDefault = await postJson('/v1/x/storage-providers/warehouse-meta/default', {});
-      expect(invalidDefault.res.status).toBe(410);
-
-      const s3 = await postJson('/v1/x/storage-providers', {
-        name: 'archive-bucket',
-        role: 'artifact',
-        provider: 's3',
-        bucket: 'agent-artifacts',
-        region: 'us-east-1',
-        access_key: 'AKIA_TEST_VALUE',
-        secret_key: 'secret-storage-key',
-      });
-      expect(s3.res.status).toBe(410);
-
-      const local = await postJson('/v1/x/storage-providers', {
-        name: 'fast-local-artifacts',
-        role: 'artifact',
-        provider: 'local_filesystem',
-        base_path: 'artifacts-fast',
-      });
-      expect(local.res.status).toBe(410);
-
-      const defaultBeforeInit = await postJson('/v1/x/storage-providers/fast-local-artifacts/default', {});
-      expect(defaultBeforeInit.res.status).toBe(410);
-
-      const initialized = await postJson('/v1/x/storage-providers/fast-local-artifacts/initialize', {});
-      expect(initialized.res.status).toBe(410);
-
-      const madeDefault = await postJson('/v1/x/storage-providers/fast-local-artifacts/default', {});
-      expect(madeDefault.res.status).toBe(410);
-
-      const runtime = await getJson('/v1/x/runtime');
-      expect(runtime.body.storage_providers.find((provider: any) => provider.name === 'fast-local-artifacts')).toBeUndefined();
-      expect(JSON.stringify(runtime.body.storage_providers)).not.toContain('meta_password');
-      expect(JSON.stringify(runtime.body.storage_providers)).not.toContain('secret-storage-key');
     });
 
     it('exposes recent runtime logs through the extension API', async () => {

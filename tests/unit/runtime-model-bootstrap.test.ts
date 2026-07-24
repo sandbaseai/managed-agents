@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Database } from '@/core/db/database.js';
-import { createModelProvider } from '@/core/model/providers.js';
+import { seedModelProviders } from '@/core/model/providers.js';
 import { bootstrapRuntimeModelRegistry } from '@/core/runtime/model-bootstrap.js';
 
 describe('runtime model bootstrap', () => {
@@ -55,12 +55,11 @@ describe('runtime model bootstrap', () => {
 
   it('keeps existing Dashboard-managed providers as the runtime source of truth', () => {
     const db = makeDb();
-    createModelProvider(db, {
+    seedModelProviders(db, [{
       name: 'dashboard-default',
       provider: 'openai',
       model: 'gpt-4o-mini',
-      is_default: true,
-    });
+    }]);
 
     const result = bootstrapRuntimeModelRegistry({
       db,

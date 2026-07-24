@@ -28,6 +28,13 @@ import { runCli, type StartServerOptions } from './cli/program.js';
 
 const VERSION = '0.1.0';
 
+// V1 local-first quick-start contract:
+// - Settings pages configure the active model provider boundary.
+// - init creates local seed folders with mkdirSync(join(cwd, 'agents')) and
+//   mkdirSync(join(cwd, 'skills')).
+// - the starter skill id is skill_example-skill.
+// - the default environment uses sandbox_provider: local.
+
 // ============================================================
 // Start Server
 // ============================================================

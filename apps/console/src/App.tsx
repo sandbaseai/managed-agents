@@ -383,7 +383,9 @@ function View(props: {
     case 'workspace':
       return <SettingsView data={props.data} section="workspace" onRefresh={props.onRefresh} setView={props.setView} />;
     case 'runtime':
-      return <SettingsView data={props.data} section="models" onRefresh={props.onRefresh} setView={props.setView} />;
+      return <SettingsView data={props.data} section="advanced" onRefresh={props.onRefresh} setView={props.setView} />;
+    case 'advanced':
+      return <SettingsView data={props.data} section="advanced" onRefresh={props.onRefresh} setView={props.setView} />;
     case 'models':
       return <SettingsView data={props.data} section="models" onRefresh={props.onRefresh} setView={props.setView} />;
     case 'loop-engine':

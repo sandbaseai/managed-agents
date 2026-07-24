@@ -195,6 +195,75 @@
     ]
   },
   {
+    "id": "sessions-artifacts-list",
+    "group": "Sessions",
+    "title": "List session artifacts",
+    "method": "GET",
+    "path": "/v1/sessions/{session_id}/artifacts",
+    "summary": "List artifact file resources produced or attached during a session.",
+    "response": [
+      {
+        "name": "data",
+        "type": "FileResource[]",
+        "description": "Artifact resources scoped to the session."
+      }
+    ]
+  },
+  {
+    "id": "sessions-artifacts-create",
+    "group": "Sessions",
+    "title": "Create session artifact",
+    "method": "POST",
+    "path": "/v1/sessions/{session_id}/artifacts",
+    "summary": "Persist an artifact under /artifacts/ for a session and return its file resource envelope.",
+    "parameters": [
+      {
+        "name": "path",
+        "type": "string",
+        "required": true,
+        "description": "Artifact path. Must start with /artifacts/."
+      },
+      {
+        "name": "content",
+        "type": "string",
+        "required": true,
+        "description": "Artifact content encoded as UTF-8 or base64."
+      },
+      {
+        "name": "encoding",
+        "type": "utf8 | base64",
+        "description": "Content encoding. Defaults to utf8."
+      }
+    ],
+    "response": [
+      {
+        "name": "id",
+        "type": "string",
+        "description": "Server-generated file_... identifier."
+      },
+      {
+        "name": "artifact_path",
+        "type": "string",
+        "description": "Normalized artifact path."
+      }
+    ]
+  },
+  {
+    "id": "sessions-artifacts-content",
+    "group": "Sessions",
+    "title": "Download session artifact",
+    "method": "GET",
+    "path": "/v1/sessions/{session_id}/artifacts/{artifact_id}/content",
+    "summary": "Download the bytes for one session artifact.",
+    "response": [
+      {
+        "name": "body",
+        "type": "binary",
+        "description": "Artifact content stream."
+      }
+    ]
+  },
+  {
     "id": "sessions-stop",
     "group": "Sessions",
     "title": "Stop session",

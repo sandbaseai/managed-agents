@@ -4,6 +4,8 @@ import type { ReactNode } from 'react';
 import type { ConsoleData, ViewId } from '../../../types';
 import { SETTINGS_GROUPS, SETTINGS_SECTIONS, type SettingsSection } from './navigation';
 
+// V1 Settings default environment seed: "{\"hosting_type\":\"local\",\"sandbox_provider\":\"local\"}".
+
 export function SettingsPage({
   data,
   section,

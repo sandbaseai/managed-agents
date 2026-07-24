@@ -46,7 +46,7 @@ export function listModelProviders(db: Database): ModelProviderRecord[] {
   }));
 }
 
-export function createModelProvider(db: Database, input: ModelProviderInput): ModelProviderRecord {
+function createModelProvider(db: Database, input: ModelProviderInput): ModelProviderRecord {
   const record = normalizeInput(input);
   const count = db.prepare('SELECT COUNT(*) AS count FROM models').get() as { count: number };
   const makeDefault = Boolean(record.is_default) || count.count === 0;
@@ -72,17 +72,6 @@ export function createModelProvider(db: Database, input: ModelProviderInput): Mo
     );
     return getModelProvider(db, record.name) as ModelProviderRecord;
   });
-}
-
-export function setDefaultModelProvider(db: Database, name: string): ModelProviderRecord | undefined {
-  const existing = getModelProvider(db, name);
-  if (!existing) return undefined;
-  const now = new Date().toISOString();
-  db.transaction(() => {
-    db.prepare('UPDATE models SET is_default = 0, updated_at = ?').run(now);
-    db.prepare('UPDATE models SET is_default = 1, updated_at = ? WHERE name = ?').run(now, name);
-  });
-  return getModelProvider(db, name);
 }
 
 export function seedModelProviders(db: Database, configs: ModelConfig[]): ModelProviderRecord[] {

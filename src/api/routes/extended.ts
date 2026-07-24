@@ -9,15 +9,10 @@
  */
 
 import { Hono } from 'hono';
-import type { Context } from 'hono';
 import { dirname, join } from 'node:path';
 import type { ServerDeps } from '../server.js';
 import type { LogLevel } from '@/core/observability/logger.js';
 import { getAgentSkillIds, getEnabledToolNames } from '@/core/agent/standard.js';
-import {
-  listModelProviders,
-  toRuntimeModelInfo,
-} from '@/core/model/providers.js';
 import {
   listMemoryProviders,
   toRuntimeMemoryProviderInfo,
@@ -25,7 +20,6 @@ import {
 import {
   listStorageProviders,
   toRuntimeStorageProviderInfo,
-  type StorageProviderRole,
 } from '@/core/storage/providers.js';
 import { describeSettingsAdapters, availabilityFromDescriptors } from '@/core/settings/adapters.js';
 import { validateRuntimeSettings, validateRuntimeSettingsCredentials, type RuntimeSettings } from '@/core/settings/schema.js';
@@ -293,6 +287,71 @@ export function extendedRoutes(deps: ServerDeps) {
     return c.text(deps.metrics.render(), 200, { 'Content-Type': 'text/plain; version=0.0.4' });
   });
 
+  // GET /metrics/summary - JSON runtime/workspace summary for Console monitoring.
+  app.get('/metrics/summary', (c) => {
+    const sessionsByStatus = countBy(deps.db, 'sessions', 'status');
+    const eventsByType = countBy(deps.db, 'events', 'type');
+    const sessionUsage = deps.db.prepare(
+      `SELECT
+        COUNT(*) AS total,
+        COALESCE(SUM(usage_tokens_in), 0) AS input_tokens,
+        COALESCE(SUM(usage_tokens_out), 0) AS output_tokens
+       FROM sessions`,
+    ).get() as { total: number; input_tokens: number; output_tokens: number };
+    const eventUsage = deps.db.prepare(
+      `SELECT
+        COUNT(*) AS total,
+        COALESCE(SUM(tokens_in), 0) AS input_tokens,
+        COALESCE(SUM(tokens_out), 0) AS output_tokens,
+        COALESCE(AVG(NULLIF(duration_ms, 0)), 0) AS average_duration_ms
+       FROM events`,
+    ).get() as { total: number; input_tokens: number; output_tokens: number; average_duration_ms: number };
+    const files = deps.db.prepare(
+      `SELECT
+        COUNT(*) AS total,
+        COALESCE(SUM(size_bytes), 0) AS bytes
+       FROM files
+       WHERE archived_at IS NULL`,
+    ).get() as { total: number; bytes: number };
+    const artifacts = deps.db.prepare(
+      `SELECT
+        COUNT(*) AS total,
+        COALESCE(SUM(size_bytes), 0) AS bytes
+       FROM files
+       WHERE archived_at IS NULL AND role = 'artifact'`,
+    ).get() as { total: number; bytes: number };
+    const metricsSnapshot = deps.metrics?.snapshot();
+    return c.json({
+      type: 'metrics_summary',
+      generated_at: new Date().toISOString(),
+      sessions: {
+        total: Number(sessionUsage.total ?? 0),
+        by_status: sessionsByStatus,
+        input_tokens: Number(sessionUsage.input_tokens ?? 0),
+        output_tokens: Number(sessionUsage.output_tokens ?? 0),
+      },
+      events: {
+        total: Number(eventUsage.total ?? 0),
+        by_type: eventsByType,
+        input_tokens: Number(eventUsage.input_tokens ?? 0),
+        output_tokens: Number(eventUsage.output_tokens ?? 0),
+        average_duration_ms: Math.round(Number(eventUsage.average_duration_ms ?? 0)),
+      },
+      storage: {
+        files: Number(files.total ?? 0),
+        file_bytes: Number(files.bytes ?? 0),
+        artifacts: Number(artifacts.total ?? 0),
+        artifact_bytes: Number(artifacts.bytes ?? 0),
+      },
+      work_queue: deps.workQueue?.stats() ?? {},
+      http: {
+        requests: metricsSnapshot?.counters.http_requests_total ?? 0,
+        errors: metricsSnapshot?.counters.http_errors_total ?? 0,
+        request_duration_ms: metricsSnapshot?.histograms.http_request_duration_ms ?? { count: 0, sum: 0 },
+      },
+    });
+  });
+
   // GET /mcp/status?session_id=X - MCP server connection status for a session
   app.get('/mcp/status', (c) => {
     const sessionId = c.req.query('session_id');
@@ -340,68 +399,6 @@ export function extendedRoutes(deps: ServerDeps) {
       storage_providers: listStorageProviders(deps.db).map(toRuntimeStorageProviderInfo),
       auth_enabled: authEnabled,
     });
-  });
-
-  app.get('/model-providers', (c) => {
-    const data = listModelProviders(deps.db).map(toRuntimeModelInfo);
-    return c.json({
-      data,
-      has_more: false,
-      first_id: data[0]?.name ?? null,
-      last_id: data.at(-1)?.name ?? null,
-    });
-  });
-
-  app.post('/model-providers', async (c) => {
-    return legacyProviderMutationUnsupported(c);
-  });
-
-  app.post('/model-providers/:name/default', (c) => {
-    return legacyProviderMutationUnsupported(c);
-  });
-
-  app.get('/memory-providers', (c) => {
-    const data = listMemoryProviders(deps.db).map(toRuntimeMemoryProviderInfo);
-    return c.json({
-      data,
-      has_more: false,
-      first_id: data[0]?.name ?? null,
-      last_id: data.at(-1)?.name ?? null,
-    });
-  });
-
-  app.post('/memory-providers', async (c) => {
-    return legacyProviderMutationUnsupported(c);
-  });
-
-  app.post('/memory-providers/:name/default', (c) => {
-    return legacyProviderMutationUnsupported(c);
-  });
-
-  app.get('/storage-providers', (c) => {
-    const role = normalizeStorageProviderRole(c.req.query('role'));
-    if (c.req.query('role') && !role) {
-      return c.json({ error: { type: 'invalid_request', message: 'role must be metadata or artifact' } }, 400);
-    }
-    const data = listStorageProviders(deps.db, role).map(toRuntimeStorageProviderInfo);
-    return c.json({
-      data,
-      has_more: false,
-      first_id: data[0]?.name ?? null,
-      last_id: data.at(-1)?.name ?? null,
-    });
-  });
-
-  app.post('/storage-providers', async (c) => {
-    return legacyProviderMutationUnsupported(c);
-  });
-
-  app.post('/storage-providers/:name/initialize', (c) => {
-    return legacyProviderMutationUnsupported(c);
-  });
-
-  app.post('/storage-providers/:name/default', (c) => {
-    return legacyProviderMutationUnsupported(c);
   });
 
   app.get('/templates', (c) => {
@@ -512,18 +509,9 @@ function parsePositiveInteger(value: string | undefined): number | undefined {
   return Math.trunc(parsed);
 }
 
-function legacyProviderMutationUnsupported(c: Context) {
-  return c.json({
-    error: {
-      type: 'unsupported',
-      message: 'Provider tables are read-only compatibility views. Use /v1/x/settings to validate and save runtime configuration.',
-    },
-  }, 410);
-}
-
-function normalizeStorageProviderRole(value: string | undefined): StorageProviderRole | undefined {
-  if (value === 'metadata' || value === 'artifact') return value;
-  return undefined;
+function countBy(db: ServerDeps['db'], table: 'sessions' | 'events', column: 'status' | 'type'): Record<string, number> {
+  const rows = db.prepare(`SELECT ${column} AS name, COUNT(*) AS count FROM ${table} GROUP BY ${column}`).all() as Array<{ name: string; count: number }>;
+  return Object.fromEntries(rows.map((row) => [row.name, Number(row.count)]));
 }
 
 function runtimeModels(deps: ServerDeps) {

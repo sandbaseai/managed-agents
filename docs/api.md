@@ -5,10 +5,10 @@ TypeScript SDK, and external automation all use the same resource model: agents,
 sessions, environments, credential vaults, memory stores, files, skills, API
 keys, and runtime operations.
 
-The API is intentionally close to Claude Managed Agents while remaining
-self-hosted and inspectable. Resource metadata is stored in SQLite, uploaded
-assets live under the runtime data directory, and session timelines are
-persisted as replayable events.
+The API is intentionally close to Claude Managed Agents while remaining local
+and inspectable. Resource metadata is stored in SQLite, uploaded assets live
+under the runtime data directory, and session timelines are persisted as
+replayable events.
 
 ## Interactive Reference
 
@@ -197,6 +197,26 @@ Agent response:
 }
 ```
 
+Update an agent with optimistic version checking:
+
+```bash
+curl -X PUT http://127.0.0.1:3000/v1/agents/agent_abc123 \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "assistant",
+    "description": "Updated instructions.",
+    "model": "default",
+    "system": "You are a helpful assistant. Prefer concise answers.",
+    "tools": [{ "type": "agent_toolset_20260401" }],
+    "skills": [],
+    "expected_version": 1
+  }'
+```
+
+When `expected_version` is present and does not match the current agent
+version, the API returns `409 conflict`. Each successful create/update writes an
+immutable snapshot returned by `/v1/agents/{agent_id}/versions`.
+
 ## Sessions
 
 Sessions run an agent in an environment and persist a resumable event log.
@@ -227,6 +247,24 @@ curl -X POST http://127.0.0.1:3000/v1/sessions \
     "metadata": { "source": "docs" }
   }'
 ```
+
+Pin a session to an immutable agent version snapshot:
+
+```json
+{
+  "agent": {
+    "id": "agent_abc123",
+    "type": "agent",
+    "version": 1
+  },
+  "environment_id": "env_default",
+  "title": "Replay version 1"
+}
+```
+
+When `agent.version` is supplied, the runtime stores that agent definition
+snapshot on the session. Later edits to the agent do not change the pinned
+session's prompt, tools, or skills.
 
 Supported session resources:
 
@@ -267,6 +305,31 @@ curl -X POST http://127.0.0.1:3000/v1/sessions/SESSION_ID/events \
     ]
   }'
 ```
+
+Tool confirmation and client-side custom tool result events are also appended
+through the same endpoint:
+
+```json
+{
+  "events": [
+    {
+      "type": "user.tool_confirmation",
+      "tool_use_id": "toolu_abc123",
+      "result": "allow"
+    },
+    {
+      "type": "user.custom_tool_result",
+      "custom_tool_use_id": "customu_abc123",
+      "content": [{ "type": "text", "text": "Result returned by an external client-side tool." }]
+    }
+  ]
+}
+```
+
+The runtime currently supports the event protocol and Console/SDK result
+submission. First-class custom tool registration and discovery is still a
+planned extension point; until then, clients should treat custom tool use ids as
+opaque ids emitted by the session event stream.
 
 Send and stream a message:
 
@@ -317,6 +380,34 @@ curl -X POST http://127.0.0.1:3000/v1/files \
 
 The per-file upload limit is 10 MB.
 
+## Session Artifacts
+
+Artifacts are generated outputs associated with a session. They use the same
+local artifact storage backend as uploaded files, but are listed under the
+session instead of `/v1/files`.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/v1/sessions/{session_id}/artifacts` | List generated artifacts for a session. |
+| `POST` | `/v1/sessions/{session_id}/artifacts` | Record a generated artifact. |
+| `GET` | `/v1/sessions/{session_id}/artifacts/{artifact_id}/content` | Download artifact content. |
+
+Artifact paths must start with `/artifacts/`:
+
+```bash
+curl -X POST http://127.0.0.1:3000/v1/sessions/SESSION_ID/artifacts \
+  -H "Content-Type: application/json" \
+  -d '{
+    "path": "/artifacts/report.md",
+    "name": "report.md",
+    "media_type": "text/markdown",
+    "content": "# Run report\n\nGenerated locally."
+  }'
+```
+
+Text, Markdown, JSON, YAML, HTML, and SVG artifacts include inline previews in
+metadata responses. Raw storage paths are never returned.
+
 ## Skills
 
 Skills are reusable instruction packages. See [Skills](skills.md) for package
@@ -361,6 +452,10 @@ the returned `env_...` id when creating sessions or updating an environment.
 | `GET` | `/v1/environments/{environment_id}` | Retrieve an environment. |
 | `PUT` | `/v1/environments/{environment_id}` | Update an environment. |
 | `POST` | `/v1/environments/{environment_id}/archive` | Archive an environment. |
+| `GET` | `/v1/environments/{environment_id}/worker-keys` | List self-hosted worker keys without raw secrets. |
+| `POST` | `/v1/environments/{environment_id}/worker-keys` | Generate a worker key. The raw key is returned once. |
+| `POST` | `/v1/environments/{environment_id}/worker-keys/{key_id}/revoke` | Revoke a worker key. |
+| `GET` | `/v1/environments/{environment_id}/work-items` | Inspect recent self-hosted queue items and status counts. |
 
 Create:
 
@@ -370,7 +465,7 @@ curl -X POST http://127.0.0.1:3000/v1/environments \
   -d '{
     "name": "local-dev",
     "description": "Local development environment",
-    "hosting_type": "self_hosted",
+    "hosting_type": "local",
     "sandbox_provider": "local",
     "network": {
       "type": "limited",
@@ -379,8 +474,34 @@ curl -X POST http://127.0.0.1:3000/v1/environments \
       "allowed_hosts": []
     },
     "packages": []
-  }'
+}'
 ```
+
+Worker keys and work queues are advanced self-hosted controls. They are not
+needed for the default local runtime.
+
+Generate a self-hosted worker key:
+
+```bash
+curl -X POST http://127.0.0.1:3000/v1/environments/ENV_ID/worker-keys \
+  -H "Content-Type: application/json" \
+  -d '{"name":"fde-laptop"}'
+```
+
+Responses include `secret_key` only on creation. Later list/detail responses
+return `key_prefix`, status, timestamps, and metadata only.
+
+Run a local worker:
+
+```bash
+export MANAGED_AGENTS_ENVIRONMENT_KEY='mawk_...'
+managed-agents worker poll \
+  --environment-id ENV_ID \
+  --workdir /path/to/worker/root
+```
+
+Worker polling is scoped by the environment key when supplied. The worker can
+execute `exec`, `read`, `write`, and `list` work items inside `--workdir`.
 
 ## Credential Vaults
 
@@ -396,6 +517,9 @@ returned `vlt_...` id when attaching a vault to a session.
 | `POST` | `/v1/credential-vaults/{vault_id}/archive` | Archive a vault. |
 | `GET` | `/v1/credential-vaults/{vault_id}/credentials` | List credentials. |
 | `POST` | `/v1/credential-vaults/{vault_id}/credentials` | Add a credential. |
+| `POST` | `/v1/credential-vaults/{vault_id}/credentials/{credential_id}/rotate` | Replace the encrypted secret value. |
+| `POST` | `/v1/credential-vaults/{vault_id}/credentials/{credential_id}/mark-used` | Mark a credential as used and append an audit event. |
+| `GET` | `/v1/credential-vaults/{vault_id}/credentials/{credential_id}/audit` | List credential audit events. |
 | `POST` | `/v1/credential-vaults/{vault_id}/credentials/{credential_id}/archive` | Archive a credential. |
 | `DELETE` | `/v1/credential-vaults/{vault_id}/credentials/{credential_id}` | Delete a credential. |
 
@@ -426,6 +550,22 @@ curl -X POST http://127.0.0.1:3000/v1/credential-vaults/VAULT_ID/credentials \
 Secret values are encrypted at rest. Responses return `value_hint`, not the raw
 secret.
 
+Rotate a credential:
+
+```bash
+curl -X POST http://127.0.0.1:3000/v1/credential-vaults/VAULT_ID/credentials/CREDENTIAL_ID/rotate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "value": "new-secret-value",
+    "actor": "operator",
+    "metadata": { "reason": "scheduled rotation" }
+  }'
+```
+
+Runtime code can use the internal `resolveSessionCredentialInjections` helper to
+resolve scoped credentials for a session. The helper decrypts only inside the
+runtime process, updates `last_used_at`, and appends a credential audit event.
+
 ## Memory Stores
 
 Memory stores persist named memory entries that can be mounted into sessions.
@@ -455,6 +595,126 @@ curl -X POST http://127.0.0.1:3000/v1/memory_stores/STORE_ID/memories \
 
 Memory paths must start with `/` and must not end with `/`.
 
+## Operations
+
+Operations APIs persist local control-plane definitions for callbacks,
+scheduled runs, and run-quality checks. The current runtime stores these
+resources, exposes them through the API, and includes manual validation actions
+for webhook test delivery, scheduled run-now, and deterministic outcome
+evaluation. Automatic webhook dispatch and cron scheduling remain planned
+background workers.
+
+### Webhooks
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/v1/webhooks` | List webhook subscriptions. |
+| `POST` | `/v1/webhooks` | Create a webhook subscription. |
+| `GET` | `/v1/webhooks/{webhook_id}` | Retrieve a webhook subscription. |
+| `PUT` | `/v1/webhooks/{webhook_id}` | Update a webhook subscription. |
+| `POST` | `/v1/webhooks/{webhook_id}/archive` | Archive a webhook subscription. |
+| `GET` | `/v1/webhooks/{webhook_id}/deliveries` | List webhook delivery records. |
+| `POST` | `/v1/webhooks/{webhook_id}/test` | Record a signed test delivery without requiring an external network call. |
+| `POST` | `/v1/webhooks/dispatch` | Dispatch an event to matching active webhooks. |
+| `POST` | `/v1/webhooks/retry-due` | Retry failed deliveries whose retry time has arrived. |
+
+```bash
+curl -X POST http://127.0.0.1:3000/v1/webhooks \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Session events",
+    "url": "https://example.com/managed-agents/webhook",
+    "events": ["session.status_running", "session.status_terminated"]
+  }'
+```
+
+Delivery responses include a `signature` field using the `sha256=...` format.
+Failed dispatches are stored as `pending_retry` until their next retry time or
+as `failed` after the maximum attempts.
+
+### Scheduled Deployments
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/v1/scheduled-deployments` | List scheduled deployment plans. |
+| `POST` | `/v1/scheduled-deployments` | Create a scheduled deployment plan. |
+| `GET` | `/v1/scheduled-deployments/{schedule_id}` | Retrieve a scheduled deployment plan. |
+| `PUT` | `/v1/scheduled-deployments/{schedule_id}` | Update a scheduled deployment plan. |
+| `POST` | `/v1/scheduled-deployments/{schedule_id}/archive` | Archive a scheduled deployment plan. |
+| `GET` | `/v1/scheduled-deployments/{schedule_id}/runs` | List schedule run records. |
+| `POST` | `/v1/scheduled-deployments/{schedule_id}/run` | Manually trigger a schedule and create a session. |
+| `POST` | `/v1/scheduled-deployments/run-due` | Run all active schedules whose `next_run_at` is due. |
+
+```bash
+curl -X POST http://127.0.0.1:3000/v1/scheduled-deployments \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Morning smoke",
+    "agent_id": "agent_...",
+    "environment_id": "env_...",
+    "cron": "0 9 * * 1",
+    "payload": {
+      "title": "Daily FDE smoke"
+    }
+  }'
+```
+
+Manual and due runs create a session with schedule metadata and store a
+`scheduled_deployment_run` record. The local cron runner computes `next_run_at`
+in UTC for standard five-field cron expressions using `*`, comma lists, ranges,
+and step values.
+
+### Outcomes
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/v1/outcomes` | List outcome definitions. |
+| `POST` | `/v1/outcomes` | Create an outcome definition. |
+| `GET` | `/v1/outcomes/{outcome_id}` | Retrieve an outcome definition. |
+| `PUT` | `/v1/outcomes/{outcome_id}` | Update an outcome definition. |
+| `POST` | `/v1/outcomes/{outcome_id}/archive` | Archive an outcome definition. |
+| `GET` | `/v1/sessions/{session_id}/outcomes` | List recorded session outcome evaluations. |
+| `POST` | `/v1/sessions/{session_id}/outcomes` | Record a session outcome evaluation. |
+| `POST` | `/v1/sessions/{session_id}/outcomes/evaluate` | Run the built-in deterministic transcript evaluator for an outcome. |
+
+```bash
+curl -X POST http://127.0.0.1:3000/v1/outcomes \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Release readiness",
+    "objective": "The agent should produce a concise release-readiness summary.",
+    "criteria": ["Mentions tests", "Mentions risks"]
+  }'
+```
+
+Outcome definitions accept `pass_threshold` from `0` to `1`. The local
+deterministic evaluator records `passed` when the transcript score meets the
+threshold, `inconclusive` for partial matches below the threshold, and `failed`
+when no criteria match.
+
+```bash
+curl -X POST http://127.0.0.1:3000/v1/sessions/SESSION_ID/outcomes \
+  -H "Content-Type: application/json" \
+  -d '{
+    "outcome_id": "out_...",
+    "status": "passed",
+    "score": 0.92,
+    "summary": "The run met release-readiness criteria."
+  }'
+```
+
+The built-in evaluator is deterministic and local: it compares outcome criteria
+against persisted session event text, records a score, and stores the result in
+`session_outcomes`.
+
+```bash
+curl -X POST http://127.0.0.1:3000/v1/sessions/SESSION_ID/outcomes/evaluate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "outcome_id": "out_..."
+  }'
+```
+
 ## Runtime Extension Endpoints
 
 Extension endpoints expose local runtime operations.
@@ -473,19 +733,10 @@ Extension endpoints expose local runtime operations.
 | `POST` | `/v1/x/restart` | Restart the local runtime process when the server was started through the CLI. |
 | `GET` | `/v1/x/logs?limit=200&level=info&q=term` | Recent in-process structured runtime logs. |
 | `GET` | `/v1/x/metrics` | Prometheus metrics, when enabled. |
+| `GET` | `/v1/x/metrics/summary` | JSON runtime summary for Dashboard monitoring and SDK helpers. |
 | `GET` | `/v1/x/mcp/status?session_id=...` | MCP connection status for a session. |
 | `POST` | `/v1/x/worker/claim` | Self-hosted sandbox worker claims pending tool-execution work. |
 | `POST` | `/v1/x/worker/complete` | Self-hosted sandbox worker reports completed or failed work. |
-| `GET` | `/v1/x/model-providers` | Read-only legacy model provider compatibility rows. |
-| `POST` | `/v1/x/model-providers` | Deprecated legacy mutation; returns `410 Gone`. |
-| `POST` | `/v1/x/model-providers/{name}/default` | Deprecated legacy mutation; returns `410 Gone`. |
-| `GET` | `/v1/x/memory-providers` | Read-only legacy memory provider compatibility rows. |
-| `POST` | `/v1/x/memory-providers` | Deprecated legacy mutation; returns `410 Gone`. |
-| `POST` | `/v1/x/memory-providers/{name}/default` | Deprecated legacy mutation; returns `410 Gone`. |
-| `GET` | `/v1/x/storage-providers?role=metadata` | Read-only legacy storage provider compatibility rows. |
-| `POST` | `/v1/x/storage-providers` | Deprecated legacy mutation; returns `410 Gone`. |
-| `POST` | `/v1/x/storage-providers/{name}/initialize` | Deprecated legacy mutation; returns `410 Gone`. |
-| `POST` | `/v1/x/storage-providers/{name}/default` | Deprecated legacy mutation; returns `410 Gone`. |
 
 `GET /v1/x/runtime` returns runtime-safe introspection data. Model entries expose
 configuration metadata only:
@@ -508,12 +759,6 @@ configuration metadata only:
 ```
 
 The runtime never returns raw API keys or resolved secret values to the Console.
-
-Legacy provider endpoints are compatibility-only in Settings V2. The `GET`
-endpoints remain available for older clients that inspect existing rows, but
-all legacy provider mutation endpoints return `410 Gone` with a
-`legacy_provider_mutation_unsupported` error. New clients should read and write
-runtime configuration through `/v1/x/settings`.
 
 Settings V2 is the source of truth for model vendor, loop engine, storage,
 memory, and sandbox configuration. Responses include both the saved document and

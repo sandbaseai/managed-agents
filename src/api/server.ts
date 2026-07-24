@@ -21,6 +21,7 @@ import { createAuthMiddleware } from './auth.js';
 import type { SessionManager } from '@/core/session/session-manager.js';
 import type { AgentDefinition } from '@/types/agent.js';
 import { workerRoutes } from './routes/worker.js';
+import { operationsRoutes } from './routes/operations.js';
 import type { WorkQueue } from '@/sandbox/self-hosted-provider.js';
 import type { Logger, LogStore } from '@/core/observability/logger.js';
 import type { Metrics } from '@/core/observability/metrics.js';
@@ -28,6 +29,7 @@ import type { Skill } from '@/core/skills/loader.js';
 import type { Database } from '@/core/db/database.js';
 import type { ModelConfig, RuntimeModelInfo } from '@/types/model.js';
 import type { ArtifactStore } from '@/core/storage/artifact-store.js';
+import type { OutcomeEvaluator } from '@/core/operations/outcome-evaluator.js';
 
 export interface ServerDeps {
   db: Database;
@@ -60,6 +62,8 @@ export interface ServerDeps {
   artifactStorageDir?: () => string;
   /** Active artifact store. Local-only for the first Settings V2 release. */
   artifactStore?: () => ArtifactStore;
+  /** Optional model-assisted outcome evaluator for advanced operations routes. */
+  evaluateOutcome?: OutcomeEvaluator;
   runtime?: {
     models: RuntimeModelInfo[];
     sandboxProviders: string[];
@@ -140,6 +144,7 @@ export function createServer(deps: ServerDeps) {
 
   // Runtime extension endpoints
   app.route('/v1/x', extendedRoutes(deps));
+  app.route('/v1/x', operationsRoutes(deps));
 
   // Self-hosted sandbox worker endpoints (R9.14)
   if (deps.workQueue) {

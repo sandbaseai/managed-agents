@@ -533,6 +533,199 @@ ALTER TABLE runtime_settings ADD COLUMN activation_status TEXT NOT NULL DEFAULT 
 ALTER TABLE runtime_settings ADD COLUMN activation_errors TEXT NOT NULL DEFAULT '[]';
 `;
 
+const M022_FILE_ARTIFACT_METADATA = `
+ALTER TABLE files ADD COLUMN role TEXT NOT NULL DEFAULT 'file';
+ALTER TABLE files ADD COLUMN session_id TEXT;
+ALTER TABLE files ADD COLUMN artifact_path TEXT;
+
+CREATE INDEX idx_files_role_session ON files(role, session_id, created_at DESC);
+`;
+
+const M023_OPERATIONS_RESOURCES = `
+CREATE TABLE webhooks (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  url TEXT NOT NULL,
+  events TEXT NOT NULL DEFAULT '[]',
+  description TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'active',
+  metadata TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  archived_at TEXT
+);
+
+CREATE INDEX idx_webhooks_status_created ON webhooks(status, created_at DESC);
+
+CREATE TABLE scheduled_deployments (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  agent_id TEXT NOT NULL,
+  environment_id TEXT,
+  cron TEXT NOT NULL,
+  payload TEXT NOT NULL DEFAULT '{}',
+  status TEXT NOT NULL DEFAULT 'active',
+  last_run_at TEXT,
+  next_run_at TEXT,
+  metadata TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  archived_at TEXT
+);
+
+CREATE INDEX idx_scheduled_deployments_status_created ON scheduled_deployments(status, created_at DESC);
+CREATE INDEX idx_scheduled_deployments_agent ON scheduled_deployments(agent_id, created_at DESC);
+
+CREATE TABLE outcomes (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  objective TEXT NOT NULL,
+  criteria TEXT NOT NULL DEFAULT '[]',
+  metadata TEXT NOT NULL DEFAULT '{}',
+  status TEXT NOT NULL DEFAULT 'active',
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  archived_at TEXT
+);
+
+CREATE INDEX idx_outcomes_status_created ON outcomes(status, created_at DESC);
+
+CREATE TABLE session_outcomes (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL,
+  outcome_id TEXT,
+  status TEXT NOT NULL,
+  score REAL,
+  summary TEXT NOT NULL DEFAULT '',
+  details TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY (session_id) REFERENCES sessions(id),
+  FOREIGN KEY (outcome_id) REFERENCES outcomes(id)
+);
+
+CREATE INDEX idx_session_outcomes_session_created ON session_outcomes(session_id, created_at DESC);
+CREATE INDEX idx_session_outcomes_outcome ON session_outcomes(outcome_id, created_at DESC);
+`;
+
+const M024_OPERATIONS_RUN_HISTORY = `
+CREATE TABLE webhook_deliveries (
+  id TEXT PRIMARY KEY,
+  webhook_id TEXT NOT NULL,
+  event TEXT NOT NULL,
+  payload TEXT NOT NULL DEFAULT '{}',
+  status TEXT NOT NULL,
+  status_code INTEGER,
+  error TEXT,
+  signature TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  delivered_at TEXT,
+  FOREIGN KEY (webhook_id) REFERENCES webhooks(id)
+);
+
+CREATE INDEX idx_webhook_deliveries_webhook_created ON webhook_deliveries(webhook_id, created_at DESC);
+CREATE INDEX idx_webhook_deliveries_status ON webhook_deliveries(status, created_at DESC);
+
+CREATE TABLE scheduled_deployment_runs (
+  id TEXT PRIMARY KEY,
+  schedule_id TEXT NOT NULL,
+  session_id TEXT,
+  status TEXT NOT NULL,
+  trigger_type TEXT NOT NULL DEFAULT 'manual',
+  payload TEXT NOT NULL DEFAULT '{}',
+  error TEXT,
+  started_at TEXT NOT NULL DEFAULT (datetime('now')),
+  completed_at TEXT,
+  FOREIGN KEY (schedule_id) REFERENCES scheduled_deployments(id),
+  FOREIGN KEY (session_id) REFERENCES sessions(id)
+);
+
+CREATE INDEX idx_scheduled_deployment_runs_schedule_created ON scheduled_deployment_runs(schedule_id, started_at DESC);
+CREATE INDEX idx_scheduled_deployment_runs_session ON scheduled_deployment_runs(session_id);
+`;
+
+const M025_AGENT_VERSION_SNAPSHOTS = `
+CREATE TABLE agent_versions (
+  id TEXT PRIMARY KEY,
+  agent_id TEXT NOT NULL,
+  version INTEGER NOT NULL,
+  name TEXT NOT NULL,
+  definition TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY (agent_id) REFERENCES agents(id)
+);
+
+CREATE UNIQUE INDEX idx_agent_versions_agent_version ON agent_versions(agent_id, version);
+CREATE INDEX idx_agent_versions_agent_created ON agent_versions(agent_id, created_at DESC);
+
+INSERT INTO agent_versions (id, agent_id, version, name, definition, created_at)
+SELECT 'agver_' || id || '_' || COALESCE(version, 1),
+       id,
+       COALESCE(version, 1),
+       name,
+       definition,
+       COALESCE(updated_at, loaded_at, datetime('now'))
+FROM agents
+WHERE definition IS NOT NULL;
+`;
+
+const M026_SESSION_AGENT_SNAPSHOTS = `
+ALTER TABLE sessions ADD COLUMN agent_version INTEGER;
+ALTER TABLE sessions ADD COLUMN agent_definition TEXT;
+`;
+
+const M027_ENVIRONMENT_WORKERS = `
+CREATE TABLE environment_worker_keys (
+  id TEXT PRIMARY KEY,
+  environment_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  key_hash TEXT NOT NULL UNIQUE,
+  key_prefix TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'active',
+  metadata TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  last_seen_at TEXT,
+  revoked_at TEXT,
+  expires_at TEXT,
+  FOREIGN KEY (environment_id) REFERENCES environments(id)
+);
+
+CREATE INDEX idx_environment_worker_keys_environment
+  ON environment_worker_keys(environment_id, status, created_at DESC);
+
+CREATE INDEX idx_environment_worker_keys_status
+  ON environment_worker_keys(status, created_at DESC);
+`;
+
+const M028_CREDENTIAL_AUDIT = `
+CREATE TABLE credential_audit_events (
+  id TEXT PRIMARY KEY,
+  vault_id TEXT NOT NULL,
+  credential_id TEXT NOT NULL,
+  action TEXT NOT NULL,
+  actor TEXT NOT NULL DEFAULT 'system',
+  metadata TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY (vault_id) REFERENCES credential_vaults(id),
+  FOREIGN KEY (credential_id) REFERENCES credential_records(id)
+);
+
+CREATE INDEX idx_credential_audit_credential_created
+  ON credential_audit_events(credential_id, created_at DESC);
+
+CREATE INDEX idx_credential_audit_vault_created
+  ON credential_audit_events(vault_id, created_at DESC);
+`;
+
+const M029_WEBHOOK_RETRIES = `
+ALTER TABLE webhook_deliveries ADD COLUMN attempt_count INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE webhook_deliveries ADD COLUMN next_retry_at TEXT;
+
+CREATE INDEX idx_webhook_deliveries_next_retry
+  ON webhook_deliveries(status, next_retry_at);
+`;
+
 export const MIGRATIONS: Migration[] = [
   { version: 1, name: '001_initial', sql: M001_INITIAL },
   { version: 2, name: '002_memory', sql: M002_MEMORY },
@@ -555,4 +748,12 @@ export const MIGRATIONS: Migration[] = [
   { version: 19, name: '019_runtime_settings', sql: M019_RUNTIME_SETTINGS },
   { version: 20, name: '020_runtime_settings_secrets', sql: M020_RUNTIME_SETTINGS_SECRETS },
   { version: 21, name: '021_runtime_settings_activation_state', sql: M021_RUNTIME_SETTINGS_ACTIVATION_STATE },
+  { version: 22, name: '022_file_artifact_metadata', sql: M022_FILE_ARTIFACT_METADATA },
+  { version: 23, name: '023_operations_resources', sql: M023_OPERATIONS_RESOURCES },
+  { version: 24, name: '024_operations_run_history', sql: M024_OPERATIONS_RUN_HISTORY },
+  { version: 25, name: '025_agent_version_snapshots', sql: M025_AGENT_VERSION_SNAPSHOTS },
+  { version: 26, name: '026_session_agent_snapshots', sql: M026_SESSION_AGENT_SNAPSHOTS },
+  { version: 27, name: '027_environment_workers', sql: M027_ENVIRONMENT_WORKERS },
+  { version: 28, name: '028_credential_audit', sql: M028_CREDENTIAL_AUDIT },
+  { version: 29, name: '029_webhook_retries', sql: M029_WEBHOOK_RETRIES },
 ];

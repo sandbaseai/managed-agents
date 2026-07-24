@@ -7,7 +7,7 @@
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { join } from 'node:path';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { Database } from '@/core/db/database.js';
 import { SessionManager, type SessionExecutor } from '@/core/session/session-manager.js';
@@ -17,10 +17,13 @@ import { ManagedAgentsClient } from '@/sdk/client.js';
 describe('Client SDK', () => {
   let db: Database;
   let tmpDir: string;
+  let dataDir: string;
   let client: ManagedAgentsClient;
 
   beforeAll(async () => {
     tmpDir = mkdtempSync(join(tmpdir(), 'ma-sdk-'));
+    dataDir = join(tmpDir, '.managed-agents');
+    mkdirSync(dataDir, { recursive: true });
     db = new Database(join(tmpDir, 'test.db'));
     db.runMigrations();
     db.exec(`INSERT INTO environments (id, name, config) VALUES ('env_default', 'local', '{}')`);
@@ -50,6 +53,14 @@ describe('Client SDK', () => {
       sessionManager,
       agents: [{ name: 'echo', model: 'm', system: 'p' }],
       reloadAgents: () => ({ agents: [], errors: [] }),
+      workspace: {
+        root: tmpDir,
+        dataDir,
+        agentsDir: join(tmpDir, 'agents'),
+        skillsDir: join(tmpDir, 'skills'),
+        configPath: join(tmpDir, 'managed-agents.config.yaml'),
+        target: 'local',
+      },
     });
 
     client = new ManagedAgentsClient({
@@ -69,6 +80,27 @@ describe('Client SDK', () => {
   it('lists agents', async () => {
     const { data } = await client.agents.list();
     expect(data.map((a) => a.name)).toContain('echo');
+  });
+
+  it('creates, versions, and archives agents', async () => {
+    const created = await client.agents.create({
+      name: 'sdk-agent',
+      model: 'm',
+      system: 'hello from sdk',
+    });
+    expect(created.id).toMatch(/^agent_/);
+
+    const updated = await client.agents.update(created.id, {
+      system: 'updated from sdk',
+      expected_version: created.version,
+    });
+    expect(updated.version).toBe(created.version + 1);
+
+    const versions = await client.agents.versions(created.id);
+    expect(versions.data.length).toBeGreaterThanOrEqual(2);
+
+    const archived = await client.agents.archive(created.id);
+    expect(archived.status).toBe('archived');
   });
 
   it('creates and gets a session', async () => {
@@ -142,6 +174,44 @@ describe('Client SDK', () => {
     const s = await client.sessions.create({ agent: 'agent_echo' });
     const res = await client.sessions.stop(s.id);
     expect(res.status).toBe('terminated');
+  });
+
+  it('manages files and session artifacts', async () => {
+    const file = await client.files.create({ name: 'notes.txt', content: 'hello file' });
+    expect(file.id).toMatch(/^file_/);
+    await expect(client.files.text(file.id)).resolves.toBe('hello file');
+    const files = await client.files.list();
+    expect(files.data.map((item) => item.id)).toContain(file.id);
+
+    const s = await client.sessions.create({ agent: 'agent_echo' });
+    const artifact = await client.sessions.createArtifact(s.id, {
+      path: '/artifacts/report.txt',
+      content: 'hello artifact',
+    });
+    expect(artifact.artifact_path).toBe('/artifacts/report.txt');
+    await expect(client.sessions.artifactText(s.id, artifact.id)).resolves.toBe('hello artifact');
+    const artifacts = await client.sessions.artifacts(s.id);
+    expect(artifacts.data.map((item) => item.id)).toContain(artifact.id);
+
+    const archived = await client.files.delete(file.id);
+    expect(archived.status).toBe('archived');
+  });
+
+  it('creates and deletes API keys', async () => {
+    const key = await client.apiKeys.create({ name: 'SDK key' });
+    expect(key.secret_key).toMatch(/^ma_/);
+    const keys = await client.apiKeys.list();
+    expect(keys.data.map((item) => item.id)).toContain(key.id);
+    await expect(client.apiKeys.delete(key.id)).resolves.toMatchObject({ id: key.id, type: 'api_key_deleted' });
+  });
+
+  it('reads metrics helpers', async () => {
+    await expect(client.metrics.prometheus()).resolves.toContain('metrics');
+    const summary = await client.metrics.summary();
+    expect(summary).toMatchObject({
+      type: 'metrics_summary',
+      sessions: expect.objectContaining({ total: expect.any(Number) }),
+    });
   });
 
   it('throws ManagedAgentsApiError on 404', async () => {

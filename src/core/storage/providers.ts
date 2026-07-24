@@ -1,6 +1,5 @@
 import type { Database } from '@/core/db/database.js';
 import { resolveEnvVars } from '@/core/config/env-resolver.js';
-import { nanoid } from 'nanoid';
 
 export type StorageProviderRole = 'metadata' | 'artifact';
 export type StorageProviderKind = 'sqlite' | 'postgres' | 'mysql' | 'local_filesystem' | 's3';
@@ -25,20 +24,6 @@ export type StorageProviderRecord = {
   updated_at: string;
 };
 
-export type StorageProviderInput = {
-  name?: unknown;
-  role?: unknown;
-  provider?: unknown;
-  connection_url?: unknown;
-  bucket?: unknown;
-  region?: unknown;
-  base_path?: unknown;
-  access_key?: unknown;
-  secret_key?: unknown;
-  config?: unknown;
-  is_default?: unknown;
-};
-
 export type RuntimeStorageProviderInfo = {
   name: string;
   role: StorageProviderRole;
@@ -60,8 +45,6 @@ export type RuntimeStorageProviderInfo = {
 };
 
 const RUNTIME_CAPABLE_PROVIDERS = new Set<StorageProviderKind>(['sqlite', 'local_filesystem']);
-const METADATA_PROVIDERS = new Set<StorageProviderKind>(['sqlite', 'postgres', 'mysql']);
-const ARTIFACT_PROVIDERS = new Set<StorageProviderKind>(['local_filesystem', 's3']);
 
 const PROVIDER_LABELS: Record<StorageProviderKind, string> = {
   sqlite: 'SQLite',
@@ -110,70 +93,6 @@ export function listStorageProviders(db: Database, role?: StorageProviderRole): 
   });
 }
 
-export function createStorageProvider(db: Database, input: StorageProviderInput): StorageProviderRecord {
-  const record = normalizeInput(input);
-  if (record.is_default) {
-    throw new Error('storage providers must be initialized before they can be default');
-  }
-  const now = new Date().toISOString();
-
-  return db.transaction(() => {
-    db.prepare(`
-      INSERT INTO storage_providers (
-        name, role, provider, connection_url, bucket, region, base_path, access_key, secret_key,
-        config, is_default, status, initialized_at, created_at, updated_at
-      )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      record.name,
-      record.role,
-      record.provider,
-      record.connection_url ?? null,
-      record.bucket ?? null,
-      record.region ?? null,
-      record.base_path ?? null,
-      record.access_key ?? null,
-      record.secret_key ?? null,
-      JSON.stringify(record.config ?? {}),
-      0,
-      record.status,
-      record.initialized_at ?? null,
-      now,
-      now,
-    );
-    return getStorageProvider(db, record.name) as StorageProviderRecord;
-  });
-}
-
-export function initializeStorageProvider(db: Database, name: string): StorageProviderRecord | undefined {
-  const existing = getStorageProvider(db, name);
-  if (!existing) return undefined;
-  if (!RUNTIME_CAPABLE_PROVIDERS.has(existing.provider)) {
-    throw new Error(`${PROVIDER_LABELS[existing.provider]} requires an installed runtime adapter before it can be initialized`);
-  }
-  const now = new Date().toISOString();
-  db.prepare('UPDATE storage_providers SET status = ?, initialized_at = COALESCE(initialized_at, ?), updated_at = ? WHERE name = ?')
-    .run('active', now, now, name);
-  return getStorageProvider(db, name);
-}
-
-export function setDefaultStorageProvider(db: Database, name: string): StorageProviderRecord | undefined {
-  const existing = getStorageProvider(db, name);
-  if (!existing) return undefined;
-  if (!RUNTIME_CAPABLE_PROVIDERS.has(existing.provider)) {
-    throw new Error(`${PROVIDER_LABELS[existing.provider]} requires an installed runtime adapter before it can be default`);
-  }
-  if (existing.status !== 'active') {
-    throw new Error(`${PROVIDER_LABELS[existing.provider]} must be initialized before it can be default`);
-  }
-  const now = new Date().toISOString();
-  db.transaction(() => {
-    db.prepare('UPDATE storage_providers SET is_default = 0, updated_at = ? WHERE role = ?').run(now, existing.role);
-    db.prepare('UPDATE storage_providers SET is_default = 1, updated_at = ? WHERE name = ?').run(now, name);
-  });
-  return getStorageProvider(db, name);
-}
-
 export function toRuntimeStorageProviderInfo(record: StorageProviderRecord): RuntimeStorageProviderInfo {
   return {
     name: record.name,
@@ -214,60 +133,6 @@ type StorageProviderRow = {
   updated_at: string;
 };
 
-function getStorageProvider(db: Database, name: string): StorageProviderRecord | undefined {
-  return listStorageProviders(db).find((provider) => provider.name === name);
-}
-
-function normalizeInput(input: StorageProviderInput): StorageProviderRecord {
-  const role = normalizeRole(cleanString(input.role) ?? 'metadata');
-  const fallbackProvider: StorageProviderKind = role === 'metadata' ? 'sqlite' : 'local_filesystem';
-  const provider = normalizeProvider(cleanString(input.provider) ?? fallbackProvider);
-  validateProviderRole(role, provider);
-
-  const name = cleanString(input.name) ?? `${role}-${provider}-${nanoid(8)}`;
-  if (name.length > 80) {
-    throw new Error('name must be 80 characters or fewer');
-  }
-
-  const connection_url = cleanString(input.connection_url);
-  if ((provider === 'postgres' || provider === 'mysql') && !connection_url) {
-    throw new Error('connection_url is required for external metadata storage providers');
-  }
-
-  const bucket = cleanString(input.bucket);
-  if (provider === 's3' && !bucket) {
-    throw new Error('bucket is required for S3 artifact storage providers');
-  }
-
-  const runtimeCapable = RUNTIME_CAPABLE_PROVIDERS.has(provider);
-  return {
-    name,
-    role,
-    provider,
-    connection_url,
-    bucket,
-    region: cleanString(input.region),
-    base_path: cleanString(input.base_path),
-    access_key: cleanString(input.access_key),
-    secret_key: cleanString(input.secret_key),
-    config: isPlainObject(input.config) ? input.config : {},
-    is_default: Boolean(input.is_default),
-    status: runtimeCapable ? 'init_required' : 'adapter_required',
-    initialized_at: undefined,
-    created_at: '',
-    updated_at: '',
-  };
-}
-
-function validateProviderRole(role: StorageProviderRole, provider: StorageProviderKind): void {
-  if (role === 'metadata' && !METADATA_PROVIDERS.has(provider)) {
-    throw new Error(`${PROVIDER_LABELS[provider]} is not a metadata storage provider`);
-  }
-  if (role === 'artifact' && !ARTIFACT_PROVIDERS.has(provider)) {
-    throw new Error(`${PROVIDER_LABELS[provider]} is not an artifact storage provider`);
-  }
-}
-
 function normalizeRole(value: string): StorageProviderRole {
   if (value === 'metadata' || value === 'artifact') return value;
   throw new Error(`unsupported storage role: ${value}`);
@@ -283,12 +148,6 @@ function normalizeProvider(value: string): StorageProviderKind {
 function normalizeStatus(value: string, provider: StorageProviderKind): StorageProviderStatus {
   if (value === 'active' || value === 'init_required' || value === 'adapter_required') return value;
   return RUNTIME_CAPABLE_PROVIDERS.has(provider) ? 'active' : 'adapter_required';
-}
-
-function cleanString(value: unknown): string | undefined {
-  if (typeof value !== 'string') return undefined;
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : undefined;
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {

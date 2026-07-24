@@ -12,6 +12,7 @@ import {
   listTemplates,
   readManifest,
   resolveTemplateSource,
+  validateTemplate,
 } from '@/core/templates/templates.js';
 
 describe('Templates', () => {
@@ -44,6 +45,52 @@ describe('Templates', () => {
 
       const manifest = readManifest(tpl);
       expect(manifest.name).toBe('my-template');
+    });
+  });
+
+  describe('validateTemplate', () => {
+    it('accepts a valid template and reports files', () => {
+      const project = join(root, 'project');
+      makeProject(project);
+      const tpl = join(root, 'tpl');
+      createTemplate(project, tpl, { name: 'valid-template', description: 'test' });
+
+      const result = validateTemplate(tpl);
+      expect(result.valid).toBe(true);
+      expect(result.files).toContain('manifest.yaml');
+      expect(result.files).toContain(join('agents', 'a.yaml'));
+    });
+
+    it('rejects invalid agent definitions', () => {
+      const tpl = join(root, 'bad-agent');
+      mkdirSync(join(tpl, 'agents'), { recursive: true });
+      writeFileSync(join(tpl, 'manifest.yaml'), 'name: bad-agent\ndescription: bad\n');
+      writeFileSync(join(tpl, 'agents', 'bad.yaml'), 'name: bad\nmodel: m\n');
+
+      const result = validateTemplate(tpl);
+      expect(result.valid).toBe(false);
+      expect(result.errors.map((error) => error.path)).toContain(join('agents', 'bad.yaml'));
+    });
+
+    it('rejects skill directories without SKILL.md', () => {
+      const tpl = join(root, 'bad-skill');
+      mkdirSync(join(tpl, 'skills', 'missing'), { recursive: true });
+      writeFileSync(join(tpl, 'manifest.yaml'), 'name: bad-skill\ndescription: bad\n');
+      writeFileSync(join(tpl, 'skills', 'missing', 'notes.md'), 'notes');
+
+      const result = validateTemplate(tpl);
+      expect(result.valid).toBe(false);
+      expect(result.errors).toContainEqual(expect.objectContaining({ path: join('skills', 'missing') }));
+    });
+
+    it('rejects manifest-only templates', () => {
+      const tpl = join(root, 'empty');
+      mkdirSync(tpl, { recursive: true });
+      writeFileSync(join(tpl, 'manifest.yaml'), 'name: empty\ndescription: empty\n');
+
+      const result = validateTemplate(tpl);
+      expect(result.valid).toBe(false);
+      expect(result.errors).toContainEqual(expect.objectContaining({ path: '.' }));
     });
   });
 

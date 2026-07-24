@@ -112,6 +112,36 @@
     ]
   },
   {
+    "id": "metrics-summary",
+    "group": "Operations",
+    "title": "Get metrics summary",
+    "method": "GET",
+    "path": "/v1/x/metrics/summary",
+    "summary": "Read a JSON runtime summary for dashboard monitoring and SDK helpers.",
+    "response": [
+      {
+        "name": "type",
+        "type": "metrics_summary",
+        "description": "Response discriminator."
+      },
+      {
+        "name": "sessions",
+        "type": "object",
+        "description": "Session counts and token usage."
+      },
+      {
+        "name": "events",
+        "type": "object",
+        "description": "Event counts, token usage, and average duration."
+      },
+      {
+        "name": "storage",
+        "type": "object",
+        "description": "File and artifact storage counts."
+      }
+    ]
+  },
+  {
     "id": "mcp-status",
     "group": "Operations",
     "title": "MCP status",

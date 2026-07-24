@@ -70,13 +70,13 @@ describe('API reference docs', () => {
       'Files',
       'Runtime settings',
       'Operations',
-      'Legacy providers',
+      'Worker',
     ]));
     expect(Array.from(methods)).toEqual(expect.arrayContaining(['GET', 'POST', 'PUT', 'DELETE']));
     expect(API_REFERENCE_DOCS.some((endpoint) => !endpoint.id.includes('create'))).toBe(true);
     expect(API_REFERENCE_DOCS.some((endpoint) => endpoint.id.includes('delete'))).toBe(true);
-    expect(API_REFERENCE_DOCS.some((endpoint) => endpoint.id === 'legacy-storage-providers-initialize')).toBe(true);
-    expect(API_REFERENCE_DOCS.some((endpoint) => endpoint.summary.includes('410 Gone'))).toBe(true);
+    expect(API_REFERENCE_DOCS.some((endpoint) => endpoint.id === 'settings-validate')).toBe(true);
+    expect(API_REFERENCE_DOCS.some((endpoint) => endpoint.path === '/v1/x/metrics/summary')).toBe(true);
     expect(ids.has(DEFAULT_API_REFERENCE_ENDPOINT_ID)).toBe(true);
   });
 

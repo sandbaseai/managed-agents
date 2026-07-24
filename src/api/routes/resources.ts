@@ -7,11 +7,14 @@ import { encryptSecret } from '@/core/security/secrets.js';
 import { LocalArtifactStore, type ArtifactStore } from '@/core/storage/artifact-store.js';
 
 type ResourceKind = 'environment' | 'credential_vault' | 'memory_store';
-type FileCreateInput = {
+export type FileCreateInput = {
   name: string;
   mediaType: string;
   bytes: Buffer;
   metadata: Record<string, string>;
+  role?: 'file' | 'artifact';
+  sessionId?: string;
+  artifactPath?: string;
 };
 
 const FILE_PREVIEW_MAX_BYTES = 24 * 1024;
@@ -377,13 +380,13 @@ export function listFileResources(deps: ServerDeps) {
   const rows = deps.db.prepare(
     `SELECT *
      FROM files
-     WHERE archived_at IS NULL
+     WHERE role = 'file' AND archived_at IS NULL
      ORDER BY created_at DESC`,
   ).all() as unknown as FileRow[];
   return rows.map((row) => toFileResource(row, deps));
 }
 
-function toFileResource(row: FileRow, deps: ServerDeps) {
+export function toFileResource(row: FileRow, deps: ServerDeps) {
   const preview = previewFileResource(row, deps);
   return {
     id: row.id,
@@ -391,6 +394,9 @@ function toFileResource(row: FileRow, deps: ServerDeps) {
     name: row.name,
     media_type: row.media_type,
     size_bytes: row.size_bytes,
+    role: row.role,
+    session_id: row.session_id ?? null,
+    artifact_path: row.artifact_path ?? null,
     status: row.archived_at ? 'archived' : row.status,
     metadata: parseObject(row.metadata),
     created_at: row.created_at,
@@ -482,7 +488,7 @@ async function readMultipartFileRequest(c: any): Promise<{ ok: true; value: File
   };
 }
 
-function persistFileResource(deps: ServerDeps, input: FileCreateInput) {
+export function persistFileResource(deps: ServerDeps, input: FileCreateInput) {
   if (!deps.workspace?.dataDir) throw new Error('workspace data directory is not configured');
   const id = `file_${nanoid(18)}`;
   const store = artifactStore(deps);
@@ -492,14 +498,19 @@ function persistFileResource(deps: ServerDeps, input: FileCreateInput) {
   try {
     store.writeFile(storagePath, input.bytes);
     deps.db.prepare(
-      `INSERT INTO files (id, name, media_type, size_bytes, storage_path, metadata, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO files (
+        id, name, media_type, size_bytes, storage_path, role, session_id, artifact_path,
+        metadata, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       id,
       input.name,
       input.mediaType,
       input.bytes.length,
       storagePath,
+      input.role ?? 'file',
+      input.sessionId ?? null,
+      input.artifactPath ?? null,
       JSON.stringify(input.metadata),
       now,
       now,
@@ -822,12 +833,15 @@ interface EnvironmentRow {
   archived_at: string | null;
 }
 
-interface FileRow {
+export interface FileRow {
   id: string;
   name: string;
   media_type: string;
   size_bytes: number;
   storage_path: string;
+  role: 'file' | 'artifact';
+  session_id: string | null;
+  artifact_path: string | null;
   status: string;
   metadata: string;
   created_at: string;

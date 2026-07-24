@@ -31,6 +31,10 @@ export interface WorkItem {
   payload: Record<string, unknown>;
   status: 'pending' | 'claimed' | 'done' | 'failed';
   result?: unknown;
+  claimedBy?: string | null;
+  createdAt?: string;
+  claimedAt?: string | null;
+  completedAt?: string | null;
 }
 
 export type WorkCompletionResult = 'completed' | 'not_found' | 'not_claimed_by_worker';
@@ -56,13 +60,34 @@ export class WorkQueue {
    * concurrent workers can never claim the same item (H2). Only the worker
    * whose UPDATE actually flips the row wins.
    */
-  claim(workerId: string, sessionId?: string): WorkItem | null {
+  claim(workerId: string, sessionId?: string, environmentId?: string): WorkItem | null {
     return this.db.transaction(() => {
-      const selectSql = sessionId
-        ? "SELECT id FROM work_items WHERE status = 'pending' AND session_id = ? ORDER BY created_at ASC, rowid ASC LIMIT 1"
-        : "SELECT id FROM work_items WHERE status = 'pending' ORDER BY created_at ASC, rowid ASC LIMIT 1";
-      const candidate = (sessionId ? this.db.prepare(selectSql).get(sessionId) : this.db.prepare(selectSql).get()) as
-        | { id: string } | undefined;
+      let candidate: { id: string } | undefined;
+      if (sessionId) {
+        candidate = this.db.prepare(
+          environmentId
+            ? `SELECT wi.id
+               FROM work_items wi
+               JOIN sessions s ON s.id = wi.session_id
+               WHERE wi.status = 'pending' AND wi.session_id = ? AND s.environment_id = ?
+               ORDER BY wi.created_at ASC, wi.rowid ASC
+               LIMIT 1`
+            : "SELECT id FROM work_items WHERE status = 'pending' AND session_id = ? ORDER BY created_at ASC, rowid ASC LIMIT 1",
+        ).get(...(environmentId ? [sessionId, environmentId] : [sessionId])) as { id: string } | undefined;
+      } else if (environmentId) {
+        candidate = this.db.prepare(
+          `SELECT wi.id
+           FROM work_items wi
+           JOIN sessions s ON s.id = wi.session_id
+           WHERE wi.status = 'pending' AND s.environment_id = ?
+           ORDER BY wi.created_at ASC, wi.rowid ASC
+           LIMIT 1`,
+        ).get(environmentId) as { id: string } | undefined;
+      } else {
+        candidate = this.db.prepare(
+          "SELECT id FROM work_items WHERE status = 'pending' ORDER BY created_at ASC, rowid ASC LIMIT 1",
+        ).get() as { id: string } | undefined;
+      }
       if (!candidate) return null;
 
       // Guarded update: only succeeds if the row is still pending.
@@ -87,6 +112,39 @@ export class WorkQueue {
   get(id: string): WorkItem | null {
     const r = this.db.prepare('SELECT * FROM work_items WHERE id = ?').get(id) as RawWorkItem | undefined;
     return r ? toWorkItem(r) : null;
+  }
+
+  list(opts: { environmentId?: string; limit?: number } = {}): WorkItem[] {
+    const limit = Math.max(1, Math.min(opts.limit ?? 50, 200));
+    const rows = opts.environmentId
+      ? this.db.prepare(
+        `SELECT wi.*
+         FROM work_items wi
+         JOIN sessions s ON s.id = wi.session_id
+         WHERE s.environment_id = ?
+         ORDER BY wi.created_at DESC, wi.rowid DESC
+         LIMIT ?`,
+      ).all(opts.environmentId, limit)
+      : this.db.prepare(
+        `SELECT *
+         FROM work_items
+         ORDER BY created_at DESC, rowid DESC
+         LIMIT ?`,
+      ).all(limit);
+    return (rows as unknown as RawWorkItem[]).map(toWorkItem);
+  }
+
+  stats(opts: { environmentId?: string } = {}): Record<string, number> {
+    const rows = opts.environmentId
+      ? this.db.prepare(
+        `SELECT wi.status, COUNT(*) AS count
+         FROM work_items wi
+         JOIN sessions s ON s.id = wi.session_id
+         WHERE s.environment_id = ?
+         GROUP BY wi.status`,
+      ).all(opts.environmentId)
+      : this.db.prepare('SELECT status, COUNT(*) AS count FROM work_items GROUP BY status').all();
+    return Object.fromEntries((rows as Array<{ status: string; count: number }>).map((row) => [row.status, Number(row.count)]));
   }
 
   /** Await a work item's completion by polling (server side of provision). */
@@ -159,6 +217,10 @@ interface RawWorkItem {
   payload: string;
   status: string;
   result: string | null;
+  claimed_by: string | null;
+  created_at: string;
+  claimed_at: string | null;
+  completed_at: string | null;
 }
 
 function toWorkItem(r: RawWorkItem): WorkItem {
@@ -169,6 +231,10 @@ function toWorkItem(r: RawWorkItem): WorkItem {
     payload: JSON.parse(r.payload),
     status: r.status as WorkItem['status'],
     result: r.result ? JSON.parse(r.result) : undefined,
+    claimedBy: r.claimed_by ?? null,
+    createdAt: r.created_at,
+    claimedAt: r.claimed_at ?? null,
+    completedAt: r.completed_at ?? null,
   };
 }
 

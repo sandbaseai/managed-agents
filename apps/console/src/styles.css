@@ -518,6 +518,105 @@ button {
   line-height: 1.5;
 }
 
+.builderSetupGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(320px, .85fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.builderSetupPanel {
+  overflow: hidden;
+}
+
+.builderSetupHeader {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.builderSetupHeader.compact {
+  margin-bottom: 14px;
+}
+
+.builderSetupHeader h2 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.builderSetupHeader p {
+  margin: 5px 0 0;
+  color: var(--text-soft);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.builderProviderForm {
+  margin-top: 16px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.builderProviderForm .formActions,
+.builderProviderForm .inlineStatus {
+  margin: 0 20px 18px;
+}
+
+.softIcon {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  color: var(--text-soft);
+  background: var(--surface-muted);
+  border: 1px solid var(--border-subtle);
+}
+
+.softIcon.success {
+  color: var(--success);
+  background: color-mix(in srgb, var(--success) 9%, var(--surface-muted));
+}
+
+.advancedSettingsGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  align-items: start;
+}
+
+.advancedJsonPanel {
+  grid-column: 1 / -1;
+}
+
+.settingsLinkList {
+  display: grid;
+  gap: 8px;
+}
+
+.settingsLinkList button {
+  width: 100%;
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 680;
+  padding: 0 12px;
+  cursor: pointer;
+}
+
+.settingsLinkList button:hover {
+  background: var(--surface-muted);
+}
+
 .formSection + .formSection {
   border-top: 1px solid var(--border-subtle);
 }

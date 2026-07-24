@@ -33,11 +33,13 @@ environments.
 - Resumable Server-Sent Events for session timelines, debugging, audit, and
   replay
 - File resources, memory stores, credential vaults, and environment templates
+- local file/skill bytes stored outside the source checkout by default
+- One active model provider boundary configured through Settings
 - Local API keys and bearer-token authentication for shared local runtimes
 - Optional seed/import folders for `agents/*.yaml` and `skills/*/SKILL.md`
-- Local, Docker, and self-hosted sandbox provider support
+- Local sandbox execution by default, with advanced sandbox adapters configured only when available
 - MCP toolsets, built-in tools, permission policies, and skill packages
-- OpenAI-compatible, Ollama-compatible, and Anthropic model adapters
+- One configured model vendor boundary with adapter-owned model defaults
 - Optional TypeScript convenience SDK at `managed-agents/sdk`
 
 ## Common Use Cases
@@ -284,20 +286,12 @@ Create an environment:
 curl -X POST http://127.0.0.1:3000/v1/environments \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "Default cloud",
+    "name": "Default local",
     "config": {
-      "type": "cloud",
-      "networking": {
-        "type": "limited",
-        "allow_mcp_servers": true,
-        "allow_package_managers": true,
-        "allowed_hosts": ["api.github.com"]
-      },
-      "packages": {
-        "type": "packages",
-        "pip": ["pytest"],
-        "npm": ["typescript"]
-      }
+      "hosting_type": "local",
+      "sandbox_provider": "local",
+      "network": { "type": "limited" },
+      "packages": []
     }
   }'
 ```
@@ -417,6 +411,16 @@ curl -N http://127.0.0.1:3000/v1/sessions/SESSION_ID/events/stream \
 ```
 
 ## SDK Usage
+
+Use the package SDK first for local runtime helpers:
+
+```typescript
+import { ManagedAgentsClient } from 'managed-agents/sdk';
+
+const localClient = new ManagedAgentsClient({
+  baseUrl: 'http://127.0.0.1:3000',
+});
+```
 
 The public API is designed to follow Claude Managed Agents resource shapes. When
 your SDK supports the managed-agent beta resources, point the official Anthropic
